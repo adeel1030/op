@@ -5,8 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>M A Products INDIA Order Management System</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-messaging-compat.js"></script>
 <style>
   :root{
     --bg:#F1F7F3;
@@ -397,7 +395,7 @@
 /* ============================= PRODUCT CATALOG ============================= */
 /* ============================= BRANDING ============================= */
 const COMPANY_LOGO = "https://static.wixstatic.com/media/f34ac6_16010ac0fe9c48739c4860abefec3cbb~mv2.png/v1/fill/w_410,h_409,al_c,lg_1,q_85,enc_avif,quality_auto/M%20A%20Products%20INDIA%20Logo.png";
-const APP_BUILD = "2026-08-11-pushnotifications1";
+const APP_BUILD = "2026-08-11-nopush1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -633,7 +631,6 @@ const S = {
   rawMaterial:{}, filledStock:{}, readyStock:{}, expenses:[], activityLog:[], stockTasks:[], dominoPrints:[],
   lowStock:{raw:{}, filled:{}, ready:{}}, rolePermissions:{}, customRoles:[], catalogItems:[],
   _partitionKeysSeen:{orders:new Set(), activityLog:new Set(), attendance:new Set(), expenses:new Set(), dominoPrints:new Set(), loginLog:new Set()},
-  pushTokens:{},
   currentUser:null, view:'home', stockView:'raw', notifOpen:false, moreOpen:false, profileOpen:false, toast:null,
   postLoginPhase:null, pendingUser:null, postLoginLoadingStep:0,
   search:{}, // per-view search text
@@ -1027,7 +1024,6 @@ function applyServerData(data){
   applyRolePermissionsToROLES();
   S.catalogItems = (data.catalogItems && data.catalogItems.length) ? data.catalogItems : flattenDefaultCatalog();
   rebuildCatalogFlat();
-  S.pushTokens = data.pushTokens || {};
 }
 
 async function loadAll(){
@@ -1142,7 +1138,6 @@ function finalizeLogin(u){
   if(S.loginLog.length>2000) S.loginLog = S.loginLog.slice(-2000); // day-partitioned now, but keep an overall sanity cap
   savePartitionForItem('loginLog', S.loginLog[S.loginLog.length-1]);
   S.postLoginPhase = null; S.pendingUser = null;
-  if(pushSupported() && Notification.permission==='granted') registerPushToken();
   render();
 }
 function doLogout(){ S.currentUser = null; S.notifOpen=false; S.moreOpen=false; S.profileOpen=false; persistSession(null); render(); }
@@ -1252,7 +1247,6 @@ function reconcileStockTasks(){
 // team's task list — no manual "send" needed. Idempotent (skips ones already open).
 function syncStockTasksFromAlerts(){
   let changed = false;
-  const newlyCreated = []; // {kind, label} — for notifying the relevant team once, after the loop
   // Anyone's action can resolve a shortage, so reconciliation (closing tasks
   // that no longer apply) always runs. Only admin/manager *create* new tasks,
   // to avoid every role's routine actions spawning tasks on a technicality.
@@ -1264,7 +1258,6 @@ function syncStockTasksFromAlerts(){
         if(!already){
           S.stockTasks.push({id:uid(), kind, itemId:a.id, label:a.label, qtyText:a.text||'', targetRole: kind==='filled'?'filling':'packaging', createdBy:'Auto', createdAt:Date.now(), status:'open'});
           changed = true;
-          newlyCreated.push({kind, label:a.label});
         }
       });
     };
@@ -1273,12 +1266,6 @@ function syncStockTasksFromAlerts(){
   }
   if(reconcileStockTasks()) changed = true;
   if(changed) safeSet('app:stockTasks', S.stockTasks);
-  if(newlyCreated.length){
-    const fillingItems = newlyCreated.filter(t=>t.kind==='filled');
-    const readyItems = newlyCreated.filter(t=>t.kind==='ready');
-    if(fillingItems.length) sendPushNotification(usernamesWithRole('filling'), 'Filling needed', fillingItems.map(t=>t.label).join(', '), {link:'/'});
-    if(readyItems.length) sendPushNotification(usernamesWithRole('packaging'), 'Packing needed', readyItems.map(t=>t.label).join(', '), {link:'/'});
-  }
   return changed;
 }
 function assignAllStockTasks(kind){
@@ -1688,29 +1675,8 @@ function renderProfilePanel(role){
       </div>
     </div>
   </div>
-  ${renderNotifSettingsCard()}
   <button class="btn btn-danger" style="width:100%;margin-top:14px;" id="logoutBtn">Log out</button>
   <p class="mono" style="text-align:center;margin-top:14px;opacity:0.5;">build ${APP_BUILD}</p>`;
-}
-function renderNotifSettingsCard(){
-  if(!pushSupported()){
-    return `<div class="card" style="margin-top:12px;"><h2>Notifications</h2><p class="desc" style="margin:0;">Push notifications aren't supported in this browser. Try opening the app in Chrome on your phone (not a downloaded file).</p></div>`;
-  }
-  const status = Notification.permission;
-  const myTokenCount = (S.pushTokens[S.currentUser.username]||[]).length;
-  let statusHtml;
-  if(status==='granted' && myTokenCount>0){
-    statusHtml = `<p class="desc" style="margin:0 0 10px;">✅ Notifications are on for this device.</p>`;
-  } else if(status==='denied'){
-    statusHtml = `<p class="desc" style="margin:0 0 10px;">🔕 Blocked — enable notifications for this site in your browser settings, then reopen the app.</p>`;
-  } else {
-    statusHtml = `<p class="desc" style="margin:0 0 10px;">Get notified about new orders, low stock, and assigned tasks — even when the app is closed.</p>`;
-  }
-  return `<div class="card" style="margin-top:12px;">
-    <h2>Notifications</h2>
-    ${statusHtml}
-    ${(status!=='granted' || myTokenCount===0) ? `<button class="btn btn-primary btn-sm" id="enableNotifBtn" style="width:100%;">🔔 Enable Notifications</button>` : ''}
-  </div>`;
 }
 
 function renderPulse(stockAlerts){
@@ -1776,8 +1742,6 @@ function bindShell(){
   if(avatarBtn) avatarBtn.addEventListener('click', ()=>{ S.profileOpen=true; S.notifOpen=false; S.moreOpen=false; render(); });
   const logoutBtn = document.getElementById('logoutBtn');
   if(logoutBtn) logoutBtn.addEventListener('click', doLogout);
-  const enableNotifBtn = document.getElementById('enableNotifBtn');
-  if(enableNotifBtn) enableNotifBtn.addEventListener('click', enablePushNotifications);
 
   const bell = document.getElementById('bellBtn');
   if(bell) bell.addEventListener('click', ()=>{ S.notifOpen = !S.notifOpen; S.moreOpen=false; S.profileOpen=false; render(); });
@@ -2761,7 +2725,6 @@ function openOrderModal(existingOrder){
         };
         S.orders.push(order);
         savePartitionForItem('orders', order);
-        sendPushNotification(usernamesWithRole('admin','manager'), 'New order received', `${custName} — ${orderDraft.length} item(s)`, {link:'/'});
         closeModal(); render();
         showToast('Order submitted — waiting on owner to accept');
       }
@@ -2970,7 +2933,6 @@ function openChatOrderModal(){
       };
       S.orders.push(order);
       savePartitionForItem('orders', order);
-      sendPushNotification(usernamesWithRole('admin','manager'), 'New order received', `${custName} — ${parsed.items.length} item(s)`, {link:'/'});
       closeModal(); render();
       showToast('Order submitted — waiting on owner to accept');
     };
@@ -3659,11 +3621,6 @@ function openTaskModal(existingTask){
       });
     }
     safeSet('app:tasks', S.tasks);
-    const title = document.getElementById('taskTitle').value.trim();
-    const notifyUsernames = assignedTo.startsWith('role:')
-      ? usernamesWithRole(assignedTo.slice(5))
-      : [assignedTo];
-    sendPushNotification(notifyUsernames, existingTask?'Task updated':'New task assigned', title, {link:'/'});
     closeModal(); render(); showToast('Task assigned');
   });
 }
@@ -4170,86 +4127,6 @@ function closeModal(){ const o = document.getElementById('modalOverlay'); if(o) 
 
 /* ============================= INIT ============================= */
 /* ============================= DEVICE PERMISSIONS (ask once, up front) ============================= */
-/* ============================= PUSH NOTIFICATIONS (Firebase Cloud Messaging) ============================= */
-const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyAt91cSS8ZudofU03xPsbRELKNgREbat5o",
-  authDomain: "ma-products-order-ops.firebaseapp.com",
-  projectId: "ma-products-order-ops",
-  storageBucket: "ma-products-order-ops.firebasestorage.app",
-  messagingSenderId: "963593419973",
-  appId: "1:963593419973:web:d4711334ba3eeb5e73c4ac"
-};
-const FCM_VAPID_KEY = "BA21tfASLdZUYM42Qfc4XSgiuFVTcyU-JBlkB7_puJ1-xagA14PSef5fzhMmQ82YchHT5_oeaTCdgpWcui7yuk4";
-let fcmMessaging = null;
-let pushStatus = 'unknown'; // 'unknown' | 'unsupported' | 'default' | 'granted' | 'denied'
-
-function pushSupported(){
-  return 'serviceWorker' in navigator && 'Notification' in window && typeof firebase !== 'undefined';
-}
-async function initFirebaseMessaging(){
-  if(!pushSupported()){ pushStatus = 'unsupported'; return; }
-  try{
-    if(!firebase.apps || !firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
-    fcmMessaging = firebase.messaging();
-    pushStatus = Notification.permission; // 'default' | 'granted' | 'denied'
-    // If permission was already granted in a past session, silently
-    // (re)register the token — no need to ask again or show any UI for it.
-    if(Notification.permission === 'granted' && S.currentUser){
-      registerPushToken();
-    }
-    fcmMessaging.onMessage((payload)=>{
-      // App is open/focused — show our own in-app toast instead of a system notification.
-      const title = (payload.notification && payload.notification.title) || 'Notification';
-      showToast(title);
-      playNotifRing();
-    });
-  }catch(e){ console.error('Firebase messaging init failed', e); pushStatus = 'unsupported'; }
-}
-async function registerPushToken(){
-  if(!fcmMessaging || !S.currentUser) return false;
-  try{
-    const reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
-    const token = await fcmMessaging.getToken(fcmMessaging, { vapidKey: FCM_VAPID_KEY, serviceWorkerRegistration: reg });
-    if(!token) return false;
-    const username = S.currentUser.username;
-    S.pushTokens = S.pushTokens || {};
-    const existing = S.pushTokens[username] || [];
-    if(!existing.some(t=>t.token===token)){
-      S.pushTokens[username] = [...existing, { token, addedAt: Date.now() }].slice(-5); // cap at 5 devices/user
-      safeSet('app:pushTokens', S.pushTokens);
-    }
-    pushStatus = 'granted';
-    return true;
-  }catch(e){ console.error('Push token registration failed', e); return false; }
-}
-async function enablePushNotifications(){
-  if(!pushSupported()){ showToast('Push notifications are not supported in this browser', true); return; }
-  try{
-    const perm = await Notification.requestPermission();
-    pushStatus = perm;
-    if(perm !== 'granted'){
-      showToast(perm==='denied' ? 'Notifications blocked — enable them in your browser/site settings' : 'Notification permission not granted', true);
-      render();
-      return;
-    }
-    const ok = await registerPushToken();
-    showToast(ok ? 'Notifications enabled ✅' : 'Could not enable notifications — try again');
-    render();
-  }catch(e){ console.error(e); showToast('Could not enable notifications', true); }
-}
-// Fire-and-forget: tells the backend to push a notification to these
-// usernames' registered devices. Never blocks the calling action if it fails.
-function sendPushNotification(usernames, title, body, data){
-  if(!usernames || !usernames.length) return;
-  fetch(API_URL, {
-    method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
-    body: JSON.stringify({ secret:SECRET, action:'sendNotification', usernames, title, body:body||'', data:data||{} })
-  }).catch(()=>{});
-}
-function usernamesWithRole(...roles){
-  return S.users.filter(u=>roles.includes(u.role)).map(u=>u.username);
-}
-
 function primeDevicePermissions(){
   try{
     if('Notification' in window && Notification.permission==='default'){
@@ -4318,7 +4195,6 @@ let loadAllPromise = null;
   await loadAllPromise;
   render();
   if(S.currentUser){ primeDevicePermissions(); lastKnownNotifCount = myNotifCount(getStockAlerts()); }
-  initFirebaseMessaging();
   flushOfflineQueue(); // in case saves were queued from a previous session
   window.addEventListener('online', ()=>{ showToast('Back online — syncing…'); flushOfflineQueue(); });
   window.addEventListener('offline', ()=>{ showToast('No connection — changes will be saved and synced automatically', true); });
