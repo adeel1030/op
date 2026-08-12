@@ -1927,4 +1927,2953 @@ function openDispatchModal(orderId){
     <div class="field"><label>Total No. of Cases</label><input id="dispatchCases" type="number" min="0" placeholder="e.g. 12" /></div>
     <div class="modal-actions">
       <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
- 
+
+       <button type="button" class="btn btn-primary" id="editLogSave">Save</button>
+    </div>
+  `);
+  document.getElementById('editLogSave').addEventListener('click', ()=>{
+    let val = parseFloat(document.getElementById('editLogVal').value)||0;
+    const cap = isPurchase ? MAX_PURCHASE_L : MAX_PC_ENTRY;
+    if(val>cap){ showAlert(`Max allowed is ${cap} ${isPurchase?'L':'pc'} per entry.`); return; }
+    revertActivity(e);
+    if(isPurchase){ e.ml = val*1000; }
+    else {
+      e.qty = Math.round(val);
+      if(isFilling){
+        const actualLInput = document.getElementById('editLogActualL');
+        const actualL = actualLInput ? parseFloat(actualLInput.value) : NaN;
+        e.actualMl = !isNaN(actualL) && actualL>=0 ? actualL*1000 : null; // null = fall back to standard qty*mlPer
+      }
+    }
+    applyActivityForward(e);
+    saveAfterActivityChange(e);
+    closeModal(); render(); showToast('Entry updated');
+  });
+}
+function alertBanner(list){
+  if(!list.length) return '';
+  const crit = list.filter(a=>a.level!=='low');
+  const low = list.filter(a=>a.level==='low');
+  let out = '';
+  if(crit.length) out += `<div class="alert-banner"><b>⚠ ${crit.length} item(s) short</b>${crit.map(a=>`${esc(a.label)}: <span class="stockneg">${a.text}</span> — ${esc(a.team)}<br/>`).join('')}</div>`;
+  if(low.length) out += `<div class="alert-banner warn-mild"><b>🔔 ${low.length} item(s) running low</b>${low.map(a=>`${esc(a.label)}: ${esc(a.text)} — ${esc(a.team)}<br/>`).join('')}</div>`;
+  return out;
+}
+
+/* ============================= RENDER ROOT ============================= */
+let lastRenderedView = null;
+let lastRenderedHtml = null;
+let navJustSwitched = false;
+function renderBrandedLoadingScreen(){
+  return `<div class="login-wrap">
+    <div class="welcome-screen">
+      <img src="${COMPANY_LOGO}" alt="M A Products India" class="welcome-logo" style="margin-bottom:22px;" />
+      <div class="postlogin-spinner"></div>
+      <div class="loading-msg-fade" style="margin-top:18px;font-size:14px;font-weight:700;letter-spacing:0.02em;">Loading Order Management System<br/>by M A Products INDIA</div>
+    </div>
+  </div>`;
+}
+function render(){
+  const root = document.getElementById('root');
+  if(!S.loaded){
+    root.innerHTML = renderBrandedLoadingScreen();
+    return;
+  }
+  if(!S.currentUser){
+    if(S.postLoginPhase){
+      root.innerHTML = renderPostLoginSequence();
+      bindPostLoginSequence();
+      return;
+    }
+    root.innerHTML = renderLogin();
+    bindLogin();
+    lastRenderedView = null;
+    return;
+  }
+  // Rebuilding innerHTML resets scroll to 0 by default — capture and restore
+  // the scrollable .content area's position so clicking anything doesn't
+  // yank the page back to the top. Only do this when staying on the same
+  // screen; switching tabs should still start fresh at the top.
+  const sameView = lastRenderedView === S.view;
+  navJustSwitched = !sameView; // read by the nav-item template to pop only the tab that's genuinely becoming active
+  const prevContent = root.querySelector('.content');
+  const savedScrollTop = sameView && prevContent ? prevContent.scrollTop : 0;
+  const newHtml = renderShell();
+  // Most background sync updates don't actually change anything THIS user
+  // can currently see (someone else marked attendance while you're viewing
+  // Orders, say) — skip the DOM replacement entirely when the screen would
+  // come out byte-for-byte identical. This is what was causing the visible
+  // "jump to top and back" on every sync tick: a full shell rebuild for a
+  // screen that hadn't actually changed at all.
+  if(sameView && newHtml === lastRenderedHtml) return;
+  lastRenderedHtml = newHtml;
+  root.innerHTML = newHtml;
+  bindShell();
+  const newContent = root.querySelector('.content');
+  if(newContent) newContent.scrollTop = savedScrollTop;
+  lastRenderedView = S.view;
+}
+
+/* ============================= LOGIN VIEW ============================= */
+let loginError = '';
+function renderLogin(){
+  return `
+  <div class="login-wrap">
+    <div class="login-card">
+      <div class="login-brand-lg">
+        <div class="login-logo"><img src="${COMPANY_LOGO}" alt="M A Products India" style="width:100%;height:100%;object-fit:contain;border-radius:12px;" /></div>
+        <div>
+          <div class="login-brand-name">M A Products INDIA</div>
+          <div class="login-brand-sub">Order Management System</div>
+        </div>
+      </div>
+      <h1>Sign in</h1>
+      <p class="sub">Enter your username and password to continue.</p>
+      ${loginError ? `<div class="err">${esc(loginError)}</div>` : ''}
+      <form id="loginForm">
+        <div class="field"><label>Username</label><input id="loginUser" autocomplete="username" required /></div>
+        <div class="field"><label>Password</label><input id="loginPass" type="password" autocomplete="current-password" required /></div>
+        <button class="btn btn-primary" type="submit">Sign in</button>
+      </form>
+    </div>
+  </div>`;
+}
+let loginSubmitting = false;
+function bindLogin(){
+  loginSubmitting = false; // reset every time the login form is (re)shown — e.g. after logout — so a stuck flag from a prior successful login never blocks the next one
+  document.getElementById('loginForm').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    // Guards against a double-submit (e.g. impatient double-click / double
+    // Enter) firing this handler twice while still awaiting loadAllPromise —
+    // that used to race two loading sequences against each other and made
+    // the delay look like it got skipped or cut short.
+    if(loginSubmitting) return;
+    loginSubmitting = true;
+    const u = document.getElementById('loginUser').value;
+    const p = document.getElementById('loginPass').value;
+    if(loadAllPromise) await loadAllPromise; // data may still be loading in the background — wait for it before checking credentials
+    const matched = findMatchingUser(u, p);
+    if(matched){ loginError=''; startPostLoginSequence(matched); }
+    else { loginSubmitting = false; startWrongLoginSequence(); }
+  });
+}
+
+/* ============================= POST-LOGIN SEQUENCE (loading -> welcome) ============================= */
+const POST_LOGIN_LOADING_MSGS = ['Loading Orders…','Loading Stock…','Updating other features…'];
+function startPostLoginSequence(user){
+  if(S.postLoginPhase) return; // a sequence is already running — never start a second one on top of it
+  S.pendingUser = user;
+  S.postLoginPhase = 'loading';
+  S.postLoginLoadingStep = 0;
+  render();
+  const stepMs = 750; // 3 steps ≈ 2.25s total, comfortably over the requested 2s
+  const tick = ()=>{
+    S.postLoginLoadingStep++;
+    if(S.postLoginLoadingStep < POST_LOGIN_LOADING_MSGS.length){
+      render();
+      setTimeout(tick, stepMs);
+    } else {
+      S.postLoginPhase = 'welcome';
+      render();
+    }
+  };
+  setTimeout(tick, stepMs);
+}
+const WRONG_LOGIN_MSGS = ['Searching for employee ID…','Fake login found','Report sent to company'];
+function startWrongLoginSequence(){
+  if(S.postLoginPhase) return; // don't overlap with an already-running sequence
+  S.postLoginPhase = 'wrongLogin';
+  S.postLoginLoadingStep = 0;
+  render();
+  const stepMs = 1330; // 3 steps ≈ 4s total
+  const tick = ()=>{
+    S.postLoginLoadingStep++;
+    if(S.postLoginLoadingStep < WRONG_LOGIN_MSGS.length){
+      render();
+      setTimeout(tick, stepMs);
+    } else {
+      S.postLoginPhase = null;
+      loginError = 'Invalid Login ID & Password';
+      render();
+    }
+  };
+  setTimeout(tick, stepMs);
+}
+function renderPostLoginSequence(){
+  if(S.postLoginPhase === 'welcome'){
+    const name = S.pendingUser ? S.pendingUser.name : '';
+    return `<div class="login-wrap">
+      <div class="welcome-screen">
+        <div class="welcome-fade d1">Hello, ${esc(name)}</div>
+        <div class="welcome-fade d2" style="opacity:0.75;font-size:14px;margin-top:10px;">Welcome to</div>
+        <div class="welcome-fade d3 welcome-brand">M A Products INDIA</div>
+        <div class="welcome-fade d4"><img src="${COMPANY_LOGO}" alt="M A Products India" class="welcome-logo" /></div>
+        <button class="btn btn-primary welcome-fade d4" id="continueBtn" style="width:auto;padding:13px 30px;margin-top:8px;">Tap to Continue ›</button>
+      </div>
+    </div>`;
+  }
+  const msg = S.postLoginPhase === 'wrongLogin'
+    ? (WRONG_LOGIN_MSGS[S.postLoginLoadingStep] || 'Checking…')
+    : (POST_LOGIN_LOADING_MSGS[S.postLoginLoadingStep] || 'Loading…');
+  return `<div class="login-wrap">
+    <div class="welcome-screen">
+      <img src="${COMPANY_LOGO}" alt="M A Products India" class="welcome-logo" style="margin-bottom:22px;" />
+      <div class="postlogin-spinner ${S.postLoginPhase==='wrongLogin'?'spinner-alert':''}"></div>
+      <div class="loading-msg-fade" style="margin-top:18px;font-size:14px;font-weight:700;letter-spacing:0.02em;">${esc(msg)}</div>
+    </div>
+  </div>`;
+}
+function bindPostLoginSequence(){
+  const btn = document.getElementById('continueBtn');
+  if(btn) btn.addEventListener('click', ()=>finalizeLogin(S.pendingUser));
+}
+
+/* ============================= APP SHELL ============================= */
+function myRoleAlerts(stockAlerts){
+  // Each role only sees alerts relevant to their own job.
+  const role = S.currentUser.role;
+  if(role==='admin' || role==='manager') return [...stockAlerts.raw, ...stockAlerts.filled, ...stockAlerts.ready];
+  if(role==='filling') return stockAlerts.filled;   // filled stock short -> filling team fills more
+  if(role==='packaging') return stockAlerts.ready;  // ready stock short -> packaging team packs more
+  if(role==='sales') return stockAlerts.ready;
+  return [];
+}
+function myNotifCount(stockAlerts){
+  const role = S.currentUser.role;
+  const pendingOrders = S.orders.filter(o=>o.status==='pending').length;
+  const reviewTasks = S.orders.filter(o => o.fillingStatus==='review' || o.packagingStatus==='review').length;
+  const myAlerts = myRoleAlerts(stockAlerts).length;
+  if(role==='admin') return pendingOrders+reviewTasks+myAlerts;
+  if(role==='manager') return myAlerts + S.orders.filter(o=>o.status==='processing' && (o.fillingStatus!=='done'||o.packagingStatus!=='done')).length;
+  if(role==='filling') return myAlerts + S.orders.filter(o=>o.status==='processing' && o.fillingStatus!=='done').length;
+  if(role==='packaging') return myAlerts + S.orders.filter(o=>o.status==='processing' && o.fillingStatus==='done' && o.packagingStatus!=='done').length;
+  if(role==='sales') return myAlerts;
+  return 0;
+}
+function renderShell(){
+  const role = ROLES[S.currentUser.role];
+  const stockAlerts = getStockAlerts();
+  const notifCount = myNotifCount(stockAlerts);
+  const { primary, overflow } = navSplit(role.tabs);
+  const overflowActive = overflow.includes(S.view);
+
+  return `
+    <div class="topbar">
+      <div class="topbar-left">
+        <img src="${COMPANY_LOGO}" alt="M A Products India" style="width:28px;height:28px;object-fit:contain;border-radius:6px;background:#fff;padding:2px;flex:0 0 auto;" />
+        <div class="titles">
+          <b>Welcome, ${esc((S.currentUser.name||'').split(' ')[0]||S.currentUser.name)}</b>
+          <span class="screen-label"><span class="sync-dot" id="syncDot"></span><span id="syncStatusText">${esc(currentSyncLabel || TAB_LABEL[S.view] || '')}</span><span id="syncPendingLabel">${pendingSaveCount()>0?` · ${pendingSaveCount()} pending`:''}</span></span>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button class="bell" id="bellBtn" title="Notifications">🔔${notifCount>0?`<span class="badge badge-pulse-new">${notifCount}</span>`:''}</button>
+        <button class="avatar-btn" id="avatarBtn" title="${esc(S.currentUser.name)}">${S.currentUser.photo?`<img src="${esc(S.currentUser.photo)}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;" />`:esc((S.currentUser.name||'?').trim().charAt(0).toUpperCase())}</button>
+      </div>
+    </div>
+    <div class="content">
+      ${renderView()}
+    </div>
+    ${renderBottomNav(primary, overflow, overflowActive)}
+    ${S.notifOpen ? renderSheet(renderNotifPanel(stockAlerts), 'closeNotif') : ''}
+    ${S.moreOpen ? renderSheet(renderMorePanel(overflow), 'closeMore') : ''}
+    ${S.profileOpen ? renderSheet(renderProfilePanel(role), 'closeProfile') : ''}
+    ${S.toast ? `<div class="app-toast" style="position:absolute;bottom:calc(var(--navbar-h) + var(--sab) + 14px);left:50%;background:${S.toast.isErr?'var(--danger)':'var(--ink)'};color:#fff;padding:9px 16px;border-radius:30px;font-size:12.5px;z-index:200;max-width:88%;text-align:center;">${esc(S.toast.msg)}</div>` : ''}
+  `;
+}
+
+function renderSheet(innerHtml, closeId){
+  return `<div class="modal-overlay" data-sheet-overlay="${closeId}"><div class="modal"><div class="sheet-handle"></div>${innerHtml}</div></div>`;
+}
+
+function renderBottomNav(primary, overflow, overflowActive){
+  return `<div class="navbar">
+    ${primary.map(t=>`
+      <button class="navitem ${S.view===t?'active':''}${S.view===t && navJustSwitched?' just-activated':''}" data-tab="${t}">
+        <span class="ico">${TAB_ICON[t]||'▫️'}</span><span class="lbl">${esc(TAB_SHORT[t]||TAB_LABEL[t])}</span>
+      </button>`).join('')}
+    ${overflow.length ? `
+      <button class="navitem ${overflowActive?'active':''}" id="moreNavBtn">
+        <span class="ico">⋯</span><span class="lbl">More</span>
+      </button>` : ''}
+  </div>`;
+}
+
+function renderMorePanel(overflow){
+  return `<h3>More</h3>
+  <div class="more-grid">
+    ${overflow.map(t=>`
+      <div class="more-item" data-more-tab="${t}">
+        <span class="ico">${TAB_ICON[t]||'▫️'}</span><span class="lbl">${esc(TAB_LABEL[t])}</span>
+      </div>`).join('')}
+  </div>`;
+}
+
+function renderProfilePanel(role){
+  const u = S.currentUser;
+  return `
+  <div class="id-card">
+    <div class="id-card-header">
+      <div class="id-card-company">M A PRODUCTS INDIA</div>
+      <div class="id-card-title">EMPLOYEE ID CARD</div>
+    </div>
+    <div class="id-card-body">
+      <div class="id-card-photo-wrap">
+        ${u.photo
+          ? `<img src="${esc(u.photo)}" class="id-card-photo" />`
+          : `<span class="id-card-photo id-card-photo-fallback">${esc((u.name||'?').charAt(0).toUpperCase())}</span>`}
+      </div>
+      <div class="id-card-name">${esc(u.name)}</div>
+      <span class="id-card-role-pill">${esc(u.post || role.label)}</span>
+      <div class="id-card-rows">
+        <div class="id-card-row"><span class="id-card-label">Designation</span><span class="id-card-value">${esc(role.label)}${u.post?` · ${esc(u.post)}`:''}</span></div>
+        <div class="id-card-row"><span class="id-card-label">Username</span><span class="id-card-value mono">${esc(u.username)}</span></div>
+        <div class="id-card-row"><span class="id-card-label">Contact No.</span><span class="id-card-value">${u.phone?esc(u.phone):'—'}</span></div>
+        <div class="id-card-row"><span class="id-card-label">Address</span><span class="id-card-value">${u.address?esc(u.address):'—'}</span></div>
+      </div>
+    </div>
+  </div>
+  <button class="btn btn-danger" style="width:100%;margin-top:14px;" id="logoutBtn">Log out</button>
+  <p class="mono" style="text-align:center;margin-top:14px;opacity:0.5;">build ${APP_BUILD}</p>`;
+}
+
+function renderPulse(stockAlerts){
+  const pending = S.orders.filter(o=>o.status==='pending').length;
+  const ready = S.orders.filter(o=>o.status==='ready').length;
+  return `<div class="pulse">
+    <span>ORDERS <b>${S.orders.length}</b></span>
+    <span>NEW <b>${pending}</b></span>
+    <span>READY <b>${ready}</b></span>
+    <span>CUSTOMERS <b>${S.customers.length}</b></span>
+    <span>ALERTS <b class="${stockAlerts.total>0?'warn':''}">${stockAlerts.total}</b></span>
+  </div>`;
+}
+
+function myRoleAlertKinds(role){
+  if(role==='admin' || role==='manager') return ['raw','filled','ready'];
+  if(role==='filling') return ['filled'];
+  if(role==='packaging' || role==='sales') return ['ready'];
+  return [];
+}
+function renderNotifPanel(stockAlerts){
+  const role = S.currentUser.role;
+  const isAdmin = role==='admin';
+  const pendingOrders = isAdmin ? S.orders.filter(o=>o.status==='pending') : [];
+  const readyOrders = isAdmin ? S.orders.filter(o=>o.status==='ready') : [];
+  const reviewTasks = isAdmin ? S.orders.filter(o => o.fillingStatus==='review' || o.packagingStatus==='review') : [];
+  const alertKinds = myRoleAlertKinds(role);
+  const alertsHtml = alertKinds.map(k=>renderAlertSection(k, stockAlerts[k], true)).join('');
+  const alertCount = alertKinds.reduce((s,k)=>s+stockAlerts[k].length,0);
+  let myWork = [];
+  if(role==='filling') myWork = S.orders.filter(o=>o.status==='processing' && o.fillingStatus!=='done');
+  if(role==='packaging') myWork = S.orders.filter(o=>o.status==='processing' && o.fillingStatus==='done' && o.packagingStatus!=='done');
+  if(role==='manager') myWork = S.orders.filter(o=>o.status==='processing' && (o.fillingStatus!=='done'||o.packagingStatus!=='done'));
+  return `<h3>${isAdmin?'Pending your approval':'Your alerts'}</h3>
+    <p class="desc" style="margin-top:-8px;">${isAdmin?'Waiting on you.':'Your alerts.'}</p>
+    ${pendingOrders.length===0 && readyOrders.length===0 && reviewTasks.length===0 && alertCount===0 && myWork.length===0 ? `<div class="empty">Nothing waiting on you right now.</div>` : ''}
+    ${pendingOrders.map(o=>`
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);gap:10px;flex-wrap:wrap;">
+        <div style="font-size:13px;"><b>${esc(o.customerName)}</b> — ${o.items.map(i=>`${esc(i.name)} ${esc(i.size)} ×${i.qty}`).join(', ')} <span class="mono">(by ${esc(o.createdBy)})</span></div>
+        <div class="row-actions">
+          <button class="btn btn-sm btn-success" data-approve-order="${o.id}">Accept</button>
+          <button class="btn btn-sm btn-danger" data-reject-order="${o.id}">Reject</button>
+        </div>
+      </div>`).join('')}
+    ${readyOrders.map(o=>`
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);gap:10px;flex-wrap:wrap;">
+        <div style="font-size:13px;"><b>${esc(o.customerName)}</b> — fully stocked, ready to dispatch</div>
+        <div class="row-actions"><button class="btn btn-sm btn-success" data-process-order="${o.id}">Mark processed</button></div>
+      </div>`).join('')}
+    ${reviewTasks.map(o=>`
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);flex-wrap:wrap;gap:8px;">
+        <div style="font-size:13px;"><b>${esc(o.customerName)}</b> — ${o.fillingStatus==='review'?'Filling':'Packaging'} marked done, needs sign-off</div>
+        <div class="row-actions">
+          <button class="btn btn-sm btn-success" data-ack-task="${o.id}|${o.fillingStatus==='review'?'filling':'packaging'}">Confirm done</button>
+        </div>
+      </div>`).join('')}
+    ${!isAdmin && myWork.length ? `<div style="font-size:12.5px;margin:6px 0;"><b>${myWork.length}</b> order(s) waiting on your work — check Tasks.</div>` : ''}
+    ${alertCount? `<div style="margin-top:10px;">${alertsHtml}</div>` : ''}`;
+}
+
+function bindShell(){
+  const avatarBtn = document.getElementById('avatarBtn');
+  if(avatarBtn) avatarBtn.addEventListener('click', ()=>{ S.profileOpen=true; S.notifOpen=false; S.moreOpen=false; render(); });
+  const logoutBtn = document.getElementById('logoutBtn');
+  if(logoutBtn) logoutBtn.addEventListener('click', doLogout);
+
+  const bell = document.getElementById('bellBtn');
+  if(bell) bell.addEventListener('click', ()=>{ S.notifOpen = !S.notifOpen; S.moreOpen=false; S.profileOpen=false; render(); });
+
+  const moreBtn = document.getElementById('moreNavBtn');
+  if(moreBtn) moreBtn.addEventListener('click', ()=>{ S.moreOpen = !S.moreOpen; S.notifOpen=false; S.profileOpen=false; render(); });
+
+  document.querySelectorAll('[data-sheet-overlay]').forEach(ov=>{
+    ov.addEventListener('click', (e)=>{
+      if(e.target !== ov) return;
+      S.notifOpen=false; S.moreOpen=false; S.profileOpen=false; render();
+    });
+  });
+
+  document.querySelectorAll('.navitem[data-tab]').forEach(t=>{
+    t.addEventListener('click', ()=>{ S.view = t.dataset.tab; S.notifOpen=false; S.moreOpen=false; render(); });
+  });
+  document.querySelectorAll('[data-more-tab]').forEach(t=>{
+    t.addEventListener('click', ()=>{ S.view = t.dataset.moreTab; S.moreOpen=false; render(); });
+  });
+
+  document.querySelectorAll('[data-approve-order]').forEach(b=>b.addEventListener('click', ()=>{ setOrderStatus(b.dataset.approveOrder, 'processing'); render(); }));
+  document.querySelectorAll('[data-reject-order]').forEach(b=>b.addEventListener('click', ()=>{ setOrderStatus(b.dataset.rejectOrder, 'rejected'); render(); }));
+  document.querySelectorAll('[data-process-order]').forEach(b=>b.addEventListener('click', ()=>{ setOrderStatus(b.dataset.processOrder, 'processed'); render(); }));
+  document.querySelectorAll('[data-ack-task]').forEach(b=>b.addEventListener('click', ()=>{
+    const [id, kind] = b.dataset.ackTask.split('|');
+    ackTask(id, kind); render();
+  }));
+
+  const syncDot = document.getElementById('syncDot');
+  if(syncDot && syncing) syncDot.classList.add('syncing');
+  if(syncDot && pendingSaveCount()>0) syncDot.classList.add('pending');
+
+  bindView();
+}
+
+function orderIsFullyStocked(o){
+  return o.items.every(d => (S.readyStock[d.key]||0) >= 0);
+}
+// Orders move Processing -> Ready automatically the moment every item on
+// them is actually covered by current stock — driven purely by the normal
+// Record Packaging flow, no separate manual step needed.
+function autoAdvanceOrders(){
+  let changed = false;
+  const touchedDays = new Set();
+  S.orders.forEach(o=>{
+    if(o.status==='processing' && orderIsFullyStocked(o)){
+      o.status='ready'; changed=true; touchedDays.add(localDateKey(o.createdAt));
+    }
+  });
+  touchedDays.forEach(d=>savePartitionDay('orders', d));
+  return changed;
+}
+// Admin can jump straight to Ready before stock naturally catches up on
+// every item — whatever's still short right now gets marked Cancelled.
+// Undoable: reverses only the items THIS action cancelled, and puts the
+// order back to Processing.
+function markOrderReadyNow(orderId){
+  const o = S.orders.find(x=>x.id===orderId); if(!o) return;
+  if(!confirm('Mark this order Ready now? Any item still short in stock will be marked Cancelled.')) return;
+  o.items.forEach(it=>{
+    if(it.cancelled) return;
+    const stockNow = S.readyStock[it.key]||0;
+    if(stockNow < 0){ it.cancelled = true; it.autoCancelledByReady = true; }
+  });
+  o.status = 'ready';
+  savePartitionForItem('orders', o);
+  render();
+  showToast('Order marked Ready — short items cancelled (undoable)');
+}
+function undoMarkOrderReady(orderId){
+  const o = S.orders.find(x=>x.id===orderId); if(!o) return;
+  o.items.forEach(it=>{
+    if(it.autoCancelledByReady){ it.cancelled = false; delete it.autoCancelledByReady; }
+  });
+  o.status = 'processing';
+  savePartitionForItem('orders', o);
+  render();
+  showToast('Undone — back to Processing');
+}
+
+function openDispatchModal(orderId){
+  const o = S.orders.find(x=>x.id===orderId); if(!o) return;
+  const cust = liveCustomerFor(o);
+  const prefillTransport = (cust && cust.transport) || '';
+  showModal(`
+    <h3>Processed & Dispatched</h3>
+    <p class="desc" style="margin-top:-6px;">Confirm transport details to complete this order.</p>
+    <div class="field"><label>Transport Name</label>
+      <input id="dispatchTransport" list="dispatchTransportList" value="${esc(prefillTransport)}" placeholder="e.g. XYZ Roadways" required />
+      <datalist id="dispatchTransportList">${S.transports.map(t=>`<option value="${esc(t)}"></option>`).join('')}</datalist>
+    </div>
+    <div class="field"><label>Total No. of Cases</label><input id="dispatchCases" type="number" min="0" placeholder="e.g. 12" /></div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
+      <button type="button" class="btn btn-primary" id="dispatchBookedBtn">Booked</button>
+    </div>
+  `);
+  document.getElementById('dispatchBookedBtn').addEventListener('click', ()=>{
+    const transportName = document.getElementById('dispatchTransport').value.trim();
+    const casesVal = document.getElementById('dispatchCases').value.trim();
+    if(!transportName){ showAlert('Enter a transport name.'); return; }
+    rememberTransport(transportName);
+    o.transportName = transportName;
+    o.totalCases = casesVal ? parseInt(casesVal) : null;
+    o.dispatchedAt = Date.now();
+    o.status = 'processed';
+    o.processedAt = Date.now(); // tracking link expires 7 days after this
+    savePartitionForItem('orders', o);
+    closeModal(); render();
+    showToast('Order Processed & Dispatched ✅');
+  });
+}
+
+function setOrderStatus(id, status){
+  const o = S.orders.find(x=>x.id===id); if(!o) return;
+  let shortItems = [];
+  if(status==='processing' && !o.stockDeducted){
+    // Stock is only reserved once the owner actually accepts the order —
+    // until then it was just a live preview, nothing was touched.
+    o.items.forEach(d=>{
+      S.readyStock[d.key] = (S.readyStock[d.key]||0) - d.qty;
+      if(S.readyStock[d.key] < 0) shortItems.push(`${d.name} ${d.size}`);
+    });
+    o.stockDeducted = true;
+    safeSet('app:readyStock', S.readyStock);
+  }
+  if(status==='rejected' && o.stockDeducted){
+    o.items.forEach(d=>{ S.readyStock[d.key] = (S.readyStock[d.key]||0) + d.qty; });
+    o.stockDeducted = false;
+    safeSet('app:readyStock', S.readyStock);
+  }
+  o.status = status;
+  if(status==='processed') o.processedAt = Date.now(); // tracking link expires 7 days after this
+  if(status==='processing') autoAdvanceOrders(); // may instantly become 'ready' if stock already covers it
+  savePartitionForItem('orders', o);
+  syncStockTasksFromAlerts(); // accepting reserves stock and can create shortages — always resync after
+  showToast(status==='processing'
+    ? (shortItems.length ? `Order accepted — ⚠ short on ${shortItems.join(', ')}` : 'Order accepted — fully stocked')
+    : status==='processed' ? 'Order marked processed' : `Order ${status}`);
+}
+function ackTask(id, kind){
+  const o = S.orders.find(x=>x.id===id); if(!o) return;
+  if(kind==='filling') o.fillingStatus='done'; else o.packagingStatus='done';
+  savePartitionForItem('orders', o);
+  autoAdvanceOrders();
+  showToast('Task confirmed');
+}
+
+/* ============================= VIEW DISPATCH ============================= */
+function renderView(){
+  switch(S.view){
+    case 'home': return renderHome();
+    case 'orders': return renderOrders();
+    case 'customers': return renderCustomers();
+    case 'attendance': return renderAttendanceMap();
+    case 'users': return renderUsers();
+    case 'tasks': return renderTasks();
+    case 'checkin': return renderCheckin();
+    case 'rawmaterial': return renderRawMaterial();
+    case 'filled': return renderFilled();
+    case 'ready': return renderReady();
+    case 'stock': return renderStock();
+    case 'expenses': return renderExpenses();
+    case 'log': return renderLogView();
+    case 'domino': return renderDomino();
+    default: return '';
+  }
+}
+function bindView(){
+  switch(S.view){
+    case 'home': return bindHome();
+    case 'orders': return bindOrders();
+    case 'customers': return bindCustomers();
+    case 'attendance': return bindAttendanceMap();
+    case 'users': return bindUsers();
+    case 'tasks': return bindTasks();
+    case 'checkin': return bindCheckin();
+    case 'rawmaterial': return bindRawMaterial();
+    case 'filled': return bindFilled();
+    case 'ready': return bindReady();
+    case 'stock': return bindStock();
+    case 'expenses': return bindExpenses();
+    case 'log': return bindLogView();
+    case 'domino': return bindDomino();
+  }
+}
+
+/* ============================= DOMINO PRINTING (impressions log) ============================= */
+function parseHHMM(s){
+  const m = String(s||'').match(/^(\d{1,3}):([0-5]?\d)$/);
+  if(!m) return 0;
+  return parseInt(m[1])*60 + parseInt(m[2]);
+}
+function fmtHHMM(mins){
+  mins = Math.max(0, Math.round(mins));
+  const h = Math.floor(mins/60), m = mins%60;
+  return `${h}:${String(m).padStart(2,'0')}`;
+}
+function renderDomino(){
+  const isAdmin = S.currentUser.role==='admin';
+  const total = S.dominoPrints.reduce((s,x)=>s+x.impressions,0);
+  const totalMin = S.dominoPrints.reduce((s,x)=>s+(x.durationMin||0),0);
+  const list = S.dominoPrints.slice().sort((a,b)=>b.at-a.at);
+  const sections = groupByDate(list, x=>x.at);
+  return `
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+      <div><h2>Domino Printing</h2><p class="desc">Impressions log.</p></div>
+      <button class="btn btn-primary btn-sm" id="newDominoBtn">+ Record impressions</button>
+    </div>
+    <div class="grid-stats" style="margin-bottom:12px;">
+      <div class="stat"><div class="n">${total.toLocaleString('en-IN')}</div><div class="l">Total impressions</div></div>
+      <div class="stat"><div class="n">${fmtHHMM(totalMin)}</div><div class="l">Total duration (HH:MM)</div></div>
+    </div>
+    ${list.length===0?`<div class="empty"><div class="big">🖨️</div>No entries yet.</div>`:
+      sections.map(s=>dateGroupHeaderHtml(s.heading)+`<table><thead><tr><th>Impressions</th><th>Duration</th><th>Note</th><th>By</th><th>Time</th>${isAdmin?'<th></th>':''}</tr></thead><tbody>
+      ${s.items.map(x=>`<tr><td class="mono"><b>${x.impressions.toLocaleString('en-IN')}</b></td><td class="mono">${fmtHHMM(x.durationMin||0)}</td><td>${esc(x.note||'—')}</td><td class="mono">${esc(x.by)}</td><td class="mono">${fmtTime(x.at)}</td>${isAdmin?`<td><button class="btn btn-sm btn-danger" data-del-domino="${x.id}">Delete</button></td>`:''}</tr>`).join('')}
+      </tbody></table>`).join('')}
+  </div>`;
+}
+function bindDomino(){
+  const btn = document.getElementById('newDominoBtn');
+  if(btn) btn.addEventListener('click', openDominoModal);
+  document.querySelectorAll('[data-del-domino]').forEach(b=>b.addEventListener('click', ()=>{
+    if(!confirm('Delete this entry?')) return;
+    const item = S.dominoPrints.find(x=>x.id===b.dataset.delDomino);
+    S.dominoPrints = S.dominoPrints.filter(x=>x.id!==b.dataset.delDomino);
+    if(item) savePartitionForItem('dominoPrints', item);
+    render();
+  }));
+}
+function openDominoModal(){
+  showModal(`
+    <h3>Record Domino Printing</h3>
+    <form id="dominoForm">
+      <div class="field"><label>No. of impressions</label><input id="domImpr" type="number" min="1" required /></div>
+      <div class="field"><label>Duration</label>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input id="domDurH" type="number" min="0" max="999" placeholder="0" style="flex:1;" /> <span class="mono">hr</span>
+          <input id="domDurM" type="number" min="0" max="59" placeholder="0" style="flex:1;" /> <span class="mono">min</span>
+        </div>
+      </div>
+      <div class="field"><label>Note (optional)</label><input id="domNote" placeholder="Batch / item this was for" /></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  `);
+  document.getElementById('dominoForm').addEventListener('submit', (e)=>{
+    e.preventDefault();
+    const impressions = parseInt(document.getElementById('domImpr').value)||0;
+    if(impressions<=0){ showAlert('Enter a valid number.'); return; }
+    let hrs = parseInt(document.getElementById('domDurH').value)||0;
+    let mins = parseInt(document.getElementById('domDurM').value)||0;
+    if(mins>59){ showAlert('Minutes must be 0–59.'); return; }
+    const durationMin = hrs*60 + mins;
+    const entry = {id:uid(), impressions, durationMin, note:document.getElementById('domNote').value.trim(), by:S.currentUser.name, byUsername:S.currentUser.username, at:Date.now()};
+    S.dominoPrints.push(entry);
+    savePartitionForItem('dominoPrints', entry);
+    closeModal(); render(); showToast('Recorded');
+  });
+}
+
+/* ============================= UNIFIED STOCK (dropdown: raw / filled / ready) ============================= */
+function renderStock(){
+  const isAdmin = S.currentUser.role==='admin';
+  const role = S.currentUser.role;
+  const allowedSubs = ['raw','filled','ready'].filter(s=>canViewStockSub(role,s));
+  if(allowedSubs.length===0){
+    return `<div class="card"><div class="empty">You don't have access to any stock view. Ask the admin to grant it in Permission Manager.</div></div>`;
+  }
+  if(!allowedSubs.includes(S.stockView)) S.stockView = allowedSubs[0];
+  const sub = S.stockView;
+  const inner = sub==='raw' ? renderRawMaterial() : sub==='filled' ? renderFilled() : renderReady();
+  const subOptionHtml = {
+    raw: `<option value="raw" ${sub==='raw'?'selected':''}>🛢️ Raw material (bulk oil)</option>`,
+    filled: `<option value="filled" ${sub==='filled'?'selected':''}>🧴 Filled stock (bottled)</option>`,
+    ready: `<option value="ready" ${sub==='ready'?'selected':''}>📦 Ready stock (packed)</option>`,
+  };
+  return `
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px;">
+      <label style="display:block;font-size:11px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.03em;">View stock</label>
+      ${isAdmin?`<button class="btn btn-outline btn-sm" id="manageCatalogBtn" style="flex:0 0 auto;">🗂️ Manage catalog</button>`:''}
+    </div>
+    <select id="stockViewSel" style="width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:11px;font-size:14px;background:#FBFBFD;" ${allowedSubs.length===1?'disabled':''}>
+      ${allowedSubs.map(s=>subOptionHtml[s]).join('')}
+    </select>
+    ${isAdmin?`<p class="desc" style="margin:8px 0 0;">Tap "Low alert" to get notified early.</p>`:''}
+  </div>
+  ${inner}`;
+}
+function bindStock(){
+  const allowedSubs = ['raw','filled','ready'].filter(s=>canViewStockSub(S.currentUser.role,s));
+  if(allowedSubs.length===0) return;
+  const sel = document.getElementById('stockViewSel');
+  if(sel) sel.addEventListener('change', ()=>{ S.stockView = sel.value; render(); });
+  const addBtn = document.getElementById('manageCatalogBtn');
+  if(addBtn) addBtn.addEventListener('click', openManageCatalogModal);
+  if(S.stockView==='raw') bindRawMaterial();
+  else if(S.stockView==='filled') bindFilled();
+  else bindReady();
+}
+
+/* ============================= CATALOG MANAGEMENT (admin — add/edit/delete items, list) ============================= */
+function openManageCatalogModal(){
+  showModal(renderCatalogListBody());
+  bindCatalogListModal();
+}
+function renderCatalogListBody(searchQ){
+  const q = (searchQ||'').trim().toLowerCase();
+  const items = CATALOG_FLAT.slice().sort((a,b)=> a.cat.localeCompare(b.cat) || a.ml-b.ml)
+    .filter(it => !q || `${it.name} ${it.size} ${it.cat}`.toLowerCase().includes(q));
+  return `
+    <h3>🗂️ Catalog</h3>
+    <p class="desc" style="margin-top:-6px;">Every product Order Ops and the order form show. Add, edit, or delete items here.</p>
+    <div class="search-wrap" style="margin-bottom:10px;">
+      <input type="text" id="catalogSearchInput" placeholder="Search items…" value="${esc(searchQ||'')}" />
+    </div>
+    <div style="max-height:44vh;overflow-y:auto;margin-bottom:10px;">
+      ${items.length===0?`<div class="empty">No items match.</div>`:items.map(it=>`
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(it.name)} <span class="mono" style="font-weight:400;">${esc(it.size)}</span></div>
+          <div class="mono" style="margin-top:2px;">₹${it.mrp} · ${it.caseSize?it.caseSize+'/case':'no case'} · ${esc(it.cat)}</div>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline" data-edit-catalog="${esc(it.key)}">Edit</button>
+        <button type="button" class="btn btn-sm btn-danger" data-del-catalog="${esc(it.key)}">Delete</button>
+      </div>`).join('')}
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-outline" id="cancelModal">Close</button>
+      <button type="button" class="btn btn-primary" id="addCatalogItemBtn2">＋ Add item</button>
+    </div>
+  `;
+}
+function bindCatalogListModal(){
+  const searchInput = document.getElementById('catalogSearchInput');
+  if(searchInput){
+    searchInput.addEventListener('input', ()=>{
+      const q = searchInput.value;
+      const overlay = document.getElementById('modalOverlay');
+      if(overlay){ overlay.querySelector('.modal').innerHTML = `<div class="sheet-handle"></div>${renderCatalogListBody(q)}`; bindCatalogListModal(); const inp=document.getElementById('catalogSearchInput'); if(inp){ inp.focus(); inp.setSelectionRange(inp.value.length,inp.value.length); } }
+    });
+  }
+  document.querySelectorAll('[data-edit-catalog]').forEach(b=>b.addEventListener('click', ()=>{
+    const it = findItem(b.dataset.editCatalog);
+    if(it){ closeModal(); openCatalogItemModal(it); }
+  }));
+  document.querySelectorAll('[data-del-catalog]').forEach(b=>b.addEventListener('click', ()=>{
+    const key = b.dataset.delCatalog;
+    const it = findItem(key);
+    if(!it) return;
+    const stockNote = ((S.filledStock[key]||0)!==0 || (S.readyStock[key]||0)!==0) ? ' It currently has stock recorded against it — that stock data stays, but the item will no longer show up anywhere.' : '';
+    if(!confirm(`Delete "${it.name} ${it.size}" from the catalog?${stockNote}`)) return;
+    S.catalogItems = S.catalogItems.filter(x=>x.key!==key);
+    rebuildCatalogFlat();
+    safeSet('app:catalogItems', S.catalogItems);
+    closeModal(); openManageCatalogModal();
+  }));
+  const addBtn2 = document.getElementById('addCatalogItemBtn2');
+  if(addBtn2) addBtn2.addEventListener('click', ()=>{ closeModal(); openCatalogItemModal(null); });
+}
+function openCatalogItemModal(existingItem){
+  const existingCats = [...new Set(CATALOG_FLAT.map(it=>it.cat))].sort();
+  const existingRawCats = RAW_CATEGORIES.slice().sort();
+  showModal(`
+    <h3>${existingItem?'Edit item':'Add new item'}</h3>
+    <p class="desc" style="margin-top:-6px;">This appears immediately in Stock, Orders, and the customer-facing order form.</p>
+    <form id="addItemForm">
+      <div class="field"><label>Product name</label><input id="ciName" required value="${existingItem?esc(existingItem.name):''}" placeholder="e.g. Sarson Oil" /></div>
+      <div class="field"><label>Size</label><input id="ciSize" required value="${existingItem?esc(existingItem.size):''}" placeholder="e.g. 200mL" /></div>
+      <div class="field"><label>MRP (₹)</label><input id="ciMrp" type="number" min="0" step="0.01" required value="${existingItem?existingItem.mrp:''}" /></div>
+      <div class="field"><label>Display category</label>
+        <input id="ciCat" list="ciCatList" required value="${existingItem?esc(existingItem.cat):''}" placeholder="Pick existing or type a new one" />
+        <datalist id="ciCatList">${existingCats.map(c=>`<option value="${esc(c)}"></option>`).join('')}</datalist>
+      </div>
+      <div class="field"><label>Raw material category (used for filling)</label>
+        <input id="ciRawCat" list="ciRawCatList" required value="${existingItem?esc(existingItem.rawCat):''}" placeholder="Pick existing or type a new one" />
+        <datalist id="ciRawCatList">${existingRawCats.map(c=>`<option value="${esc(c)}"></option>`).join('')}</datalist>
+      </div>
+      <div class="field"><label>Case size (optional — pieces per case)</label><input id="ciCase" type="number" min="0" value="${existingItem&&existingItem.caseSize?existingItem.caseSize:''}" placeholder="Leave blank to use the default for this size" /></div>
+      ${existingItem?`<p class="desc">Changing name or size moves this item's current filled/ready stock and low-stock alerts across automatically — nothing is lost.</p>`:''}
+      <div class="modal-actions">
+        <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
+        <button type="submit" class="btn btn-primary">${existingItem?'Save changes':'Add item'}</button>
+      </div>
+    </form>
+  `);
+  document.getElementById('addItemForm').addEventListener('submit', (e)=>{
+    e.preventDefault();
+    const name = document.getElementById('ciName').value.trim();
+    const size = document.getElementById('ciSize').value.trim();
+    const mrp = parseFloat(document.getElementById('ciMrp').value)||0;
+    const cat = document.getElementById('ciCat').value.trim();
+    const rawCat = document.getElementById('ciRawCat').value.trim();
+    const caseVal = document.getElementById('ciCase').value.trim();
+    if(!name || !size || !cat || !rawCat){ showAlert('Fill in all required fields.'); return; }
+    const newKey = itemKey(name, size);
+
+    if(existingItem){
+      const oldKey = existingItem.key;
+      if(newKey!==oldKey && S.catalogItems.some(it=>it.key===newKey)){ showAlert('Another item already has this exact name + size.'); return; }
+      const entry = S.catalogItems.find(it=>it.key===oldKey);
+      entry.name = name; entry.size = size; entry.mrp = mrp; entry.cat = cat; entry.rawCat = rawCat;
+      entry.caseSize = caseVal ? parseInt(caseVal) : null;
+      entry.key = newKey;
+      if(newKey!==oldKey){
+        // Move any current filled/ready stock, low-stock alerts, and open
+        // stock-tasks across to the new key so nothing is orphaned.
+        S.filledStock[newKey] = (S.filledStock[newKey]||0) + (S.filledStock[oldKey]||0);
+        delete S.filledStock[oldKey];
+        S.readyStock[newKey] = (S.readyStock[newKey]||0) + (S.readyStock[oldKey]||0);
+        delete S.readyStock[oldKey];
+        if(S.lowStock.filled[oldKey]!=null && S.lowStock.filled[newKey]==null){ S.lowStock.filled[newKey]=S.lowStock.filled[oldKey]; }
+        delete S.lowStock.filled[oldKey];
+        if(S.lowStock.ready[oldKey]!=null && S.lowStock.ready[newKey]==null){ S.lowStock.ready[newKey]=S.lowStock.ready[oldKey]; }
+        delete S.lowStock.ready[oldKey];
+        S.stockTasks.forEach(t=>{ if(t.itemId===oldKey && (t.kind==='filled'||t.kind==='ready')) t.itemId = newKey; });
+        safeSet('app:filledStock', S.filledStock);
+        safeSet('app:readyStock', S.readyStock);
+        safeSet('app:lowStock', S.lowStock);
+        safeSet('app:stockTasks', S.stockTasks);
+      }
+      rebuildCatalogFlat();
+      safeSet('app:catalogItems', S.catalogItems);
+      closeModal(); render(); showToast('Item updated');
+    } else {
+      if(S.catalogItems.some(it=>it.key===newKey)){ showAlert('An item with this exact name + size already exists.'); return; }
+      S.catalogItems.push({ key:newKey, name, size, mrp, cat, rawCat, caseSize: caseVal ? parseInt(caseVal) : null });
+      rebuildCatalogFlat();
+      safeSet('app:catalogItems', S.catalogItems);
+      closeModal(); render(); showToast('Item added — visible everywhere now');
+    }
+  });
+}
+
+/* ============================= EXPENSES (manager pocket expenses; admin settles & can add/edit) ============================= */
+function expenseBalanceFor(username){
+  const mine = S.expenses.filter(x=>x.byUsername===username);
+  const spent = mine.filter(x=>x.type!=='settlement').reduce((s,x)=>s+x.amount,0);
+  const settled = mine.filter(x=>x.type==='settlement').reduce((s,x)=>s+x.amount,0);
+  return spent - settled; // positive = still owed to the manager
+}
+function renderExpenses(){
+  const isAdmin = S.currentUser.role==='admin';
+  if(!isAdmin){
+    const mine = S.expenses.filter(x=>x.byUsername===S.currentUser.username).sort((a,b)=>b.at-a.at);
+    const balance = expenseBalanceFor(S.currentUser.username);
+    return `
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+        <div><h2>My expenses</h2><p class="desc">Your pocket expenses — admin can settle up.</p></div>
+        <button class="btn btn-primary btn-sm" id="newExpBtn">+ Add expense</button>
+      </div>
+      <div class="stat" style="margin-bottom:12px;"><div class="n">₹${balance.toLocaleString('en-IN')}</div><div class="l">${balance>=0?'Owed to you by admin':'Settled / advance received'}</div></div>
+      ${mine.length===0?`<div class="empty"><div class="big">💰</div>No expenses logged yet.</div>`:
+        groupByDate(mine, x=>x.at).map(s=>dateGroupHeaderHtml(s.heading)+`<table><thead><tr><th>Description</th><th>Amount</th><th>Time</th></tr></thead><tbody>
+        ${s.items.map(x=>`
+          <tr>
+            <td>${esc(x.description)}${x.category?`<div class="mono" style="margin-top:2px;">${esc(x.category)}</div>`:''}<span class="badge badge-${x.type==='settlement'?'settlement':'expense'}" style="margin-top:4px;display:inline-block;">${x.type==='settlement'?'Settled':'Expense'}</span></td>
+            <td class="mono">₹${x.amount.toLocaleString('en-IN')}</td>
+            <td class="mono">${fmtTime(x.at)}</td>
+          </tr>`).join('')}
+        </tbody></table>`).join('')}
+    </div>`;
+  }
+  // Admin view: pick a manager, see balance, add settlement or expense-on-their-behalf, edit/delete anything.
+  const managers = S.users.filter(u=>u.role==='manager' || S.expenses.some(x=>x.byUsername===u.username));
+  const selUsername = S.expenseAdminSel || (managers[0] && managers[0].username) || '';
+  const list = S.expenses.filter(x=>x.byUsername===selUsername).sort((a,b)=>b.at-a.at);
+  const balance = selUsername ? expenseBalanceFor(selUsername) : 0;
+  return `
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+      <div><h2>Expenses &amp; settlements</h2><p class="desc">Manager expenses &amp; settlements.</p></div>
+      <button class="btn btn-primary btn-sm" id="newSettleBtn">+ Add entry</button>
+    </div>
+    ${managers.length===0?`<div class="empty">No managers yet.</div>`:`
+    <select id="expManagerSel" style="width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:11px;font-size:14px;background:#FBFBFD;margin-bottom:12px;">
+      ${managers.map(u=>`<option value="${esc(u.username)}" ${u.username===selUsername?'selected':''}>${esc(u.name)}</option>`).join('')}
+    </select>
+    <div class="stat" style="margin-bottom:12px;"><div class="n">₹${balance.toLocaleString('en-IN')}</div><div class="l">${balance>=0?'Still owed to this manager':'Overpaid / advance given'}</div></div>
+    ${list.length===0?`<div class="empty"><div class="big">💰</div>Nothing logged for this manager.</div>`:
+      groupByDate(list, x=>x.at).map(s=>dateGroupHeaderHtml(s.heading)+`<table><thead><tr><th>Entry</th><th>Amount</th><th>Time</th><th></th></tr></thead><tbody>
+      ${s.items.map(x=>`
+        <tr>
+          <td>${esc(x.description)}${x.category?`<div class="mono" style="margin-top:2px;">${esc(x.category)}</div>`:''}<span class="badge badge-${x.type==='settlement'?'settlement':'expense'}" style="margin-top:4px;display:inline-block;">${x.type==='settlement'?'Settled by admin':'Expense'}</span></td>
+          <td class="mono">₹${x.amount.toLocaleString('en-IN')}</td>
+          <td class="mono">${fmtTime(x.at)}</td>
+          <td class="row-actions"><button class="btn btn-sm btn-outline" data-edit-exp="${x.id}">Edit</button><button class="btn btn-sm btn-danger" data-del-exp="${x.id}">Delete</button></td>
+        </tr>`).join('')}
+      </tbody></table>`).join('')}`}
+  </div>`;
+}
+function bindExpenses(){
+  const isAdmin = S.currentUser.role==='admin';
+  const btn = document.getElementById('newExpBtn');
+  if(btn) btn.addEventListener('click', ()=>openExpenseModal(null,'expense',S.currentUser.username));
+  const settleBtn = document.getElementById('newSettleBtn');
+  if(settleBtn) settleBtn.addEventListener('click', ()=>openExpenseModal(null,'settlement', S.expenseAdminSel));
+  const sel = document.getElementById('expManagerSel');
+  if(sel) sel.addEventListener('change', ()=>{ S.expenseAdminSel = sel.value; render(); });
+  document.querySelectorAll('[data-edit-exp]').forEach(b=>b.addEventListener('click', ()=>{
+    const x = S.expenses.find(e=>e.id===b.dataset.editExp); if(x) openExpenseModal(x, x.type||'expense', x.byUsername);
+  }));
+  document.querySelectorAll('[data-del-exp]').forEach(b=>b.addEventListener('click', ()=>{
+    if(!confirm('Delete this entry?')) return;
+    const item = S.expenses.find(x=>x.id===b.dataset.delExp);
+    S.expenses = S.expenses.filter(x=>x.id!==b.dataset.delExp);
+    if(item) savePartitionForItem('expenses', item);
+    render();
+  }));
+}
+function openExpenseModal(existing, type, forUsername){
+  const isAdmin = S.currentUser.role==='admin';
+  const managers = S.users.filter(u=>u.role==='manager');
+  const isSettlement = type==='settlement';
+  showModal(`
+    <h3>${existing?'Edit entry':isSettlement?'Add settlement (cash paid to manager)':'Add expense'}</h3>
+    <form id="expForm">
+      ${isAdmin?`<div class="field"><label>Manager</label><select id="expManager">${managers.map(u=>`<option value="${esc(u.username)}" ${(existing?existing.byUsername:forUsername)===u.username?'selected':''}>${esc(u.name)}</option>`).join('')}</select></div>`:''}
+      <div class="field"><label>Description</label><input id="expDesc" value="${existing?esc(existing.description||''):''}" required /></div>
+      <div class="field"><label>Category (optional)</label><input id="expCat" value="${existing?esc(existing.category||''):''}" placeholder="Fuel, transport, food…" /></div>
+      <div class="field"><label>Amount (₹)</label><input id="expAmt" type="number" min="1" step="0.01" value="${existing?existing.amount:''}" required /></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
+        <button type="submit" class="btn btn-primary">${existing?'Save changes':'Save'}</button>
+      </div>
+    </form>
+  `);
+  document.getElementById('expForm').addEventListener('submit', (e)=>{
+    e.preventDefault();
+    const amount = parseFloat(document.getElementById('expAmt').value)||0;
+    if(amount<=0){ showAlert('Enter a valid amount.'); return; }
+    const managerSel = document.getElementById('expManager');
+    const byUsername = isAdmin && managerSel ? managerSel.value : S.currentUser.username;
+    const byUser = S.users.find(u=>u.username===byUsername);
+    let touched;
+    if(existing){
+      Object.assign(existing, {
+        description: document.getElementById('expDesc').value.trim(),
+        category: document.getElementById('expCat').value.trim(), amount,
+        byUsername, byName: byUser?byUser.name:byUsername
+      });
+      touched = existing;
+    } else {
+      touched = {
+        id:uid(), type: isAdmin?type:'expense',
+        description:document.getElementById('expDesc').value.trim(),
+        category:document.getElementById('expCat').value.trim(), amount,
+        byUsername, byName: byUser?byUser.name:S.currentUser.name,
+        enteredByUsername: S.currentUser.username, enteredByName: S.currentUser.name,
+        at:Date.now()
+      };
+      S.expenses.push(touched);
+    }
+    if(isAdmin) S.expenseAdminSel = byUsername;
+    savePartitionForItem('expenses', touched);
+    closeModal(); render(); showToast(existing?'Entry updated':'Saved');
+  });
+}
+
+
+/* ============================= DASHBOARD (admin) ============================= */
+function renderHome(){
+  return S.currentUser.role==='admin' ? renderHomeAdmin() : renderHomeGeneric(S.currentUser.role);
+}
+function bindHome(){
+  return S.currentUser.role==='admin' ? bindHomeAdmin() : bindHomeGeneric();
+}
+function renderHomeGeneric(role){
+  const alerts = getStockAlerts();
+  const myAlerts = myRoleAlerts(alerts);
+  const pending = S.orders.filter(o=>o.status==='pending').length;
+  const processing = S.orders.filter(o=>o.status==='processing').length;
+  const ready = S.orders.filter(o=>o.status==='ready').length;
+  let extraCard = '';
+  if(role==='filling'){
+    const need = S.orders.filter(o=>o.status==='processing' && o.fillingStatus!=='done').length;
+    extraCard = `<div class="stat-card-v2" data-more-tab="tasks"><div class="row-top"><div class="icon-badge blue">🧴</div><span class="chev">›</span></div><div class="n">${need}</div><div class="title">Needs Filling</div><div class="sub">Orders waiting</div></div>`;
+  } else if(role==='packaging'){
+    const need = S.orders.filter(o=>o.status==='processing' && o.fillingStatus==='done' && o.packagingStatus!=='done').length;
+    extraCard = `<div class="stat-card-v2" data-more-tab="tasks"><div class="row-top"><div class="icon-badge orange">📦</div><span class="chev">›</span></div><div class="n">${need}</div><div class="title">Needs Packing</div><div class="sub">Orders waiting</div></div>`;
+  } else if(role==='sales'){
+    const mine = S.orders.filter(o=>o.createdByUsername===S.currentUser.username).length;
+    extraCard = `<div class="stat-card-v2" data-more-tab="orders"><div class="row-top"><div class="icon-badge purple">🧾</div><span class="chev">›</span></div><div class="n">${mine}</div><div class="title">Your Orders</div><div class="sub">Placed by you</div></div>`;
+  } else if(role==='manager'){
+    const bal = expenseBalanceFor(S.currentUser.username);
+    extraCard = `<div class="stat-card-v2" data-more-tab="expenses"><div class="row-top"><div class="icon-badge purple">💰</div><span class="chev">›</span></div><div class="n">₹${bal.toLocaleString('en-IN')}</div><div class="title">Expense Balance</div><div class="sub">Track your expenses</div></div>`;
+  }
+  const myEntries = getMyEntries(S.currentUser.username).slice(0,6);
+  const todayLabel = new Date().toLocaleDateString(undefined,{day:'2-digit', month:'short', year:'numeric'});
+  return `
+  <div class="card" style="text-align:center;padding:20px 18px;">
+    ${S.currentUser.photo?`<img src="${esc(S.currentUser.photo)}" style="width:56px;height:56px;border-radius:50%;object-fit:cover;margin:0 auto 8px;display:block;" />`:`<span style="width:56px;height:56px;border-radius:50%;background:var(--bg);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:20px;color:var(--primary);margin:0 auto 8px;">${esc((S.currentUser.name||'?').charAt(0).toUpperCase())}</span>`}
+    <div style="font-size:13px;color:var(--ink-soft);">Welcome back</div>
+    <div style="font-family:var(--font-mono);font-size:19px;font-weight:800;color:var(--primary-dark);margin-top:2px;">${esc(S.currentUser.name)}</div>
+    <span class="role-pill" style="background:var(--success-bg);color:var(--primary-dark);margin-top:8px;display:inline-block;">${esc(ROLES[role].label)}</span>
+  </div>
+  ${quickActionIcons(role)}
+  <div class="stat-grid-v2">
+    <div class="stat-card-v2" data-stat="pending"><div class="row-top"><div class="icon-badge green">🛍️</div><span class="chev">›</span></div><div class="n">${pending}</div><div class="title">New Orders</div><div class="sub">Received today</div></div>
+    <div class="stat-card-v2" data-stat="ready"><div class="row-top"><div class="icon-badge blue">🚚</div><span class="chev">›</span></div><div class="n">${ready}</div><div class="title">Ready to Dispatch</div><div class="sub">Ready to ship</div></div>
+    ${extraCard}
+  </div>
+  ${myAlerts.length ? `<div class="card"><h2>Alerts for you</h2><p class="desc">Relevant to your work.</p>${alertBanner(myAlerts)}</div>` : ''}
+  <div class="card">
+    <h2>Your recent activity</h2>
+    ${myEntries.length===0?`<div class="empty">Nothing logged yet.</div>`:`
+    <table><thead><tr><th>Entry</th><th>Detail</th><th>When</th></tr></thead><tbody>
+    ${myEntries.map(e=>`<tr><td>${esc(e.label)}</td><td class="mono">${esc(e.detail)}</td><td class="mono">${fmtDate(e.at)}</td></tr>`).join('')}
+    </tbody></table>`}
+  </div>
+  <div class="card">
+    <h2>Quick access</h2>
+    <div class="more-grid">
+      ${ROLES[role].tabs.filter(t=>t!=='home').map(t=>`<div class="more-item" data-more-tab="${t}"><span class="ico">${TAB_ICON[t]||'▫️'}</span><span class="lbl">${esc(TAB_LABEL[t])}</span></div>`).join('')}
+    </div>
+  </div>`;
+}
+function bindHomeGeneric(){
+  bindOrderRowActions();
+  bindQuickActionIcons();
+  document.querySelectorAll('[data-more-tab]').forEach(t=>{ t.addEventListener('click', ()=>{ S.view = t.dataset.moreTab; render(); }); });
+  document.querySelectorAll('[data-stat]').forEach(t=>{ t.addEventListener('click', ()=>openStatModal(t.dataset.stat)); });
+}
+function renderHomeAdmin(){
+  const pending = S.orders.filter(o=>o.status==='pending').length;
+  const processing = S.orders.filter(o=>o.status==='processing').length;
+  const ready = S.orders.filter(o=>o.status==='ready').length;
+  const processed = S.orders.filter(o=>o.status==='processed').length;
+  const checkedInNow = countPresentToday();
+  const alerts = getStockAlerts();
+  const isAdmin = S.currentUser.role==='admin';
+  const todayLabel = new Date().toLocaleDateString(undefined,{day:'2-digit', month:'short', year:'numeric'});
+  return `
+  ${isAdmin && isLastWorkingDayOfMonth() ? `<div class="alert-banner" style="margin-bottom:12px;"><b>📅 Last working day of the month</b>Export this month's data before it rolls over.</div>` : ''}
+  ${quickActionIcons(S.currentUser.role)}
+  <div class="stat-grid-v2">
+    <div class="stat-card-v2" data-stat="pending">
+      <div class="row-top"><div class="icon-badge green">🛍️</div><span class="chev">›</span></div>
+      <div class="n">${pending}</div><div class="title">New Orders</div><div class="sub">Orders received today</div>
+    </div>
+    <div class="stat-card-v2" data-stat="processing">
+      <div class="row-top"><div class="icon-badge orange">⏳</div><span class="chev">›</span></div>
+      <div class="n">${processing}</div><div class="title">Processing</div><div class="sub">Orders in progress</div>
+    </div>
+    <div class="stat-card-v2" data-stat="ready">
+      <div class="row-top"><div class="icon-badge blue">🚚</div><span class="chev">›</span></div>
+      <div class="n">${ready}</div><div class="title">Ready to Dispatch</div><div class="sub">Orders ready to ship</div>
+    </div>
+    <div class="stat-card-v2" data-stat="checkedin">
+      <div class="row-top"><div class="icon-badge purple">📋</div><span class="chev">›</span></div>
+      <div class="n">${checkedInNow}</div><div class="title">Present Today</div><div class="sub">Marked attendance</div>
+    </div>
+  </div>
+  <div class="promo-banner">
+    <div class="pico">📦</div>
+    <div class="txt"><b>Keep Your Stock Updated</b><span>Accurate stock helps you plan ahead and avoid shortages.</span></div>
+    <button type="button" data-more-tab="stock">Update ›</button>
+  </div>
+  ${alerts.total ? `<div class="card"><h2>Stock alerts</h2><p class="desc">Auto-sent to the relevant team.</p>${renderAlertSection('raw',alerts.raw)}${renderAlertSection('filled',alerts.filled)}${renderAlertSection('ready',alerts.ready)}</div>` : ''}
+  <div class="card">
+    <h2>Recent orders</h2>
+    <p class="desc">Latest activity.</p>
+    ${renderOrderTilesGrouped(S.orders.slice().sort((a,b)=>b.createdAt-a.createdAt).slice(0,6))}
+  </div>
+  ${isAdmin ? `<div class="card">
+    <h2>Data export</h2>
+    <p class="desc">Download a month's data as PDF.</p>
+    <input type="month" id="exportMonthSel" value="${new Date().toISOString().slice(0,7)}" style="width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:11px;font-size:14px;background:#FBFBFD;margin-bottom:10px;" />
+    <button class="btn btn-primary btn-sm" id="exportPdfBtn">⬇ Export month as PDF</button>
+  </div>` : ''}
+  <div class="card">
+    <h2>Quick access</h2>
+    <p class="desc">Jump to a section.</p>
+    <div class="more-grid">
+      ${ROLES[S.currentUser.role].tabs.filter(t=>t!=='home').map(t=>`
+        <div class="more-item" data-more-tab="${t}">
+          <span class="ico">${TAB_ICON[t]||'▫️'}</span><span class="lbl">${esc(TAB_LABEL[t])}</span>
+        </div>`).join('')}
+    </div>
+  </div>`;
+}
+function bindHomeAdmin(){
+  bindOrderRowActions();
+  bindAlertTiles();
+  bindQuickActionIcons();
+  if(syncStockTasksFromAlerts()){ /* task list changed — next render will pick it up */ }
+  const exportBtn = document.getElementById('exportPdfBtn');
+  if(exportBtn) exportBtn.addEventListener('click', ()=>{
+    const val = document.getElementById('exportMonthSel').value; // "YYYY-MM"
+    if(!val) return;
+    const [y,m] = val.split('-').map(Number);
+    exportMonthPdf(y, m-1);
+  });
+  document.querySelectorAll('[data-more-tab]').forEach(t=>{
+    t.addEventListener('click', ()=>{ S.view = t.dataset.moreTab; render(); });
+  });
+  document.querySelectorAll('[data-stat]').forEach(t=>{
+    t.addEventListener('click', ()=>openStatModal(t.dataset.stat));
+  });
+}
+
+function isLastWorkingDayOfMonth(d){
+  d = d || new Date();
+  const lastDate = new Date(d.getFullYear(), d.getMonth()+1, 0); // last calendar day of month
+  let probe = new Date(lastDate);
+  while(probe.getDay()===0){ probe.setDate(probe.getDate()-1); } // Sunday off, roll back to Saturday
+  return probe.getFullYear()===d.getFullYear() && probe.getMonth()===d.getMonth() && probe.getDate()===d.getDate();
+}
+
+/* ============================= DATA EXPORT (month-wise PDF, date-grouped) ============================= */
+function loadImageAsDataURL(url){
+  return new Promise((resolve,reject)=>{
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = ()=>{
+      try{
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+        canvas.getContext('2d').drawImage(img,0,0);
+        resolve(canvas.toDataURL('image/png'));
+      }catch(e){ reject(e); }
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+async function exportMonthPdf(year, month0){
+  if(!window.jspdf || !window.jspdf.jsPDF){ showToast('PDF library failed to load', true); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({unit:'pt', format:'a4'});
+  const monthStart = new Date(year, month0, 1).getTime();
+  const monthEnd = new Date(year, month0+1, 1).getTime();
+  const inMonth = ts => ts>=monthStart && ts<monthEnd;
+  const monthLabel = new Date(year, month0, 1).toLocaleDateString(undefined,{month:'long', year:'numeric'});
+
+  const marginX = 40; let y = 50; const pageH = 800; const lineH = 14;
+  const ensure = (need)=>{ if(y+need>pageH){ doc.addPage(); y = 50; } };
+  const h1 = (t)=>{ ensure(30); doc.setFontSize(16); doc.setFont(undefined,'bold'); doc.text(t, marginX, y); y+=22; doc.setFont(undefined,'normal'); };
+  const h2 = (t)=>{ ensure(22); doc.setFontSize(12); doc.setFont(undefined,'bold'); doc.text(t, marginX, y); y+=16; doc.setFont(undefined,'normal'); };
+  const h3 = (t)=>{ ensure(18); doc.setFontSize(10.5); doc.setFont(undefined,'bold'); doc.text(t, marginX+6, y); y+=14; doc.setFont(undefined,'normal'); };
+  const line = (t)=>{ ensure(lineH); doc.setFontSize(9.5); doc.text(t, marginX+12, y); y+=lineH; };
+
+  let textX = marginX;
+  try{
+    const logoData = await loadImageAsDataURL(COMPANY_LOGO);
+    doc.addImage(logoData, 'PNG', marginX, y-14, 34, 34);
+    textX = marginX + 44;
+  }catch(e){ /* logo couldn't load (e.g. CORS/offline) — skip it, export continues without it */ }
+
+  doc.setFontSize(18); doc.setFont(undefined,'bold');
+  doc.text('M A Products INDIA', textX, y); y+=22;
+  doc.setFontSize(11); doc.setFont(undefined,'normal');
+  doc.text(`Order Management System — Data export: ${monthLabel}`, marginX, y); y+=26;
+
+  // Orders
+  h1('Orders');
+  const orders = S.orders.filter(o=>inMonth(o.createdAt)).sort((a,b)=>a.createdAt-b.createdAt);
+  if(!orders.length) line('No orders this month.');
+  groupByDate(orders.slice().sort((a,b)=>b.createdAt-a.createdAt), o=>o.createdAt).forEach(sec=>{
+    h2(sec.heading);
+    sec.items.forEach(o=>{
+      h3(`${o.customerName} — ${ORDER_STAGE_LABEL[o.status]||o.status} — by ${o.createdBy} — ${fmtTime(o.createdAt)}`);
+      o.items.forEach(i=> line(`${i.name} ${i.size} × ${i.qty}`));
+    });
+  });
+  y += 8;
+
+  // Activity log (purchases / filling / packaging)
+  h1('Stock entries (purchase / filling / packaging)');
+  const logs = S.activityLog.filter(e=>inMonth(e.at));
+  if(!logs.length) line('No stock entries this month.');
+  groupByDate(logs.slice().sort((a,b)=>b.at-a.at), e=>e.at).forEach(sec=>{
+    h2(sec.heading);
+    sec.items.forEach(e=> line(`${activityLabel(e)} — ${activityAmount(e).replace(/<[^>]+>/g,'')} — by ${e.by} — ${fmtTime(e.at)}`));
+  });
+  y += 8;
+
+  // Domino printing
+  h1('Domino printing');
+  const dom = S.dominoPrints.filter(x=>inMonth(x.at));
+  if(!dom.length) line('No entries this month.');
+  groupByDate(dom.slice().sort((a,b)=>b.at-a.at), x=>x.at).forEach(sec=>{
+    h2(sec.heading);
+    sec.items.forEach(x=> line(`${x.impressions} impressions${x.note?' — '+x.note:''} — by ${x.by} — ${fmtTime(x.at)}`));
+  });
+  y += 8;
+
+  // Expenses & settlements
+  h1('Expenses & settlements');
+  const exps = S.expenses.filter(x=>inMonth(x.at));
+  if(!exps.length) line('No entries this month.');
+  groupByDate(exps.slice().sort((a,b)=>b.at-a.at), x=>x.at).forEach(sec=>{
+    h2(sec.heading);
+    sec.items.forEach(x=> line(`${x.type==='settlement'?'Settled':'Expense'}: ₹${x.amount} — ${x.description||''} — ${x.byName} — ${fmtTime(x.at)}`));
+  });
+  y += 8;
+
+  // Attendance
+  h1('Attendance');
+  const att = S.attendance.filter(a=>inMonth(a.timestamp));
+  if(!att.length) line('No check-ins this month.');
+  groupByDate(att.slice().sort((a,b)=>b.timestamp-a.timestamp), a=>a.timestamp).forEach(sec=>{
+    h2(sec.heading);
+    sec.items.forEach(a=> line(`${a.name} — ${a.type} — ${fmtTime(a.timestamp)}${(a.lat||a.lng)?` — ${a.lat.toFixed(4)}, ${a.lng.toFixed(4)}`:''}`));
+  });
+
+  const stamp = `${year}-${String(month0+1).padStart(2,'0')}`;
+  doc.save(`MA-Products-OrderOps-${stamp}.pdf`);
+  showToast('PDF downloaded');
+}
+
+function countPresentToday(){
+  const today = localDateKey(Date.now());
+  const seen = new Set();
+  S.attendance.forEach(a=>{ if(localDateKey(a.timestamp)===today) seen.add(a.username); });
+  return seen.size;
+}
+
+/* ============================= ORDERS ============================= */
+const ORDER_STAGE_LABEL = {pending:'New', processing:'Processing', ready:'Ready', processed:'Processed & Dispatched', rejected:'Rejected'};
+function orderDisplayLabel(o){
+  const role = S.currentUser.role;
+  if(role==='admin' || role==='manager') return o.customerName;
+  const cust = liveCustomerFor(o);
+  const city = (cust && cust.city) || o.customerCity;
+  const transport = (cust && cust.transport) || o.transportName;
+  const parts = [];
+  parts.push(city ? `📍 ${city}` : '📍 City not set');
+  if(transport) parts.push(`🚚 ${transport}`);
+  return parts.join(' · ');
+}
+function renderOrderTile(o){
+  const isAdmin = S.currentUser.role==='admin';
+  return `<div class="order-tile">
+    <div class="ot-top"><span class="ot-name">${esc(orderDisplayLabel(o))}${o.source==='website'?' <span class="mono" style="font-weight:400;">🌐 Website</span>':''}</span><span class="badge badge-${o.status}">${esc(ORDER_STAGE_LABEL[o.status]||o.status)}</span></div>
+    <div class="ot-items">${o.items.map((i,idx)=>{
+      const it = findItem(i.key);
+      const caseSize = it ? it.caseSize : null;
+      const qtyLabel = `${esc(i.name)} ${esc(i.size)} <span class="mono">×${fmtQtyPreferCase(i.qty, caseSize)}</span>`;
+      if(i.cancelled){
+        return `<span style="color:var(--ink-soft);text-decoration:line-through;">✖ ${qtyLabel} <i>(cancelled)</i></span>`;
+      }
+      const stockNow = S.readyStock[i.key]||0;
+      let avail, shortQty;
+      if(!o.stockDeducted){
+        avail = stockNow >= i.qty;
+        shortQty = avail ? 0 : (i.qty - Math.max(stockNow,0));
+      } else {
+        avail = stockNow >= 0;
+        shortQty = avail ? 0 : -stockNow;
+      }
+      const mark = avail ? '<span class="success-pop" style="color:var(--success);">✔</span>' : `<span style="color:var(--danger);">✘ (short by ${fmtQtyPreferCase(shortQty, caseSize)})</span>`;
+      return `${mark} ${qtyLabel}`;
+    }).join('<br/>')}</div>
+    ${o.transportName?`<div class="ot-meta"><b>🚚 ${esc(o.transportName)}</b>${o.totalCases?` · ${o.totalCases} cases`:''}${o.dispatchedAt?` · ${fmtDate(o.dispatchedAt)}`:''}</div>`:''}
+    <div class="ot-meta">${o.orderNumber?`#${esc(o.orderNumber)} · `:''}by ${esc(o.createdBy)} · ${fmtTime(o.createdAt)}</div>
+    <div class="row-actions">
+      <button class="btn btn-sm btn-outline" data-track-link="${o.id}">🔗 Track link</button>
+      ${isAdmin?`
+      ${o.status==='pending'?`<button class="btn btn-sm btn-success" data-approve-order="${o.id}">Accept</button><button class="btn btn-sm btn-danger" data-reject-order="${o.id}">Reject</button>`:''}
+      ${o.status==='processing'?`<button class="btn btn-sm btn-outline" data-mark-ready-now="${o.id}">Mark Ready</button>`:''}
+      ${o.status==='ready' && o.items.some(it=>it.autoCancelledByReady)?`<button class="btn btn-sm btn-outline" data-undo-ready="${o.id}">↩ Undo Ready</button>`:''}
+      ${o.status==='ready'?`<button class="btn btn-sm btn-success" data-dispatch-order="${o.id}">Processed &amp; Dispatched</button>`:''}
+      ${(o.status==='pending'||o.status==='processing')?`<button class="btn btn-sm btn-outline" data-edit-order="${o.id}">Edit</button>`:''}
+      <button class="btn btn-sm btn-outline" data-del-order="${o.id}">Delete</button>
+      `:''}
+    </div>
+  </div>`;
+}
+function renderOrderTilesGrouped(list){
+  if(list.length===0) return `<div class="empty"><div class="big">📦</div>No orders yet.</div>`;
+  const sections = groupByDate(list, o=>o.createdAt);
+  return sections.map(s=>dateGroupHeaderHtml(s.heading) + s.items.map(renderOrderTile).join('')).join('');
+}
+
+function renderOrders(){
+  const canCreate = canDoEntry(S.currentUser.role, 'entry_order');
+  return `
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+      <div><h2>Orders</h2><p class="desc">${S.currentUser.role==='admin'?'Accept, edit, or move through stages.':'Your team\'s orders.'}</p></div>
+      ${canCreate?`<div class="row-actions"><button class="btn btn-outline btn-sm" id="chatOrderBtn">💬 Quick order</button><button class="btn btn-primary btn-sm" id="newOrderBtn">+ New order</button></div>`:''}
+    </div>
+    ${renderOrderTilesGrouped(S.orders.slice().sort((a,b)=>b.createdAt-a.createdAt))}
+  </div>`;
+}
+function bindOrders(){
+  const chatBtn = document.getElementById('chatOrderBtn');
+  if(chatBtn) chatBtn.addEventListener('click', openChatOrderModal);
+  const btn = document.getElementById('newOrderBtn');
+  if(btn) btn.addEventListener('click', ()=>openOrderModal(null));
+  bindOrderRowActions();
+}
+function openStatModal(key){
+  let title, bodyHtml;
+  if(key==='checkedin'){
+    title = "Present today";
+    const today = localDateKey(Date.now());
+    const seenUsernames = new Set();
+    const todays = S.attendance.filter(a=>{
+      if(localDateKey(a.timestamp)!==today || seenUsernames.has(a.username)) return false;
+      seenUsernames.add(a.username); return true;
+    });
+    bodyHtml = todays.length===0 ? `<div class="empty">No one has marked present today yet.</div>` :
+      todays.map(a=>`<div class="order-tile"><div class="ot-top"><span class="ot-name">${esc(a.name)}</span><span class="badge badge-approved">Present</span></div><div class="ot-meta">${fmtTime(a.timestamp)}</div></div>`).join('');
+  } else if(key==='alerts'){
+    title = 'Stock alerts';
+    const alerts = getStockAlerts();
+    bodyHtml = alerts.total ? (renderAlertSection('raw',alerts.raw)+renderAlertSection('filled',alerts.filled)+renderAlertSection('ready',alerts.ready)) : `<div class="empty">No alerts right now 🎉</div>`;
+  } else {
+    const titles = {pending:'New orders', processing:'Processing orders', ready:'Ready to dispatch', processed:'Processed orders'};
+    title = titles[key] || key;
+    const list = S.orders.filter(o=>o.status===key).sort((a,b)=>b.createdAt-a.createdAt);
+    bodyHtml = renderOrderTilesGrouped(list);
+  }
+  showModal(`<h3>${esc(title)}</h3><div>${bodyHtml}</div><div class="modal-actions"><button type="button" class="btn btn-outline" id="cancelModal">Close</button></div>`);
+  bindOrderRowActions(true);
+  bindAlertTiles();
+}
+function bindOrderRowActions(closeAfter){
+  document.querySelectorAll('[data-track-link]').forEach(b=>b.addEventListener('click', async ()=>{
+    const o = S.orders.find(x=>x.id===b.dataset.trackLink); if(!o) return;
+    const link = trackingLinkFor(o);
+    try{
+      await navigator.clipboard.writeText(link);
+      showToast('Tracking link copied — share it with the party');
+    }catch(e){
+      // Clipboard API unavailable/blocked — fall back to a prompt so it can still be copied manually.
+      prompt('Copy this tracking link:', link);
+    }
+  }));
+  document.querySelectorAll('[data-approve-order]').forEach(b=>b.addEventListener('click', ()=>{ setOrderStatus(b.dataset.approveOrder,'processing'); if(closeAfter) closeModal(); render(); }));
+  document.querySelectorAll('[data-reject-order]').forEach(b=>b.addEventListener('click', ()=>{ setOrderStatus(b.dataset.rejectOrder,'rejected'); if(closeAfter) closeModal(); render(); }));
+  document.querySelectorAll('[data-mark-ready-now]').forEach(b=>b.addEventListener('click', ()=>{ markOrderReadyNow(b.dataset.markReadyNow); }));
+  document.querySelectorAll('[data-undo-ready]').forEach(b=>b.addEventListener('click', ()=>{ undoMarkOrderReady(b.dataset.undoReady); }));
+  document.querySelectorAll('[data-dispatch-order]').forEach(b=>b.addEventListener('click', ()=>{ openDispatchModal(b.dataset.dispatchOrder); if(closeAfter) closeModal(); }));
+  document.querySelectorAll('[data-edit-order]').forEach(b=>b.addEventListener('click', ()=>{
+    const o = S.orders.find(x=>x.id===b.dataset.editOrder); if(o) openOrderModal(o);
+  }));
+  document.querySelectorAll('[data-del-order]').forEach(b=>b.addEventListener('click', ()=>{
+    if(!confirm('Delete this order?')) return;
+    const o = S.orders.find(x=>x.id===b.dataset.delOrder);
+    if(o && o.stockDeducted){
+      o.items.forEach(d=>{ S.readyStock[d.key]=(S.readyStock[d.key]||0)+d.qty; });
+      safeSet('app:readyStock', S.readyStock);
+      syncStockTasksFromAlerts();
+    }
+    S.orders = S.orders.filter(x=>x.id!==b.dataset.delOrder);
+    if(o) savePartitionForItem('orders', o);
+    if(closeAfter) closeModal(); render();
+  }));
+}
+
+let orderDraft = [];
+let editingOrderId = null;
+function openOrderModal(existingOrder){
+  editingOrderId = existingOrder ? existingOrder.id : null;
+  orderDraft = existingOrder ? existingOrder.items.map(x=>({...x})) : [];
+  editingDraftIndex = null;
+  showModal(`
+    <h3>${existingOrder?'Edit order':'New order'}</h3>
+    <div class="field"><label>Customer / Party</label>
+      <input id="ordCustomer" list="ordCustomerList" required value="${existingOrder?esc(existingOrder.customerName):''}" placeholder="Type party name…" autocomplete="off" />
+      <datalist id="ordCustomerList">${S.customers.map(c=>`<option value="${esc(c.name)}"></option>`).join('')}</datalist>
+    </div>
+    <div class="field"><label>Add item (type to search)</label>
+      ${itemPickerHtml('ordItemSel', null)}
+    </div>
+    <div class="field" id="ordCaseRow" style="display:none;"><label>Cases (<span id="ordCaseSizeHint"></span> pc each)</label><input id="ordItemCases" type="number" min="0" value="0" /></div>
+    <div class="field"><label>Pieces (loose, on top of cases)</label>
+      <div style="display:flex;gap:6px;">
+        <input id="ordItemQty" type="number" min="0" max="${MAX_PC_ENTRY}" value="0" style="flex:2;" />
+        <button type="button" class="btn btn-accent btn-sm" id="addItemBtn" style="flex:1;">Add</button>
+      </div>
+    </div>
+    <div id="draftList" style="margin:10px 0;"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
+      <button type="button" class="btn btn-primary" id="submitOrderBtn">${existingOrder?'Save changes':'Create order'}</button>
+    </div>
+  `);
+  const ordItemSel = document.getElementById('ordItemSel');
+  const ordCaseRow = document.getElementById('ordCaseRow');
+  const ordCaseSizeHint = document.getElementById('ordCaseSizeHint');
+  const refreshOrdCaseRow = ()=>{
+    const it = resolveItemFromText(ordItemSel.value);
+    if(it && it.caseSize){ ordCaseRow.style.display='block'; ordCaseSizeHint.textContent = it.caseSize; }
+    else { ordCaseRow.style.display='none'; }
+  };
+  ordItemSel.addEventListener('input', refreshOrdCaseRow);
+  ordItemSel.addEventListener('change', refreshOrdCaseRow);
+  renderDraftList();
+  document.getElementById('addItemBtn').addEventListener('click', ()=>{
+    const it = resolveItemFromText(ordItemSel.value);
+    if(!it){ showAlert('Pick a valid item from the list.'); return; }
+    const cases = parseInt(document.getElementById('ordItemCases').value)||0;
+    const pcs = parseInt(document.getElementById('ordItemQty').value)||0;
+    const qty = (it.caseSize ? cases*it.caseSize : 0) + pcs;
+    if(qty<=0){ showAlert('Enter a quantity (cases and/or pieces).'); return; }
+    if(qty>MAX_PC_ENTRY){ showAlert(`Max ${MAX_PC_ENTRY} pc per line item.`); return; }
+    const key = it.key;
+    const existing = orderDraft.find(d=>d.key===key);
+    if(existing) existing.qty += qty; else orderDraft.push({key, name:it.name, size:it.size, qty});
+    renderDraftList();
+    ordItemSel.value=''; document.getElementById('ordItemCases').value='0'; document.getElementById('ordItemQty').value='0';
+    ordCaseRow.style.display='none';
+  });
+  document.getElementById('submitOrderBtn').addEventListener('click', ()=>{
+    if(orderDraft.length===0){ showAlert('Add at least one item.'); return; }
+    const nameInput = document.getElementById('ordCustomer');
+    const typedName = nameInput.value.trim();
+    if(!typedName){ showAlert('Enter the party name.'); return; }
+    const existingCust = S.customers.find(c=>c.name.trim().toLowerCase()===typedName.toLowerCase());
+    let custId = existingCust ? existingCust.id : null;
+    let custName = existingCust ? existingCust.name : typedName;
+    let custCity = existingCust ? (existingCust.city||'') : '';
+    let custPhone = existingCust ? (existingCust.phone||'') : '';
+    let custAddress = existingCust ? (existingCust.address||'') : '';
+    let custGstin = existingCust ? (existingCust.gstin||'') : '';
+    const finish = ()=>{
+      const shortItems = [];
+      if(existingOrder){
+        if(existingOrder.stockDeducted){
+          // Already accepted — it holds reserved stock, so editing quantities
+          // has to release the old amount and reserve the new amount.
+          existingOrder.items.forEach(d=>{ S.readyStock[d.key] = (S.readyStock[d.key]||0) + d.qty; });
+          orderDraft.forEach(d=>{
+            S.readyStock[d.key] = (S.readyStock[d.key]||0) - d.qty;
+            if(S.readyStock[d.key] < 0) shortItems.push(`${d.name} ${d.size}`);
+          });
+          safeSet('app:readyStock', S.readyStock);
+        }
+        // Still pending (not yet accepted) — nothing was ever deducted, so
+        // editing quantities is just an item-list change, no stock math needed.
+        existingOrder.customerId = custId; existingOrder.customerName = custName; existingOrder.customerCity = custCity;
+        existingOrder.customerPhone = custPhone; existingOrder.customerAddress = custAddress; existingOrder.customerGstin = custGstin;
+        existingOrder.items = orderDraft.slice();
+        savePartitionForItem('orders', existingOrder);
+        autoAdvanceOrders();
+        syncStockTasksFromAlerts();
+        closeModal(); render();
+        showToast(shortItems.length? `Order updated — ⚠ short on ${shortItems.join(', ')}` : 'Order updated');
+      } else {
+        // New orders are just a request until the owner accepts them —
+        // stock is only reserved at accept time (see setOrderStatus).
+        const nowTs = Date.now();
+        const order = {
+          id: uid(), orderNumber: generateOrderNumber(nowTs), customerId: custId, customerName: custName, customerCity: custCity, customerPhone: custPhone, customerAddress: custAddress, customerGstin: custGstin,
+          items: orderDraft.slice(),
+          status:'pending', fillingStatus:'pending', packagingStatus:'pending', stockDeducted:false, processedAt:null,
+          createdBy: S.currentUser.name, createdByUsername: S.currentUser.username, createdByRole: S.currentUser.role, createdAt: nowTs
+        };
+        S.orders.push(order);
+        savePartitionForItem('orders', order);
+        closeModal(); render();
+        showToast('Order submitted — waiting on owner to accept');
+      }
+    };
+    if(!existingCust){
+      if(confirm(`"${typedName}" is a new party — save it to the customer directory for next time?`)){
+        const city = (prompt('City (used to show orders to non-admin staff without revealing the full party name):') || '').trim();
+        const c = { id: uid(), name: typedName, phone:'', city, address:'', gstin:'', addedBy: S.currentUser.name, addedByUsername:S.currentUser.username, addedAt: Date.now() };
+        S.customers.push(c);
+        safeSet('app:customers', S.customers);
+        custId = c.id; custName = c.name; custCity = city;
+      }
+      // else: proceed without saving a customer record — order still records the typed name.
+    }
+    finish();
+  });
+}
+let editingDraftIndex = null;
+function renderDraftList(){
+  const el = document.getElementById('draftList');
+  if(!el) return;
+  if(orderDraft.length===0){ el.innerHTML = `<div style="font-size:12.5px;color:var(--ink-soft);">No items added yet.</div>`; return; }
+  el.innerHTML = orderDraft.map((d,i)=>{
+    const it = findItem(d.key);
+    const caseSize = it ? it.caseSize : null;
+    if(editingDraftIndex===i){
+      const cases = caseSize ? Math.floor(d.qty/caseSize) : 0;
+      const pcs = caseSize ? d.qty % caseSize : d.qty;
+      return `<div style="padding:8px 0;border-bottom:1px solid var(--border);">
+        <div style="font-size:13px;font-weight:700;margin-bottom:6px;">${esc(d.name)} ${esc(d.size)}${caseSize?` <span class="mono" style="font-weight:400;">(${caseSize} pc/case)</span>`:''}</div>
+        <div style="display:flex;gap:6px;align-items:center;">
+          ${caseSize?`<input type="number" min="0" id="editDraftCases" value="${cases}" placeholder="Cases" style="flex:1;padding:8px;border:1.5px solid var(--border);border-radius:8px;font-size:12.5px;" />`:''}
+          <input type="number" min="0" id="editDraftPcs" value="${pcs}" placeholder="Pcs" style="flex:1;padding:8px;border:1.5px solid var(--border);border-radius:8px;font-size:12.5px;" />
+          <button type="button" class="btn btn-sm btn-accent" data-save-draft-edit="${i}">Save</button>
+          <button type="button" class="btn btn-sm btn-outline" data-cancel-draft-edit="${i}">✕</button>
+        </div>
+      </div>`;
+    }
+    return `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:13.5px;">
+      <span>${esc(d.name)} ${esc(d.size)} <span class="mono">×${fmtQtyPreferCase(d.qty, caseSize)}</span></span>
+      <div class="row-actions">
+        <button type="button" class="btn btn-sm btn-outline" data-edit-draft="${i}">Edit</button>
+        <button type="button" class="btn btn-sm btn-outline" data-rm-draft="${i}">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+  el.querySelectorAll('[data-rm-draft]').forEach(b=>b.addEventListener('click', ()=>{
+    orderDraft.splice(parseInt(b.dataset.rmDraft),1); editingDraftIndex=null; renderDraftList();
+  }));
+  el.querySelectorAll('[data-edit-draft]').forEach(b=>b.addEventListener('click', ()=>{
+    editingDraftIndex = parseInt(b.dataset.editDraft); renderDraftList();
+  }));
+  el.querySelectorAll('[data-cancel-draft-edit]').forEach(b=>b.addEventListener('click', ()=>{
+    editingDraftIndex = null; renderDraftList();
+  }));
+  el.querySelectorAll('[data-save-draft-edit]').forEach(b=>b.addEventListener('click', ()=>{
+    const i = parseInt(b.dataset.saveDraftEdit);
+    const d = orderDraft[i];
+    const it = findItem(d.key);
+    const caseSize = it ? it.caseSize : null;
+    const casesInput = document.getElementById('editDraftCases');
+    const pcsInput = document.getElementById('editDraftPcs');
+    const cases = casesInput ? (parseInt(casesInput.value)||0) : 0;
+    const pcs = parseInt(pcsInput.value)||0;
+    const qty = (caseSize ? cases*caseSize : 0) + pcs;
+    if(qty<=0){ showAlert('Enter a quantity.'); return; }
+    if(qty>MAX_PC_ENTRY){ showAlert(`Max ${MAX_PC_ENTRY} pc per line item.`); return; }
+    d.qty = qty;
+    editingDraftIndex = null;
+    renderDraftList();
+  }));
+}
+
+/* ============================= CHAT-STYLE ORDER ENTRY (voice / paste / free text -> draft) ============================= */
+function guessNewPartyName(text){
+  // Matches the app's own example convention: "Party Name - item x5, item2 x3".
+  // Only used when no existing customer already matched the text.
+  const dashMatch = text.match(/^\s*([^\n,;]+?)\s+[-–—]\s+/);
+  if(!dashMatch) return null;
+  const candidate = dashMatch[1].trim();
+  if(!candidate || candidate.length<3 || candidate.length>60) return null;
+  if(/^\d+$/.test(candidate)) return null;
+  const cLower = candidate.toLowerCase();
+  if(CATALOG_FLAT.some(it=>cLower.includes(it.name.toLowerCase()))) return null; // looks like a product line, not a name
+  return candidate;
+}
+function parseOrderText(text){
+  const result = { customerId:null, customerName:null, items:[], unmatched:[] };
+  const lower = text.toLowerCase();
+  let bestCust = null, bestLen = 0;
+  S.customers.forEach(c=>{
+    const n = c.name.toLowerCase();
+    if(n.length>=3 && lower.includes(n) && n.length>bestLen){ bestCust = c; bestLen = n.length; }
+  });
+  if(bestCust){ result.customerId = bestCust.id; result.customerName = bestCust.name; }
+  else { result.customerName = guessNewPartyName(text); }
+  const segments = text.split(/\n|,|;|\band\b/i).map(s=>s.trim()).filter(Boolean);
+  segments.forEach(seg=>{
+    const segLower = seg.toLowerCase();
+    if(bestCust && segLower.includes(bestCust.name.toLowerCase()) && seg.replace(bestCust.name,'').trim().length<3) return;
+    let bestItem = null, bestScore = 0;
+    CATALOG_FLAT.forEach(it=>{
+      const nameOnly = it.name.toLowerCase();
+      const sizeNorm = normSize(it.size);
+      const segNorm = segLower.replace(/\s+/g,'');
+      let score = 0;
+      if(segLower.includes(nameOnly) && segNorm.includes(sizeNorm)) score = nameOnly.length + sizeNorm.length + 10;
+      else if(segLower.includes(nameOnly)) score = nameOnly.length;
+      if(score>bestScore){ bestScore=score; bestItem=it; }
+    });
+    if(bestItem){
+      const nums = seg.match(/\d+/g);
+      let qty = 1;
+      if(nums && nums.length){
+        const sizeNum = (bestItem.size.match(/\d+/)||[])[0];
+        const candidate = nums.find(n=>n!==sizeNum) || (nums.length>1?nums[nums.length-1]:null);
+        if(candidate) qty = parseInt(candidate)||1;
+      }
+      const existing = result.items.find(d=>d.key===bestItem.key);
+      if(existing) existing.qty += qty; else result.items.push({key:bestItem.key, name:bestItem.name, size:bestItem.size, qty});
+    } else if(seg.length>2){
+      result.unmatched.push(seg);
+    }
+  });
+  return result;
+}
+function openChatOrderModal(){
+  showModal(`
+    <h3>Quick order</h3>
+    <p class="desc" style="margin-top:-6px;">Type, paste, or speak — party &amp; items auto-detected.</p>
+    <div class="field">
+      <textarea id="chatOrderText" rows="5" placeholder="e.g. Ramesh Traders - Olife Gold 200ml x10, Castor Oil 100ml 5pc"></textarea>
+    </div>
+    <div class="row-actions" style="margin-bottom:10px;">
+      <button type="button" class="btn btn-outline btn-sm" id="chatMicBtn">🎤 Voice</button>
+      <button type="button" class="btn btn-accent btn-sm" id="chatParseBtn">Parse to draft</button>
+    </div>
+    <div id="chatDraftPreview"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
+      <button type="button" class="btn btn-primary" id="chatConfirmBtn" style="display:none;">Confirm &amp; create order</button>
+    </div>
+  `);
+  let parsed = null;
+  const micBtn = document.getElementById('chatMicBtn');
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(SR){
+    const rec = new SR(); rec.lang='en-IN'; rec.interimResults=false;
+    micBtn.addEventListener('click', ()=>{ micBtn.textContent = '🎙️ Listening…'; try{ rec.start(); }catch(e){} });
+    rec.onresult = (e)=>{
+      const txt = e.results[0][0].transcript;
+      const ta = document.getElementById('chatOrderText');
+      if(ta) ta.value = (ta.value ? ta.value+'\n' : '') + txt;
+      micBtn.textContent = '🎤 Voice';
+    };
+    rec.onerror = ()=>{ micBtn.textContent = '🎤 Voice'; showToast('Voice input failed — try typing instead', true); };
+    rec.onend = ()=>{ micBtn.textContent = '🎤 Voice'; };
+  } else {
+    micBtn.disabled = true; micBtn.title = 'Voice input not supported in this browser';
+  }
+  const renderChatDraftPreview = (p)=>{
+    const box = document.getElementById('chatDraftPreview');
+    box.innerHTML = `
+      <div class="field"><label>Party (auto-detected — edit if wrong)</label>
+        <input id="chatCustInput" list="chatCustList" value="${esc(p.customerName||'')}" placeholder="Type party name…" autocomplete="off" />
+        <datalist id="chatCustList">${S.customers.map(c=>`<option value="${esc(c.name)}"></option>`).join('')}</datalist>
+      </div>
+      <div style="font-size:12.5px;font-weight:700;margin:8px 0 4px;">Draft items</div>
+      ${p.items.length===0?`<div class="empty" style="padding:14px;">No items recognized — edit the text and try again.</div>`:
+        p.items.map((d,i)=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:13.5px;"><span>${esc(d.name)} ${esc(d.size)} <span class="mono">×${d.qty}</span></span><button type="button" class="btn btn-sm btn-outline" data-rm-chat-item="${i}">✕</button></div>`).join('')}
+      ${p.unmatched.length?`<div class="err" style="margin-top:8px;">Couldn't match: ${esc(p.unmatched.join(', '))}</div>`:''}
+    `;
+    const confirmBtn = document.getElementById('chatConfirmBtn');
+    if(confirmBtn) confirmBtn.style.display = p.items.length? 'inline-flex':'none';
+    box.querySelectorAll('[data-rm-chat-item]').forEach(b=>b.addEventListener('click', ()=>{
+      parsed.items.splice(parseInt(b.dataset.rmChatItem),1);
+      renderChatDraftPreview(parsed);
+    }));
+  };
+  document.getElementById('chatParseBtn').addEventListener('click', ()=>{
+    const text = document.getElementById('chatOrderText').value.trim();
+    if(!text){ showAlert('Type, paste, or speak an order first.'); return; }
+    parsed = parseOrderText(text);
+    renderChatDraftPreview(parsed);
+  });
+  document.getElementById('chatConfirmBtn').addEventListener('click', ()=>{
+    const nameInput = document.getElementById('chatCustInput');
+    const typedName = nameInput ? nameInput.value.trim() : '';
+    if(!typedName){ showAlert('Enter the party name.'); return; }
+    if(!parsed || parsed.items.length===0){ showAlert('No items to order.'); return; }
+    const existingCust = S.customers.find(c=>c.name.trim().toLowerCase()===typedName.toLowerCase());
+    let custId = existingCust ? existingCust.id : null;
+    let custName = existingCust ? existingCust.name : typedName;
+    let custCity = existingCust ? (existingCust.city||'') : '';
+    let custPhone = existingCust ? (existingCust.phone||'') : '';
+    let custAddress = existingCust ? (existingCust.address||'') : '';
+    let custGstin = existingCust ? (existingCust.gstin||'') : '';
+    const finish = ()=>{
+      const nowTs = Date.now();
+      const order = {
+        id: uid(), orderNumber: generateOrderNumber(nowTs), customerId: custId, customerName: custName, customerCity: custCity, customerPhone: custPhone, customerAddress: custAddress, customerGstin: custGstin,
+        items: parsed.items.slice(),
+        status:'pending', fillingStatus:'pending', packagingStatus:'pending', stockDeducted:false, processedAt:null,
+        createdBy: S.currentUser.name, createdByUsername: S.currentUser.username, createdByRole: S.currentUser.role, createdAt: nowTs
+      };
+      S.orders.push(order);
+      savePartitionForItem('orders', order);
+      closeModal(); render();
+      showToast('Order submitted — waiting on owner to accept');
+    };
+    if(!existingCust){
+      if(confirm(`"${typedName}" is a new party — save it to the customer directory for next time?`)){
+        const city = (prompt('City (used to show orders to non-admin staff without revealing the full party name):') || '').trim();
+        const c = { id: uid(), name: typedName, phone:'', city, address:'', gstin:'', addedBy: S.currentUser.name, addedByUsername:S.currentUser.username, addedAt: Date.now() };
+        S.customers.push(c);
+        safeSet('app:customers', S.customers);
+        custId = c.id; custName = c.name; custCity = city;
+      }
+    }
+    finish();
+  });
+}
+
+/* ============================= CUSTOMERS ============================= */
+function renderCustomers(){
+  const isAdmin = S.currentUser.role==='admin';
+  return `
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <div><h2>Customers</h2><p class="desc">Shared customer directory.</p></div>
+      <button class="btn btn-primary btn-sm" id="newCustBtn">+ Add customer</button>
+    </div>
+    ${S.customers.length===0? `<div class="empty"><div class="big">👤</div>No customers yet.</div>` : `
+    <div class="more-grid" style="grid-template-columns:repeat(2,1fr);">
+      ${S.customers.slice().sort((a,b)=>b.addedAt-a.addedAt).map(c=>`
+        <div style="background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:14px 12px;text-align:center;">
+          <span style="width:44px;height:44px;border-radius:50%;background:var(--surface);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;color:var(--primary);margin:0 auto 8px;">${esc((c.name||'?').charAt(0).toUpperCase())}</span>
+          <div style="font-weight:800;font-size:13.5px;">${esc(c.name)}</div>
+          <div class="mono" style="margin-top:2px;">${esc(c.phone||'—')}</div>
+          ${c.address?`<div style="font-size:11.5px;color:var(--ink-soft);margin-top:4px;">${esc(c.address)}</div>`:''}
+          <div class="mono" style="margin-top:6px;">added by ${esc(c.addedBy)}</div>
+          ${isAdmin?`<div class="row-actions" style="justify-content:center;margin-top:10px;">
+            <button class="btn btn-sm btn-outline" data-edit-cust="${c.id}">Edit</button>
+            <button class="btn btn-sm btn-danger" data-del-cust="${c.id}">Delete</button>
+          </div>`:''}
+        </div>
+      `).join('')}
+    </div>`}
+  </div>`;
+}
+function bindCustomers(){
+  document.getElementById('newCustBtn').addEventListener('click', ()=>openCustomerModal(null));
+  document.querySelectorAll('[data-edit-cust]').forEach(b=>b.addEventListener('click', ()=>{
+    const c = S.customers.find(x=>x.id===b.dataset.editCust); if(c) openCustomerModal(c);
+  }));
+  document.querySelectorAll('[data-del-cust]').forEach(b=>b.addEventListener('click', ()=>{
+    if(!confirm('Delete this customer?')) return;
+    S.customers = S.customers.filter(c=>c.id!==b.dataset.delCust);
+    safeSet('app:customers', S.customers); render();
+  }));
+}
+function openCustomerModal(existingCust){
+  showModal(`
+    <h3>${existingCust?'Edit customer':'Add customer'}</h3>
+    <form id="custForm">
+      <div class="field"><label>Name</label><input id="custName" value="${existingCust?esc(existingCust.name):''}" required /></div>
+      <div class="field"><label>WhatsApp number (10-digit)</label><input id="custPhone" type="tel" inputmode="numeric" maxlength="10" placeholder="9876543210" value="${existingCust?esc(existingCust.phone||''):''}" required /></div>
+      <div class="field"><label>City</label><input id="custCity" value="${existingCust?esc(existingCust.city||''):''}" placeholder="e.g. Jaipur" required /></div>
+      <div class="field"><label>Address</label><textarea id="custAddr" rows="2">${existingCust?esc(existingCust.address||''):''}</textarea></div>
+      <div class="field"><label>GSTIN (optional)</label><input id="custGstin" value="${existingCust?esc(existingCust.gstin||''):''}" placeholder="22AAAAA0000A1Z5" style="text-transform:uppercase;" /></div>
+      <div class="field"><label>Preferred Transport (optional)</label>
+        <input id="custTransport" list="custTransportList" value="${existingCust?esc(existingCust.transport||''):''}" placeholder="e.g. XYZ Roadways" />
+        <datalist id="custTransportList">${S.transports.map(t=>`<option value="${esc(t)}"></option>`).join('')}</datalist>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
+        <button type="submit" class="btn btn-primary">${existingCust?'Save changes':'Add customer'}</button>
+      </div>
+    </form>
+  `);
+  document.getElementById('custForm').addEventListener('submit', (e)=>{
+    e.preventDefault();
+    const phone = document.getElementById('custPhone').value.trim();
+    if(!/^\d{10}$/.test(phone)){ showAlert('Enter a valid 10-digit WhatsApp number.'); return; }
+    const fields = {
+      name: document.getElementById('custName').value.trim(),
+      phone,
+      city: document.getElementById('custCity').value.trim(),
+      address: document.getElementById('custAddr').value.trim(),
+      gstin: document.getElementById('custGstin').value.trim().toUpperCase(),
+      transport: document.getElementById('custTransport').value.trim(),
+    };
+    rememberTransport(fields.transport);
+    if(existingCust){
+      Object.assign(existingCust, fields);
+    } else {
+      S.customers.push({
+        id: uid(), ...fields,
+        addedBy: S.currentUser.name, addedByUsername: S.currentUser.username, addedAt: Date.now()
+      });
+    }
+    safeSet('app:customers', S.customers);
+    closeModal(); render(); showToast(existingCust?'Customer updated':'Customer added');
+  });
+}
+
+/* ============================= USERS (admin only) ============================= */
+function renderUsers(){
+  return `
+  <div class="card">
+    <h2>⚠️ Reset all data</h2>
+    <p class="desc">Erases all data except Users. Needs your password. Can't be undone.</p>
+    <button class="btn btn-danger btn-sm" id="resetAllBtn">Reset all data (except Users)</button>
+  </div>
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+      <div><h2>Team &amp; access</h2><p class="desc">Create logins &amp; assign roles.</p></div>
+      <div class="row-actions">
+        <button class="btn btn-outline btn-sm" id="openPermsBtn">🔐 Permission Manager</button>
+        <button class="btn btn-primary btn-sm" id="newUserBtn">+ Add user</button>
+      </div>
+    </div>
+    <div class="more-grid" style="grid-template-columns:repeat(2,1fr);">
+      ${S.users.map(u=>`
+        <div style="background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:14px 12px;text-align:center;">
+          ${u.photo?`<img src="${esc(u.photo)}" style="width:52px;height:52px;border-radius:50%;object-fit:cover;margin:0 auto 8px;display:block;" />`:`<span style="width:52px;height:52px;border-radius:50%;background:var(--surface);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;color:var(--primary);margin:0 auto 8px;">${esc((u.name||'?').charAt(0).toUpperCase())}</span>`}
+          <div style="font-weight:800;font-size:13.5px;">${esc(u.name)}</div>
+          <div class="mono" style="margin:2px 0 4px;">${esc(u.username)}</div>
+          <span class="role-pill" style="background:var(--surface);color:var(--primary-dark);border:1px solid var(--border);">${esc(ROLES[u.role].label)}</span>
+          ${u.post?`<div style="font-size:11px;color:var(--ink-soft);margin-top:4px;font-style:italic;">${esc(u.post)}</div>`:''}
+          ${u.phone?`<div class="mono" style="margin-top:6px;">${esc(u.phone)}</div>`:''}
+          <div class="row-actions" style="justify-content:center;margin-top:10px;">
+            <button class="btn btn-sm btn-outline" data-edit-user="${u.id}">Edit</button>
+            ${u.username!=='admin' || S.users.filter(x=>x.role==='admin').length>1 ? `<button class="btn btn-sm btn-danger" data-del-user="${u.id}">Delete</button>` : ''}
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  </div>
+  <div class="card">
+    <p class="desc" style="margin:0;">⚠️ Not bank-grade security — fine for a trusted team. Don't reuse sensitive passwords.</p>
+  </div>`;
+}
+const CHECKLIST_MODULES = [
+  {key:'orders', label:'Orders'}, {key:'customers', label:'Customers'},
+  {key:'stock_raw', label:'View Raw material'}, {key:'stock_filled', label:'View Filled stock'}, {key:'stock_ready', label:'View Ready stock'},
+  {key:'domino', label:'Domino Printing'}, {key:'tasks', label:'Tasks'}, {key:'expenses', label:'Expenses'},
+  {key:'checkin', label:'Attendance (mark)'}, {key:'log', label:'Data Log'},
+];
+
+/* ---- Step 1: team list, with "+ Add new team" ---- */
+function openPermissionManager(){
+  showModal(renderTeamListBody());
+  bindTeamListModal();
+}
+function renderTeamListBody(){
+  const editableRoles = Object.keys(ROLES).filter(r=>r!=='admin');
+  return `
+    <h3>🔐 Permission Manager</h3>
+    <p class="desc" style="margin-top:-6px;">Tap a team to set exactly what they can view and enter. Home is always included.</p>
+    <div style="margin-bottom:4px;">
+    ${editableRoles.map(role=>{
+      const perm = S.rolePermissions[role];
+      const viewCount = CHECKLIST_MODULES.filter(m=>(perm||defaultChecklistPerm(role))[m.key]).length;
+      const entryCount = ENTRY_MODULES.filter(m=>canDoEntry(role,m.key)).length;
+      const isCustom = !BASE_ROLE_KEYS.includes(role);
+      const memberCount = S.users.filter(u=>u.role===role).length;
+      return `<div class="order-tile" data-select-team="${role}" style="cursor:pointer;">
+        <div class="ot-top">
+          <span class="ot-name">${esc(ROLES[role].label)}${isCustom?' <span class="mono" style="font-weight:400;">(custom)</span>':''}</span>
+          <span style="color:var(--ink-soft);font-size:16px;">›</span>
+        </div>
+        <div class="ot-meta">${viewCount} view · ${entryCount} entry right${entryCount===1?'':'s'} · ${memberCount} member${memberCount===1?'':'s'}</div>
+        ${isCustom?`<div class="row-actions" style="margin-top:6px;"><button type="button" class="btn btn-sm btn-danger" data-del-team="${role}">Delete team</button></div>`:''}
+      </div>`;
+    }).join('')}
+    </div>
+    <div id="addTeamBox" style="display:none;background:var(--bg);border-radius:11px;padding:10px;margin:10px 0;">
+      <div class="field" style="margin-bottom:8px;"><label>New team name</label><input id="newTeamName" placeholder="e.g. Delivery Team" /></div>
+      <button type="button" class="btn btn-accent btn-sm" id="saveNewTeamBtn">Create team</button>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-outline" id="cancelModal">Close</button>
+      <button type="button" class="btn btn-primary" id="showAddTeamBtn">+ Add new team</button>
+    </div>
+  `;
+}
+function bindTeamListModal(){
+  document.querySelectorAll('[data-select-team]').forEach(el=>{
+    el.addEventListener('click', (e)=>{
+      if(e.target.closest('[data-del-team]')) return;
+      const role = el.dataset.selectTeam;
+      closeModal();
+      openTeamPermissionDialog(role);
+    });
+  });
+  document.querySelectorAll('[data-del-team]').forEach(b=>b.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    const role = b.dataset.delTeam;
+    if(S.users.some(u=>u.role===role)){ showAlert('Reassign or remove the members of this team before deleting it.'); return; }
+    if(!confirm(`Delete the "${ROLES[role].label}" team? This cannot be undone.`)) return;
+    S.customRoles = S.customRoles.filter(c=>c.key!==role);
+    delete S.rolePermissions[role];
+    rebuildRolesRegistry();
+    safeSet('app:customRoles', S.customRoles);
+    safeSet('app:rolePermissions', S.rolePermissions);
+    closeModal(); openPermissionManager();
+  }));
+  const showAddBtn = document.getElementById('showAddTeamBtn');
+  if(showAddBtn) showAddBtn.addEventListener('click', ()=>{
+    document.getElementById('addTeamBox').style.display='block';
+    showAddBtn.style.display='none';
+    document.getElementById('newTeamName').focus();
+  });
+  const saveNewTeamBtn = document.getElementById('saveNewTeamBtn');
+  if(saveNewTeamBtn) saveNewTeamBtn.addEventListener('click', ()=>{
+    const name = document.getElementById('newTeamName').value.trim();
+    if(!name){ showAlert('Enter a team name.'); return; }
+    const key = slugifyTeamName(name);
+    S.customRoles.push({key, label:name});
+    rebuildRolesRegistry();
+    safeSet('app:customRoles', S.customRoles);
+    closeModal();
+    showToast('Team created — now set its permissions');
+    openTeamPermissionDialog(key);
+  });
+}
+
+/* ---- Step 2: one team's View + Entry checklist ---- */
+function defaultChecklistPerm(role){
+  const tabs = DEFAULT_ROLE_TABS[role] || ['home'];
+  const obj = {};
+  tabs.forEach(t=>{ if(t!=='stock') obj[t] = true; });
+  if(tabs.includes('stock')){ obj.stock_raw = true; obj.stock_filled = true; obj.stock_ready = true; }
+  return obj;
+}
+function openTeamPermissionDialog(role){
+  const perm = S.rolePermissions[role] || defaultChecklistPerm(role);
+  const entryDefaults = DEFAULT_ENTRY_PERMS[role] || {};
+  showModal(`
+    <h3>${esc(ROLES[role].label)}</h3>
+    <p class="desc" style="margin-top:-6px;">Choose exactly what this team can view and enter.</p>
+    <div style="font-size:10px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.03em;font-weight:700;margin-bottom:6px;">Can view</div>
+    <div class="more-grid" style="grid-template-columns:repeat(2,1fr);margin-bottom:14px;">
+    ${CHECKLIST_MODULES.map(m=>`<label style="display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:9px 10px;font-size:12.5px;cursor:pointer;">
+      <input type="checkbox" data-teamperm-view="${m.key}" ${perm[m.key]?'checked':''} style="width:16px;height:16px;flex:0 0 auto;" /> ${esc(m.label)}
+    </label>`).join('')}
+    </div>
+    <div style="font-size:10px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.03em;font-weight:700;margin-bottom:6px;">Can enter / record data</div>
+    <div class="more-grid" style="grid-template-columns:repeat(2,1fr);">
+    ${ENTRY_MODULES.map(m=>`<label style="display:flex;align-items:center;gap:8px;background:var(--success-bg);border:1px solid var(--border);border-radius:10px;padding:9px 10px;font-size:12.5px;cursor:pointer;">
+      <input type="checkbox" data-teamperm-entry="${m.key}" ${(S.rolePermissions[role] ? !!S.rolePermissions[role][m.key] : !!entryDefaults[m.key])?'checked':''} style="width:16px;height:16px;flex:0 0 auto;" /> ${esc(m.label)}
+    </label>`).join('')}
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-outline" id="backToTeamsBtn">‹ Back</button>
+      <button type="button" class="btn btn-primary" id="reviewPermsBtn">Save…</button>
+    </div>
+  `);
+  document.getElementById('backToTeamsBtn').addEventListener('click', ()=>{ closeModal(); openPermissionManager(); });
+  document.getElementById('reviewPermsBtn').addEventListener('click', ()=>{
+    const viewChecked = CHECKLIST_MODULES.filter(m=>document.querySelector(`[data-teamperm-view="${m.key}"]`).checked);
+    const entryChecked = ENTRY_MODULES.filter(m=>document.querySelector(`[data-teamperm-entry="${m.key}"]`).checked);
+    closeModal();
+    openPermissionConfirm(role, viewChecked, entryChecked);
+  });
+}
+
+/* ---- Step 3: explicit "are you sure" summary before it takes effect ---- */
+function openPermissionConfirm(role, viewChecked, entryChecked){
+  showModal(`
+    <h3>Confirm — ${esc(ROLES[role].label)}</h3>
+    <p class="desc" style="margin-top:-6px;">You're about to give this team:</p>
+    <div style="font-size:11px;font-weight:800;text-transform:uppercase;color:var(--ink-soft);margin-bottom:4px;">Can view</div>
+    <div style="margin-bottom:12px;">
+      ${viewChecked.length? viewChecked.map(m=>`<div style="padding:4px 0;font-size:13px;">✅ ${esc(m.label)}</div>`).join('') : `<div class="desc" style="margin:0;">Nothing beyond Home.</div>`}
+    </div>
+    <div style="font-size:11px;font-weight:800;text-transform:uppercase;color:var(--ink-soft);margin-bottom:4px;">Can enter / record</div>
+    <div>
+      ${entryChecked.length? entryChecked.map(m=>`<div style="padding:4px 0;font-size:13px;">✅ ${esc(m.label)}</div>`).join('') : `<div class="desc" style="margin:0;">No data-entry rights.</div>`}
+    </div>
+    <p class="desc" style="margin-top:14px;font-weight:700;color:var(--ink);">Are you sure you want to apply this?</p>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-outline" id="cancelConfirmBtn">Go back</button>
+      <button type="button" class="btn btn-primary" id="applyPermsBtn">Yes, apply</button>
+    </div>
+  `);
+  document.getElementById('cancelConfirmBtn').addEventListener('click', ()=>{ closeModal(); openTeamPermissionDialog(role); });
+  document.getElementById('applyPermsBtn').addEventListener('click', ()=>{
+    const next = { home:true };
+    CHECKLIST_MODULES.forEach(m=>{ next[m.key] = viewChecked.some(v=>v.key===m.key); });
+    ENTRY_MODULES.forEach(m=>{ next[m.key] = entryChecked.some(v=>v.key===m.key); });
+    S.rolePermissions[role] = next;
+    applyRolePermissionsToROLES();
+    safeSet('app:rolePermissions', S.rolePermissions);
+    closeModal(); render(); showToast(`${ROLES[role].label} permissions updated`);
+  });
+}
+function resetAllDataExceptUsers(){
+  const pwd = prompt("Enter your admin password to confirm — this wipes everything except Users:");
+  if(pwd===null) return;
+  if(pwd !== S.currentUser.password){ showAlert('Incorrect password.'); return; }
+  if(!confirm('This will permanently erase ALL orders, customers, stock levels, expenses, logs, tasks, attendance, login history, and domino records. Users stay. This cannot be undone. Continue?')) return;
+  // Every day-partition row we've ever seen for these entities needs to be
+  // deleted on the backend too, or old days would silently reappear the
+  // next time data is merged back in from the sheet.
+  const keysToDelete = [];
+  PARTITIONED_ENTITIES.forEach(entity=>{
+    (S._partitionKeysSeen[entity] || new Set()).forEach(day=>keysToDelete.push(entity+'_'+day));
+  });
+  S.orders = []; S.customers = []; S.attendance = []; S.tasks = []; S.loginLog = [];
+  S.rawMaterial = {}; S.filledStock = {}; S.readyStock = {};
+  S.expenses = []; S.activityLog = []; S.stockTasks = []; S.dominoPrints = [];
+  S.lowStock = {raw:{}, filled:{}, ready:{}};
+  PARTITIONED_ENTITIES.forEach(entity=>{ S._partitionKeysSeen[entity] = new Set(); });
+  offlineQueue = {}; persistOfflineQueue(); updateSyncStatusUI(); // don't let a stale queued save push old data back after reset
+  Promise.all([
+    safeSet('app:customers', S.customers), safeSet('app:tasks', S.tasks),
+    safeSet('app:rawMaterial', S.rawMaterial), safeSet('app:filledStock', S.filledStock),
+    safeSet('app:readyStock', S.readyStock), safeSet('app:stockTasks', S.stockTasks),
+    safeSet('app:lowStock', S.lowStock),
+    apiDeleteKeys(keysToDelete)
+  ]);
+  render();
+  showToast('All data reset — Users kept');
+}
+function bindUsers(){
+  document.getElementById('newUserBtn').addEventListener('click', ()=>openUserModal(null));
+  const permsBtn = document.getElementById('openPermsBtn');
+  if(permsBtn) permsBtn.addEventListener('click', openPermissionManager);
+  const resetBtn = document.getElementById('resetAllBtn');
+  if(resetBtn) resetBtn.addEventListener('click', resetAllDataExceptUsers);
+  document.querySelectorAll('[data-edit-user]').forEach(b=>b.addEventListener('click', ()=>openUserModal(b.dataset.editUser)));
+  document.querySelectorAll('[data-del-user]').forEach(b=>b.addEventListener('click', async ()=>{
+    if(!confirm('Remove this user?')) return;
+    S.users = S.users.filter(u=>u.id!==b.dataset.delUser);
+    safeSet('app:users', S.users); render();
+  }));
+}
+function resizeImageFile(file, maxDim, quality){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = ()=>{
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = ()=>{
+        let { width, height } = img;
+        if(width > height){ if(width > maxDim){ height = Math.round(height * maxDim/width); width = maxDim; } }
+        else { if(height > maxDim){ width = Math.round(width * maxDim/height); height = maxDim; } }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality || 0.75));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+// All user profiles are stored together as one JSON blob in a single Google
+// Sheet cell (~50,000 char limit), so every photo has to stay genuinely
+// small. Shrinks progressively until it fits, rather than silently failing
+// to save later.
+async function resizeImageFileSafe(file){
+  const steps = [ [128,0.65], [100,0.55], [80,0.45], [64,0.4] ];
+  let last = null;
+  for(const [dim, q] of steps){
+    last = await resizeImageFile(file, dim, q);
+    if(last.length <= 8000) return last;
+  }
+  return last;
+}
+function openUserModal(id){
+  const existing = id ? S.users.find(u=>u.id===id) : null;
+  let pendingPhoto = existing ? (existing.photo || '') : '';
+  showModal(`
+    <h3>${existing?'Edit user':'Add user'}</h3>
+    <form id="userForm">
+      <div class="field"><label>Photo (optional)</label>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <span id="uPhotoPreviewWrap" style="width:52px;height:52px;border-radius:50%;overflow:hidden;flex:0 0 auto;background:var(--bg);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;">
+            ${pendingPhoto?`<img id="uPhotoPreview" src="${esc(pendingPhoto)}" style="width:100%;height:100%;object-fit:cover;" />`:`<span id="uPhotoPreview" style="font-weight:800;color:var(--primary);">?</span>`}
+          </span>
+          <label class="btn btn-outline btn-sm" style="cursor:pointer;">Choose photo<input type="file" id="uPhotoFile" accept="image/*" style="display:none;" /></label>
+          ${pendingPhoto?`<button type="button" class="btn btn-outline btn-sm" id="uPhotoRemoveBtn">Remove</button>`:''}
+        </div>
+        <div class="mono" style="margin-top:6px;">Auto-compressed to a small avatar for saving.</div>
+      </div>
+      <div class="field"><label>Full name</label><input id="uName" value="${existing?esc(existing.name):''}" required /></div>
+      <div class="field"><label>Username</label><input id="uUser" value="${existing?esc(existing.username):''}" required /></div>
+      <div class="field"><label>Password</label><input id="uPass" value="${existing?esc(existing.password):''}" required /></div>
+      <div class="field"><label>Role / Team (controls access — see 🔐 Permission Manager)</label>
+        <select id="uRole">
+          ${Object.keys(ROLES).map(r=>`<option value="${r}" ${existing&&existing.role===r?'selected':''}>${ROLES[r].label}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field"><label>Post / Designation (optional, display only)</label><input id="uPost" value="${existing?esc(existing.post||''):''}" placeholder="e.g. Senior Sales Executive" /></div>
+      <div class="field"><label>Phone</label><input id="uPhone" value="${existing?esc(existing.phone||''):''}" /></div>
+      <div class="field"><label>Address</label><textarea id="uAddr" rows="2">${existing?esc(existing.address||''):''}</textarea></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
+        <button type="submit" class="btn btn-primary">${existing?'Save':'Create'}</button>
+      </div>
+    </form>
+  `);
+  const fileInput = document.getElementById('uPhotoFile');
+  fileInput.addEventListener('change', async ()=>{
+    const file = fileInput.files[0];
+    if(!file) return;
+    if(!file.type.startsWith('image/')){ showAlert('Please choose an image file.'); return; }
+    try{
+      const dataUrl = await resizeImageFileSafe(file);
+      if(dataUrl.length > 10000){
+        if(!confirm('This photo is a bit large and may fail to save reliably. Use it anyway? (A simpler/smaller image works best.)')) return;
+      }
+      pendingPhoto = dataUrl;
+      const wrap = document.getElementById('uPhotoPreviewWrap');
+      wrap.innerHTML = `<img id="uPhotoPreview" src="${dataUrl}" style="width:100%;height:100%;object-fit:cover;" />`;
+    }catch(e){ showAlert('Could not read that image — try a different file.'); }
+  });
+  const removeBtn = document.getElementById('uPhotoRemoveBtn');
+  if(removeBtn) removeBtn.addEventListener('click', ()=>{
+    pendingPhoto = '';
+    const wrap = document.getElementById('uPhotoPreviewWrap');
+    wrap.innerHTML = `<span style="font-weight:800;color:var(--primary);">?</span>`;
+  });
+  document.getElementById('userForm').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const name = document.getElementById('uName').value.trim();
+    const username = document.getElementById('uUser').value.trim();
+    const password = document.getElementById('uPass').value;
+    const role = document.getElementById('uRole').value;
+    const post = document.getElementById('uPost').value.trim();
+    const phone = document.getElementById('uPhone').value.trim();
+    const address = document.getElementById('uAddr').value.trim();
+    const photo = pendingPhoto;
+    if(S.users.some(u=>u.username.toLowerCase()===username.toLowerCase() && (!existing || u.id!==existing.id))){
+      showAlert('That username is already taken.'); return;
+    }
+    const newRecord = existing
+      ? Object.assign({}, existing, {name, username, password, role, post, phone, address, photo})
+      : {id:uid(), name, username, password, role, post, phone, address, photo};
+    const draftUsers = existing ? S.users.map(u=>u.id===existing.id ? newRecord : u) : [...S.users, newRecord];
+    // The whole team is stored together in one backend cell (~50,000 char
+    // limit) — photos are what can push it over. Check before saving rather
+    // than let it silently fail and retry forever in the background.
+    if(photo && JSON.stringify(draftUsers).length > 45000){
+      if(confirm("Saving everyone's data together is getting too large to store reliably (mostly from photos). Save this person WITHOUT a photo instead?")){
+        newRecord.photo = '';
+      } else {
+        showAlert('Not saved. Remove a photo from another team member first, or skip the photo for this one.');
+        return;
+      }
+    }
+    if(existing){ Object.assign(existing, newRecord); }
+    else { S.users.push(newRecord); }
+    safeSet('app:users', S.users);
+    closeModal(); render(); showToast('Saved');
+  });
+}
+
+/* ============================= TASKS ============================= */
+/* Order-driven tasks (filling/packaging) plus general tasks admin can hand out to anyone. */
+function getMyEntries(username){
+  const items = [];
+  S.orders.forEach(o=>{ if(o.createdByUsername===username) items.push({label:`Order — ${o.customerName}`, detail:o.items.map(i=>`${i.name} ${i.size} ×${i.qty}`).join(', '), at:o.createdAt, tag:ORDER_STAGE_LABEL[o.status]||o.status}); });
+  S.activityLog.forEach(e=>{ if(e.byUsername===username) items.push({label:activityLabel(e), detail:activityAmount(e), at:e.at, tag:e.kind}); });
+  S.expenses.forEach(x=>{ if(x.byUsername===username || x.enteredByUsername===username) items.push({label:x.description||(x.type==='settlement'?'Settlement paid':'Expense'), detail:`₹${x.amount.toLocaleString('en-IN')}`, at:x.at, tag:x.type||'expense'}); });
+  S.customers.forEach(c=>{ if(c.addedByUsername===username) items.push({label:`New party — ${c.name}`, detail:c.phone||'', at:c.addedAt, tag:'party'}); });
+  S.dominoPrints.forEach(x=>{ if(x.byUsername===username) items.push({label:'Domino printing', detail:`${x.impressions.toLocaleString('en-IN')} impressions`, at:x.at, tag:'domino'}); });
+  return items.sort((a,b)=>b.at-a.at).slice(0,10);
+}
+function quickActionIcons(role){
+  const icons = [];
+  if(canDoEntry(role, 'entry_purchase')) icons.push({key:'purchase', ico:'🛢️', color:'green', lbl:'Purchase', sub:'Buy raw material'});
+  if(canDoEntry(role, 'entry_filling')) icons.push({key:'filling', ico:'🧴', color:'blue', lbl:'Filling', sub:'Fill products'});
+  if(canDoEntry(role, 'entry_packing')) icons.push({key:'packing', ico:'📦', color:'orange', lbl:'Packing', sub:'Pack products'});
+  if(role==='admin' || role==='manager' || role==='packaging') icons.push({key:'domino', ico:'🖨️', color:'purple', lbl:'Domino', sub:'Log printing'});
+  if(!icons.length) return '';
+  return `<div class="card card-tinted">
+    <div class="qa-head"><h2>Quick Actions</h2><span>Manage operations</span></div>
+    <div class="qa-grid">
+      ${icons.map(i=>`<div class="qa-tile" data-quick-action="${i.key}"><div class="icon-badge ${i.color}">${i.ico}</div><div class="title">${esc(i.lbl)}</div><div class="sub">${esc(i.sub)}</div></div>`).join('')}
+    </div>
+  </div>`;
+}
+function bindQuickActionIcons(){
+  document.querySelectorAll('[data-quick-action]').forEach(el=>el.addEventListener('click', ()=>{
+    const k = el.dataset.quickAction;
+    if(k==='purchase') openPurchaseModal();
+    if(k==='filling') openFillingModal(null);
+    if(k==='packing') openPackagingModal(null);
+    if(k==='domino') openDominoModal();
+  }));
+}
+function renderTasks(){
+  const role = S.currentUser.role;
+  const isAdmin = role==='admin';
+
+  let orderRelevant = [];
+  if(role==='manager'){ orderRelevant = S.orders.filter(o=>o.status==='processing'); }
+  else if(role==='filling'){ orderRelevant = S.orders.filter(o=>o.status==='processing' && o.fillingStatus!=='done'); }
+  else if(role==='packaging'){ orderRelevant = S.orders.filter(o=>o.status==='processing' && o.fillingStatus==='done' && o.packagingStatus!=='done'); }
+
+  const myGeneralTasks = S.tasks.filter(t=>t.assignedTo===S.currentUser.username || t.assignedTo==='role:'+role).sort((a,b)=>b.createdAt-a.createdAt);
+  const allGeneralTasks = S.tasks.slice().sort((a,b)=>b.createdAt-a.createdAt);
+
+  let orderTasksBlock = '';
+  if(role==='filling' || role==='packaging'){
+    // Unified worker view: order demand + relevant stock alerts, merged into
+    // one "what needs doing" list. No separate cards to check.
+    const demand = {};
+    orderRelevant.forEach(o=>o.items.forEach(i=>{
+      if(!demand[i.key]) demand[i.key] = {qty:0, fromOrder:false, fromAlert:false, alertText:''};
+      demand[i.key].qty += i.qty;
+      demand[i.key].fromOrder = true;
+    }));
+    const myStockTasks = S.stockTasks.filter(t=>t.status==='open' && t.targetRole===role);
+    const alertsNow = getStockAlerts();
+    const alertListNow = role==='filling' ? alertsNow.filled : alertsNow.ready;
+    myStockTasks.forEach(t=>{
+      if(!demand[t.itemId]) demand[t.itemId] = {qty:0, fromOrder:false, fromAlert:false, alertText:''};
+      demand[t.itemId].fromAlert = true;
+      demand[t.itemId].alertText = t.qtyText || '';
+      const am = alertListNow.find(a=>a.id===t.itemId);
+      if(am && am.needQty) demand[t.itemId].suggestedQty = am.needQty;
+    });
+    const rows = Object.entries(demand);
+    orderTasksBlock = `
+    <div class="card">
+      <h2>${role==='filling'?'What needs to be filled':'What needs to be packed'}</h2>
+      <p class="desc">Orders + stock alerts, in one place.</p>
+      ${rows.length===0?`<div class="empty"><div class="big">✅</div>Nothing pending right now.</div>`:`
+      <table><thead><tr><th>Item</th><th>Qty / reason</th><th></th></tr></thead><tbody>
+      ${rows.map(([key,d])=>{
+        const it=findItem(key);
+        const tags = `${d.fromOrder?'<span class="badge badge-pending">Order</span> ':''}${d.fromAlert?'<span class="badge badge-rejected">Stock alert</span>':''}`;
+        const qtyText = d.qty>0 ? `<b>${d.qty} pc</b>` : (d.alertText||'');
+        const suggestedQty = d.qty>0 ? d.qty : (d.suggestedQty||0);
+        return `<tr><td>${esc(it?it.name:key)} <span class="mono">${esc(it?it.size:'')}</span><div style="margin-top:3px;">${tags}</div></td><td class="mono">${qtyText}</td><td>${role==='filling'?`<button class="btn btn-sm btn-accent" data-quick-fill="${key}|${suggestedQty}">Record</button>`:`<button class="btn btn-sm btn-accent" data-quick-pack="${key}|${suggestedQty}">Record</button>`}</td></tr>`;
+      }).join('')}
+      </tbody></table>`}
+      ${orderRelevant.length? `<p class="desc" style="margin:10px 0 0;">${orderRelevant.length} order(s) waiting — tap once done.</p>
+      <div class="row-actions" style="margin-top:6px;">${orderRelevant.map(o=>`<button class="btn btn-sm btn-accent" data-mark-${role==='filling'?'filling':'packaging'}="${o.id}">${esc(orderDisplayLabel(o))} done</button>`).join('')}</div>` : ''}
+    </div>`;
+  } else if(orderRelevant.length){
+    orderTasksBlock = `
+    <div class="card">
+      <h2>Processing orders — update progress</h2>
+      <p class="desc">Accepted orders in progress.</p>
+      <table><thead><tr><th>Customer</th><th>Items</th><th>Filling</th><th>Packaging</th></tr></thead><tbody>
+      ${orderRelevant.map(o=>`
+        <tr>
+          <td><b>${esc(o.customerName)}</b></td>
+          <td>${o.items.map(i=>`${esc(i.name)} ${esc(i.size)} ×${i.qty}`).join('<br/>')}</td>
+          <td><span class="badge badge-${o.fillingStatus==='done'?'done':'pending'}">${o.fillingStatus||'pending'}</span></td>
+          <td><span class="badge badge-${o.packagingStatus==='done'?'done':'pending'}">${o.packagingStatus||'pending'}</span></td>
+        </tr>`).join('')}
+      </tbody></table>
+    </div>`;
+  }
+
+  const generalTaskRow = (t, showAssignee)=>`
+    <tr>
+      <td><b>${esc(t.title)}</b>${t.description?`<div style="font-size:12px;color:var(--ink-soft);margin-top:2px;">${esc(t.description)}</div>`:''}</td>
+      ${showAssignee?`<td class="mono">${t.assignedTo?esc(t.assignedToName):'— unassigned —'}</td>`:''}
+      <td class="mono">${t.dueDate?esc(t.dueDate):'—'}</td>
+      <td><span class="badge badge-${t.status==='done'?'done':'pending'}">${t.status}</span></td>
+      <td class="row-actions">
+        ${t.status!=='done' && !isAdmin ? `<button class="btn btn-sm btn-success" data-complete-task="${t.id}">Mark done</button>` : ''}
+        ${isAdmin ? `<button class="btn btn-sm btn-outline" data-edit-task="${t.id}">Edit</button>${t.assignedTo?`<button class="btn btn-sm btn-outline" data-unassign-task="${t.id}">Unassign</button>`:''}<button class="btn btn-sm btn-danger" data-del-task="${t.id}">Delete</button>` : ''}
+      </td>
+    </tr>`;
+
+  const generalTasksBlock = isAdmin ? `
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div><h2>Assigned tasks</h2><p class="desc">Assign a task to anyone.</p></div>
+        <button class="btn btn-primary btn-sm" id="newTaskBtn">+ New task</button>
+      </div>
+      ${allGeneralTasks.length===0?`<div class="empty"><div class="big">🗒️</div>No tasks created yet.</div>`:`
+      <table><thead><tr><th>Task</th><th>Assigned to</th><th>Due</th><th>Status</th><th></th></tr></thead><tbody>
+        ${allGeneralTasks.map(t=>generalTaskRow(t,true)).join('')}
+      </tbody></table>`}
+    </div>` : `
+    <div class="card">
+      <h2>My assigned tasks</h2>
+      <p class="desc">From the admin.</p>
+      ${myGeneralTasks.length===0?`<div class="empty"><div class="big">🗒️</div>Nothing assigned to you right now.</div>`:`
+      <table><thead><tr><th>Task</th><th>Due</th><th>Status</th><th></th></tr></thead><tbody>
+        ${myGeneralTasks.map(t=>generalTaskRow(t,false)).join('')}
+      </tbody></table>`}
+    </div>`;
+
+  const myEntries = getMyEntries(S.currentUser.username);
+  const activityBlock = `
+    <div class="card">
+      <h2>Your recent entries</h2>
+      <p class="desc">Everything you've added.</p>
+      ${myEntries.length===0?`<div class="empty">Nothing logged by you yet.</div>`:`
+      <table><thead><tr><th>Entry</th><th>Detail</th><th>When</th></tr></thead><tbody>
+      ${myEntries.map(e=>`<tr><td>${esc(e.label)}<div class="mono" style="margin-top:2px;">${esc(e.tag)}</div></td><td class="mono">${esc(e.detail)}</td><td class="mono">${fmtDate(e.at)}</td></tr>`).join('')}
+      </tbody></table>`}
+    </div>`;
+
+  return quickActionIcons(role) + generalTasksBlock + orderTasksBlock + activityBlock;
+}
+function bindTasks(){
+  bindQuickActionIcons();
+  document.querySelectorAll('[data-mark-filling]').forEach(b=>b.addEventListener('click', ()=>{
+    const o = S.orders.find(x=>x.id===b.dataset.markFilling); o.fillingStatus='done';
+    savePartitionForItem('orders', o); autoAdvanceOrders(); render(); showToast('Filling done — sent to packaging team');
+  }));
+  document.querySelectorAll('[data-mark-packaging]').forEach(b=>b.addEventListener('click', ()=>{
+    const o = S.orders.find(x=>x.id===b.dataset.markPackaging); o.packagingStatus='done';
+    savePartitionForItem('orders', o); autoAdvanceOrders(); render(); showToast('Packaging done');
+  }));
+  document.querySelectorAll('[data-quick-fill]').forEach(b=>b.addEventListener('click', ()=>{
+    const [key, qty] = b.dataset.quickFill.split('|');
+    openFillingModal(key, parseInt(qty)||0);
+  }));
+  document.querySelectorAll('[data-quick-pack]').forEach(b=>b.addEventListener('click', ()=>{
+    const [key, qty] = b.dataset.quickPack.split('|');
+    openPackagingModal(key, parseInt(qty)||0);
+  }));
+  const newTaskBtn = document.getElementById('newTaskBtn');
+  if(newTaskBtn) newTaskBtn.addEventListener('click', ()=>openTaskModal(null));
+  document.querySelectorAll('[data-edit-task]').forEach(b=>b.addEventListener('click', ()=>{
+    const t = S.tasks.find(x=>x.id===b.dataset.editTask); if(t) openTaskModal(t);
+  }));
+  document.querySelectorAll('[data-unassign-task]').forEach(b=>b.addEventListener('click', ()=>{
+    const t = S.tasks.find(x=>x.id===b.dataset.unassignTask); if(!t) return;
+    t.assignedTo = null; t.assignedToName = '— unassigned —';
+    safeSet('app:tasks', S.tasks); render(); showToast('Task unassigned');
+  }));
+  document.querySelectorAll('[data-complete-task]').forEach(b=>b.addEventListener('click', ()=>{
+    const t = S.tasks.find(x=>x.id===b.dataset.completeTask); if(!t) return;
+    t.status='done'; t.completedAt=Date.now();
+    safeSet('app:tasks', S.tasks); render(); showToast('Task marked done');
+  }));
+  document.querySelectorAll('[data-del-task]').forEach(b=>b.addEventListener('click', ()=>{
+    if(!confirm('Delete this task?')) return;
+    S.tasks = S.tasks.filter(x=>x.id!==b.dataset.delTask);
+    safeSet('app:tasks', S.tasks); render();
+  }));
+}
+function openTaskModal(existingTask){
+  const assignable = S.users.filter(u=>u.role!=='admin');
+  const teamRoles = Object.keys(ROLES).filter(r=>r!=='admin');
+  showModal(`
+    <h3>${existingTask?'Edit task':'New task'}</h3>
+    <form id="taskForm">
+      <div class="field"><label>Title</label><input id="taskTitle" value="${existingTask?esc(existingTask.title):''}" required /></div>
+      <div class="field"><label>Details (optional)</label><textarea id="taskDesc" rows="2">${existingTask?esc(existingTask.description||''):''}</textarea></div>
+      <div class="field"><label>Assign to</label>
+        <select id="taskAssignee" required>
+          <optgroup label="Whole team (auto-assign)">
+            ${teamRoles.map(r=>`<option value="role:${r}" ${existingTask&&existingTask.assignedTo==='role:'+r?'selected':''}>All ${esc(ROLES[r].label)}</option>`).join('')}
+          </optgroup>
+          ${assignable.length?`<optgroup label="Individual">
+            ${assignable.map(u=>`<option value="${esc(u.username)}" ${existingTask&&existingTask.assignedTo===u.username?'selected':''}>${esc(u.name)} — ${ROLES[u.role].label}</option>`).join('')}
+          </optgroup>`:''}
+        </select>
+      </div>
+      <div class="field"><label>Due date (optional)</label><input id="taskDue" type="date" value="${existingTask&&existingTask.dueDate?esc(existingTask.dueDate):''}" /></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
+        <button type="submit" class="btn btn-primary">${existingTask?'Save changes':'Create task'}</button>
+      </div>
+    </form>
+  `);
+  document.getElementById('taskForm').addEventListener('submit', (e)=>{
+    e.preventDefault();
+    const assigneeSel = document.getElementById('taskAssignee');
+    const value = assigneeSel ? assigneeSel.value : '';
+    if(!value) return;
+    let assignedTo = value, assignedToName;
+    if(value.startsWith('role:')){
+      assignedToName = 'All ' + ROLES[value.slice(5)].label;
+    } else {
+      const u = S.users.find(x=>x.username===value);
+      assignedToName = u ? u.name : value;
+    }
+    if(existingTask){
+      Object.assign(existingTask, {
+        title: document.getElementById('taskTitle').value.trim(),
+        description: document.getElementById('taskDesc').value.trim(),
+        assignedTo, assignedToName,
+        dueDate: document.getElementById('taskDue').value || ''
+      });
+    } else {
+      S.tasks.push({
+        id: uid(), title: document.getElementById('taskTitle').value.trim(),
+        description: document.getElementById('taskDesc').value.trim(),
+        assignedTo, assignedToName,
+        dueDate: document.getElementById('taskDue').value || '',
+        status:'open', createdBy: S.currentUser.name, createdByUsername: S.currentUser.username, createdAt: Date.now()
+      });
+    }
+    safeSet('app:tasks', S.tasks);
+    closeModal(); render(); showToast('Task assigned');
+  });
+}
+
+/* ============================= RAW MATERIAL ============================= */
+function renderRawMaterial(){
+  const alerts = getStockAlerts().raw;
+  const isAdmin = S.currentUser.role==='admin';
+  const canPurchase = canDoEntry(S.currentUser.role, 'entry_purchase');
+  return `
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+      <div><h2>Raw material</h2><p class="desc">Bulk oil, before filling.</p></div>
+      <div class="row-actions">
+        ${canPurchase?`<button class="btn btn-outline btn-sm" id="recPurchaseBtn">+ Record purchase</button>`:''}
+        ${isAdmin?`<button class="btn btn-outline btn-sm" id="bulkEditRawBtn">✎ Bulk edit</button>`:''}
+      </div>
+    </div>
+    ${alertBanner(alerts)}
+    ${searchBarHtml('raw','Search category…')}
+    <table><thead><tr><th>Category</th><th>In stock</th>${isAdmin?'<th></th>':''}</tr></thead><tbody>
+    ${filterSortInventory(RAW_CATEGORIES,'raw',c=>S.rawMaterial[c]||0,c=>c).map(cat=>{const v=S.rawMaterial[cat]||0; return `<tr><td>${esc(cat)}</td><td class="mono ${v<0?'stockneg':''}">${fmtMl(v)}</td>${isAdmin?`<td class="row-actions"><button class="btn btn-sm btn-outline" data-adjust-raw="${esc(cat)}">Adjust</button><button class="btn btn-sm btn-outline" data-lowalert-raw="${esc(cat)}">Low alert</button></td>`:''}</tr>`;}).join('')}
+    </tbody></table>
+  </div>`;
+}
+function bindRawMaterial(){
+  const pb = document.getElementById('recPurchaseBtn');
+  if(pb) pb.addEventListener('click', openPurchaseModal);
+  const bulkBtn = document.getElementById('bulkEditRawBtn');
+  if(bulkBtn) bulkBtn.addEventListener('click', ()=>openBulkStockModal('raw'));
+  document.querySelectorAll('[data-adjust-raw]').forEach(b=>b.addEventListener('click', ()=> openAdjustModal('raw', b.dataset.adjustRaw, S.rawMaterial[b.dataset.adjustRaw]||0, b.dataset.adjustRaw)));
+  document.querySelectorAll('[data-lowalert-raw]').forEach(b=>b.addEventListener('click', ()=> openLowAlertModal('raw', b.dataset.lowalertRaw, b.dataset.lowalertRaw, 'mL')));
+  bindSearchBar('raw');
+}
+function openPurchaseModal(){
+  showModal(`
+    <h3>Record purchase</h3>
+    <form id="purchaseForm">
+      <div class="field"><label>Category</label><select id="purCat">${RAW_CATEGORIES.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('')}</select></div>
+      <div class="field"><label>Quantity (Liters — max ${MAX_PURCHASE_L} L per entry)</label>
+        <div style="display:flex;gap:6px;"><input id="purQty" type="number" min="0.01" max="${MAX_PURCHASE_L}" step="0.01" required style="flex:2;"/><select id="purUnit" style="flex:1;"><option value="L" selected>Liters</option><option value="mL">mL</option></select></div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
+        <button type="submit" class="btn btn-primary">Add to stock</button>
+      </div>
+    </form>
+  `);
+  document.getElementById('purchaseForm').addEventListener('submit', e=>{
+    e.preventDefault();
+    const cat = document.getElementById('purCat').value;
+    const qty = parseFloat(document.getElementById('purQty').value)||0;
+    const unit = document.getElementById('purUnit').value;
+    const ml = unit==='L'? qty*1000 : qty;
+    const litres = ml/1000;
+    if(litres>MAX_PURCHASE_L){ showAlert(`Max ${MAX_PURCHASE_L} L allowed in a single purchase entry.`); return; }
+    if(litres<=0){ showAlert('Enter a valid quantity.'); return; }
+    S.rawMaterial[cat] = (S.rawMaterial[cat]||0) + ml;
+    safeSet('app:rawMaterial', S.rawMaterial);
+    logActivity({kind:'purchase', cat, ml});
+    syncStockTasksFromAlerts();
+    closeModal(); render(); showToast('Purchase recorded');
+  });
+}
+function openFillingModal(prefillKey, prefillQty){
+  showModal(`
+    <h3>Record filling</h3>
+    <p class="desc" style="margin-top:-6px;">Raw material → filled stock.</p>
+    <form id="fillForm">
+      <div class="field"><label>Item (type to search)</label>${itemPickerHtml('fillItem', prefillKey)}</div>
+      <div class="field"><label>Quantity filled (pieces, max ${MAX_PC_ENTRY})</label><input id="fillQty" type="number" min="1" max="${MAX_PC_ENTRY}" value="${prefillQty>0?prefillQty:''}" required /></div>
+      ${prefillQty>0?`<p class="desc" style="margin-top:-6px;">Pre-filled with the shortfall — edit if needed.</p>`:''}
+      <div class="modal-actions">
+        <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
+        <button type="submit" class="btn btn-primary">Record</button>
+      </div>
+    </form>
+  `);
+  document.getElementById('fillForm').addEventListener('submit', e=>{
+    e.preventDefault();
+    const key = prefillKey || (resolveItemFromText(document.getElementById('fillItem').value)||{}).key;
+    const it = findItem(key);
+    if(!it){ showAlert('Pick a valid item from the list.'); return; }
+    const qty = parseInt(document.getElementById('fillQty').value)||0;
+    if(qty<=0) return;
+    if(qty>MAX_PC_ENTRY){ showAlert(`Max ${MAX_PC_ENTRY} pc per entry.`); return; }
+    const mlNeeded = qty*it.ml;
+    const rawAvail = S.rawMaterial[it.rawCat]||0;
+    if(rawAvail < mlNeeded){
+      const shortL = ((mlNeeded-rawAvail)/1000).toFixed(2);
+      showAlert(`Not enough ${it.rawCat} — short by ${shortL} L. Record a purchase first.`);
+      return;
+    }
+    S.rawMaterial[it.rawCat] = rawAvail - mlNeeded;
+    S.filledStock[key] = (S.filledStock[key]||0) + qty;
+    Promise.all([safeSet('app:rawMaterial',S.rawMaterial), safeSet('app:filledStock',S.filledStock)]);
+    logActivity({kind:'filling', key, itemLabel:`${it.name} ${it.size}`, qty, rawCat:it.rawCat, mlPer:it.ml});
+    completeStockTasksForItem('filled', key);
+    syncStockTasksFromAlerts();
+    closeModal(); render();
+    showToast('Filling recorded');
+  });
+}
+
+/* ============================= FILLED STOCK ============================= */
+function renderFilled(){
+  const alerts = getStockAlerts().filled;
+  const isAdmin = S.currentUser.role==='admin';
+  const canFill = canDoEntry(S.currentUser.role, 'entry_filling');
+  return `<div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+      <div><h2>Filled stock</h2><p class="desc">Bottled, not yet packaged.</p></div>
+      <div class="row-actions">
+        ${canFill?`<button class="btn btn-primary btn-sm" id="recFillingBtn">+ Record filling</button>`:''}
+        ${isAdmin?`<button class="btn btn-outline btn-sm" id="bulkEditFilledBtn">✎ Bulk edit</button>`:''}
+      </div>
+    </div>
+    ${alertBanner(alerts)}
+    ${searchBarHtml('filled','Search item…')}
+    <table><thead><tr><th>Item</th><th>Size</th><th>In stock</th>${isAdmin?'<th></th>':''}</tr></thead><tbody>
+    ${filterSortInventory(CATALOG_FLAT,'filled',it=>S.filledStock[it.key]||0,it=>it.name+' '+it.size).map(it=>{const v=S.filledStock[it.key]||0; return `<tr><td>${esc(it.name)}</td><td class="mono">${esc(it.size)}</td><td class="mono ${v<0?'stockneg':''}">${v} pc</td>${isAdmin?`<td class="row-actions"><button class="btn btn-sm btn-outline" data-adjust-filled="${it.key}">Adjust</button><button class="btn btn-sm btn-outline" data-lowalert-filled="${it.key}">Low alert</button></td>`:''}</tr>`;}).join('')}
+    </tbody></table>
+  </div>`;
+}
+function bindFilled(){
+  const fb = document.getElementById('recFillingBtn');
+  if(fb) fb.addEventListener('click', ()=>openFillingModal(null));
+  const bulkBtnF = document.getElementById('bulkEditFilledBtn');
+  if(bulkBtnF) bulkBtnF.addEventListener('click', ()=>openBulkStockModal('filled'));
+  document.querySelectorAll('[data-adjust-filled]').forEach(b=>b.addEventListener('click', ()=>{ const it=findItem(b.dataset.adjustFilled); openAdjustModal('filled', b.dataset.adjustFilled, S.filledStock[b.dataset.adjustFilled]||0, `${it.name} ${it.size}`); }));
+  document.querySelectorAll('[data-lowalert-filled]').forEach(b=>b.addEventListener('click', ()=>{ const it=findItem(b.dataset.lowalertFilled); openLowAlertModal('filled', b.dataset.lowalertFilled, `${it.name} ${it.size}`, 'pc'); }));
+  bindSearchBar('filled');
+}
+function openPackagingModal(prefillKey, prefillQty){
+  const preIt = prefillKey ? findItem(prefillKey) : null;
+  showModal(`
+    <h3>Record packaging</h3>
+    <p class="desc" style="margin-top:-6px;">Filled stock → ready stock. Case + pieces add together.</p>
+    <form id="packForm">
+      <div class="field"><label>Item (type to search)</label>${itemPickerHtml('packItem', prefillKey)}</div>
+      <div id="packCaseRow" class="field" style="display:none;"><label>Cases (<span id="packCaseSizeHint"></span> pc each)</label><input id="packCases" type="number" min="0" value="0" /></div>
+      <div class="field"><label>Pieces (loose, on top of cases)</label><input id="packQty" type="number" min="0" max="${MAX_PC_ENTRY}" value="${prefillQty>0?prefillQty:0}" /></div>
+      ${prefillQty>0?`<p class="desc" style="margin-top:-6px;">Pre-filled with the shortfall — edit if needed.</p>`:''}
+      <div class="field"><label>Batch / box note (optional)</label><input id="packNote" placeholder="Batch no., box marking, etc." /></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
+        <button type="submit" class="btn btn-primary">Record</button>
+      </div>
+    </form>
+  `);
+  const itemSel = document.getElementById('packItem');
+  const caseRow = document.getElementById('packCaseRow');
+  const caseHint = document.getElementById('packCaseSizeHint');
+  const currentKey = ()=> prefillKey || (resolveItemFromText(itemSel.value)||{}).key;
+  const refreshCaseRow = ()=>{
+    const it = findItem(currentKey());
+    if(it && it.caseSize){ caseRow.style.display='block'; caseHint.textContent = it.caseSize; }
+    else { caseRow.style.display='none'; }
+  };
+  itemSel.addEventListener('input', refreshCaseRow);
+  itemSel.addEventListener('change', refreshCaseRow);
+  refreshCaseRow();
+  document.getElementById('packForm').addEventListener('submit', e=>{
+    e.preventDefault();
+    const key = currentKey();
+    const it = findItem(key);
+    if(!it){ showAlert('Pick a valid item from the list.'); return; }
+    const cases = parseInt(document.getElementById('packCases').value)||0;
+    const pcs = parseInt(document.getElementById('packQty').value)||0;
+    const note = document.getElementById('packNote').value.trim();
+    const qty = (it && it.caseSize ? cases*it.caseSize : 0) + pcs;
+    if(qty<=0){ showAlert('Enter a quantity (cases and/or pieces).'); return; }
+    if(qty>MAX_PC_ENTRY){ showAlert(`Max ${MAX_PC_ENTRY} pc per entry.`); return; }
+    const filledAvail = S.filledStock[key]||0;
+    if(filledAvail < qty){
+      showAlert(`${it.name} ${it.size} is short by ${qty-filledAvail} pc in Filled stock — fill more before packing.`);
+      return;
+    }
+    S.filledStock[key] = filledAvail - qty;
+    S.readyStock[key] = (S.readyStock[key]||0) + qty;
+    Promise.all([safeSet('app:filledStock',S.filledStock), safeSet('app:readyStock',S.readyStock)]);
+    logActivity({kind:'packaging', key, itemLabel: it?`${it.name} ${it.size}`:key, qty, note});
+    completeStockTasksForItem('ready', key);
+    autoAdvanceOrders();
+    syncStockTasksFromAlerts();
+    closeModal(); render();
+    showToast('Packaging recorded');
+  });
+}
+
+/* ============================= READY STOCK ============================= */
+function renderReady(){
+  const alerts = getStockAlerts().ready;
+  const isAdmin = S.currentUser.role==='admin';
+  const canPack = canDoEntry(S.currentUser.role, 'entry_packing');
+  return `<div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+      <div><h2>Ready stock</h2><p class="desc">Packed, ready to dispatch.</p></div>
+      <div class="row-actions">
+        ${canPack?`<button class="btn btn-primary btn-sm" id="recPackagingBtn">+ Record packaging</button>`:''}
+        ${isAdmin?`<button class="btn btn-outline btn-sm" id="bulkEditReadyBtn">✎ Bulk edit</button>`:''}
+      </div>
+    </div>
+    ${alertBanner(alerts)}
+    ${searchBarHtml('ready','Search item…')}
+    <table><thead><tr><th>Item</th><th>Size</th><th>MRP</th><th>In stock</th>${isAdmin?'<th></th>':''}</tr></thead><tbody>
+    ${filterSortInventory(CATALOG_FLAT,'ready',it=>S.readyStock[it.key]||0,it=>it.name+' '+it.size).map(it=>{const v=S.readyStock[it.key]||0; return `<tr><td>${esc(it.name)}</td><td class="mono">${esc(it.size)}</td><td class="mono">₹${it.mrp}</td><td class="mono ${v<0?'stockneg':''}">${fmtReadyDisplay(v,it.caseSize,it.pktSize)}</td>${isAdmin?`<td class="row-actions"><button class="btn btn-sm btn-outline" data-adjust-ready="${it.key}">Adjust</button><button class="btn btn-sm btn-outline" data-lowalert-ready="${it.key}">Low alert</button></td>`:''}</tr>`;}).join('')}
+    </tbody></table>
+  </div>`;
+}
+function bindReady(){
+  const rb = document.getElementById('recPackagingBtn');
+  if(rb) rb.addEventListener('click', ()=>openPackagingModal(null));
+  const bulkBtnR = document.getElementById('bulkEditReadyBtn');
+  if(bulkBtnR) bulkBtnR.addEventListener('click', ()=>openBulkStockModal('ready'));
+  document.querySelectorAll('[data-adjust-ready]').forEach(b=>b.addEventListener('click', ()=>{ const it=findItem(b.dataset.adjustReady); openAdjustModal('ready', b.dataset.adjustReady, S.readyStock[b.dataset.adjustReady]||0, `${it.name} ${it.size}`); }));
+  document.querySelectorAll('[data-lowalert-ready]').forEach(b=>b.addEventListener('click', ()=>{ const it=findItem(b.dataset.lowalertReady); openLowAlertModal('ready', b.dataset.lowalertReady, `${it.name} ${it.size}`, 'pc'); }));
+  bindSearchBar('ready');
+}
+
+/* ============================= BULK STOCK EDIT (admin — update qty + low alert for many items at once) ============================= */
+function bulkItemList(kind){
+  if(kind==='raw') return RAW_CATEGORIES.map(c=>({id:c, label:c, val:+((S.rawMaterial[c]||0)/1000).toFixed(2), low:(S.lowStock.raw||{})[c] ? +(S.lowStock.raw[c]/1000).toFixed(2) : ''}));
+  const stockObj = kind==='filled' ? S.filledStock : S.readyStock;
+  const lowObj = kind==='filled' ? S.lowStock.filled : S.lowStock.ready;
+  return CATALOG_FLAT.map(it=>({id:it.key, label:`${it.name} ${it.size}`, val:stockObj[it.key]||0, low:lowObj[it.key]||''}));
+}
+function openBulkStockModal(kind){
+  const items = bulkItemList(kind);
+  const title = kind==='raw' ? 'Raw material' : kind==='filled' ? 'Filled stock' : 'Ready stock';
+  const unit = kind==='raw' ? 'L' : 'pc';
+  showModal(`
+    <h3>Bulk edit — ${title}</h3>
+    <p class="desc" style="margin-top:-6px;">Update quantity and/or low-stock alert for as many items as you like, then save once. Leave a box blank to skip that field.</p>
+    <div style="display:flex;gap:8px;padding:0 0 6px;font-size:10px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.03em;font-weight:700;">
+      <div style="flex:1;">Item</div><div style="width:82px;">Qty (${unit})</div><div style="width:74px;">Alert (${unit})</div>
+    </div>
+    <div style="max-height:48vh;overflow-y:auto;margin-bottom:10px;">
+    ${items.map(it=>`
+      <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border);">
+        <div style="flex:1;min-width:0;font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(it.label)}</div>
+        <input type="number" ${kind==='raw'?'step="0.01"':''} data-bulk-qty="${esc(it.id)}" value="${it.val}" style="width:82px;padding:7px 8px;border:1.5px solid var(--border);border-radius:8px;font-size:12.5px;" />
+        <input type="number" min="0" ${kind==='raw'?'step="0.01"':''} data-bulk-low="${esc(it.id)}" value="${it.low}" style="width:74px;padding:7px 8px;border:1.5px solid var(--border);border-radius:8px;font-size:12.5px;" />
+      </div>`).join('')}
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
+      <button type="button" class="btn btn-primary" id="bulkStockSave">Save all</button>
+    </div>
+  `);
+  document.getElementById('bulkStockSave').addEventListener('click', ()=>{
+    let qtyChanged=false, lowChanged=false;
+    document.querySelectorAll('[data-bulk-qty]').forEach(inp=>{
+      if(inp.value==='') return; // left blank -> skip, no change
+      const id = inp.dataset.bulkQty;
+      const raw = parseFloat(inp.value)||0;
+      const val = kind==='raw' ? raw*1000 : raw; // Liters -> mL for raw material
+      const store = kind==='raw'?S.rawMaterial:kind==='filled'?S.filledStock:S.readyStock;
+      if(store[id]!==val){ store[id]=val; qtyChanged=true; }
+    });
+    document.querySelectorAll('[data-bulk-low]').forEach(inp=>{
+      const id = inp.dataset.bulkLow;
+      const raw = inp.value==='' ? 0 : (parseFloat(inp.value)||0);
+      const val = kind==='raw' ? raw*1000 : raw; // Liters -> mL for raw material
+      const store = kind==='raw'?S.lowStock.raw:kind==='filled'?S.lowStock.filled:S.lowStock.ready;
+      const cur = store[id]||0;
+      if(val>0){ if(cur!==val){ store[id]=val; lowChanged=true; } }
+      else if(cur){ delete store[id]; lowChanged=true; }
+    });
+    if(qtyChanged){
+      const key = kind==='raw'?'app:rawMaterial':kind==='filled'?'app:filledStock':'app:readyStock';
+      safeSet(key, kind==='raw'?S.rawMaterial:kind==='filled'?S.filledStock:S.readyStock);
+      if(kind==='ready') autoAdvanceOrders();
+      if(kind==='filled' || kind==='ready') syncStockTasksFromAlerts();
+    }
+    if(lowChanged) safeSet('app:lowStock', S.lowStock);
+    closeModal();
+    if(!qtyChanged && !lowChanged){ showToast('No changes made'); return; }
+    render(); showToast('Bulk update saved');
+  });
+}
+
+function openLowAlertModal(kind, id, label, unit){
+  const isRaw = kind==='raw';
+  const rawVal = (S.lowStock[kind]||{})[id] || 0;
+  const current = isRaw ? (rawVal ? +(rawVal/1000).toFixed(2) : '') : (rawVal || '');
+  const displayUnit = isRaw ? 'L' : unit;
+  showModal(`
+    <h3>Low-stock alert — ${esc(label)}</h3>
+    <p class="desc" style="margin-top:-6px;">Alert when stock drops this low (0 = off).</p>
+    <div class="field"><label>Alert at (${displayUnit})</label><input id="lowAlertVal" type="number" min="0" ${isRaw?'step="0.01"':''} value="${current}" /></div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
+      <button type="button" class="btn btn-primary" id="lowAlertSave">Save</button>
+    </div>
+  `);
+  document.getElementById('lowAlertSave').addEventListener('click', ()=>{
+    const raw = parseFloat(document.getElementById('lowAlertVal').value)||0;
+    const val = isRaw ? raw*1000 : raw; // Liters -> mL for raw material
+    if(val>0) S.lowStock[kind][id] = val; else delete S.lowStock[kind][id];
+    safeSet('app:lowStock', S.lowStock);
+    closeModal(); render(); showToast('Low-stock alert saved');
+  });
+}
+
+/* ============================= GENERIC STOCK ADJUST (admin) ============================= */
+function openAdjustModal(kind, id, currentVal, label){
+  const isRaw = kind==='raw';
+  const displayVal = isRaw ? +(currentVal/1000).toFixed(2) : currentVal;
+  showModal(`
+    <h3>Adjust — ${esc(label)}</h3>
+    <div class="field"><label>New quantity ${isRaw?'(Liters)':'(pieces)'}</label><input id="adjVal" type="number" ${isRaw?'step="0.01"':''} value="${displayVal}" /></div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
+      <button type="button" class="btn btn-primary" id="adjSave">Save</button>
+    </div>
+  `);
+  document.getElementById('adjSave').addEventListener('click', async ()=>{
+    const raw = parseFloat(document.getElementById('adjVal').value)||0;
+    const val = isRaw ? raw*1000 : raw; // Liters -> mL for raw material
+    let key;
+    if(kind==='raw'){ S.rawMaterial[id]=val; key='app:rawMaterial'; }
+    if(kind==='filled'){ S.filledStock[id]=val; key='app:filledStock'; }
+    if(kind==='ready'){ S.readyStock[id]=val; key='app:readyStock'; }
+    safeSet(key, kind==='raw'?S.rawMaterial:kind==='filled'?S.filledStock:S.readyStock);
+    if(kind==='ready') autoAdvanceOrders();
+    if(kind==='filled' || kind==='ready') syncStockTasksFromAlerts();
+    closeModal(); render(); showToast('Updated');
+  });
+}
+
+/* ============================= CHECK IN/OUT (field roles) ============================= */
+function hasMarkedPresentToday(username){
+  const today = localDateKey(Date.now());
+  return S.attendance.some(a=>a.username===username && localDateKey(a.timestamp)===today);
+}
+function renderCheckin(){
+  const already = hasMarkedPresentToday(S.currentUser.username);
+  const mine = S.attendance.filter(a=>a.username===S.currentUser.username).sort((a,b)=>b.timestamp-a.timestamp);
+  const isFileProtocol = location.protocol === 'file:';
+  const insecure = typeof window.isSecureContext !== 'undefined' && !window.isSecureContext;
+  return `
+  ${isFileProtocol ? `<div class="alert-banner" style="margin-bottom:12px;"><b>⚠ Location can never work this way</b>This file was opened directly from your phone's storage (a <b>file://</b> link). Browsers permanently block GPS access for files opened like this — no setting or fix inside the app can change that. It has to be opened as a normal website link (<b>https://…</b>) instead. Ask whoever set this up to host it online (e.g. free hosting like GitHub Pages/Netlify) and open that link instead of the downloaded file.</div>`
+    : insecure ? `<div class="alert-banner" style="margin-bottom:12px;"><b>⚠ Location won't work here</b>This page needs to be opened over <b>https://</b> for GPS to work. Ask whoever hosts this app to switch it to HTTPS.</div>` : ''}
+  <div class="card" style="text-align:center;padding:30px 18px;">
+    <div style="font-size:13px;color:var(--ink-soft);margin-bottom:10px;">Today</div>
+    ${already ? `
+      <div style="font-size:20px;font-weight:800;color:var(--success);margin-bottom:4px;">✅ Marked present today</div>
+      <p class="desc" style="margin:6px 0 0;">You can mark attendance again tomorrow.</p>
+    ` : `
+      <button class="btn btn-primary" id="checkBtn" style="padding:14px 30px;font-size:15px;width:auto;" ${isFileProtocol?'disabled':''}>📍 Mark present</button>
+      <div id="geoMsg" class="mono" style="font-size:11.5px;color:var(--ink-soft);margin-top:10px;"></div>
+    `}
+  </div>
+  <div class="card">
+    <h2>Your attendance history</h2>
+    ${mine.length===0?`<div class="empty">Nothing marked yet.</div>`:`
+    <table><thead><tr><th>Date</th><th>Time</th><th>Location</th></tr></thead><tbody>
+    ${mine.slice(0,30).map(a=>{
+      const hasLoc = a.lat||a.lng;
+      const locCell = hasLoc?`<a href="https://www.google.com/maps?q=${a.lat},${a.lng}" target="_blank" rel="noopener" class="mono" style="color:var(--primary);">📍 view</a>`:`<span class="mono">no location</span>`;
+      return `<tr><td class="mono">${esc(dateHeading(a.timestamp))}</td><td class="mono">${fmtTime(a.timestamp)}</td><td>${locCell}</td></tr>`;
+    }).join('')}
+    </tbody></table>`}
+  </div>`;
+}
+function recordPresent(lat, lng, note){
+  const entry = {
+    id: uid(), username: S.currentUser.username, name: S.currentUser.name, type:'present',
+    lat: lat, lng: lng, timestamp: Date.now(), note: note||''
+  };
+  S.attendance.push(entry);
+  savePartitionForItem('attendance', entry);
+  render(); showToast('Marked present ✅');
+}
+function bindCheckin(){
+  const btn = document.getElementById('checkBtn');
+  if(!btn) return; // already marked present today — nothing to bind
+  const attemptGetPosition = (opts)=> new Promise((resolve,reject)=>{
+    navigator.geolocation.getCurrentPosition(resolve, reject, opts);
+  });
+  const requestLocation = async (msg)=>{
+    // Try a precise GPS fix first; if that fails or times out, retry once
+    // with a coarser network/wifi-based fix — this alone recovers location
+    // for a lot of indoor/cold-GPS cases that would otherwise fail outright.
+    try{
+      if(msg) msg.textContent = 'Getting a precise GPS fix…';
+      const pos = await attemptGetPosition({enableHighAccuracy:true, timeout:18000, maximumAge:0});
+      recordPresent(pos.coords.latitude, pos.coords.longitude, '');
+      return;
+    }catch(err1){
+      if(err1 && err1.code===1){ // permission denied — no point retrying
+        if(msg) msg.textContent = 'Location permission denied. Marked present without location.';
+        recordPresent(0, 0, 'geo-error-1');
+        return;
+      }
+      if(msg) msg.textContent = 'Retrying with a faster, lower-accuracy fix…';
+      try{
+        const pos = await attemptGetPosition({enableHighAccuracy:false, timeout:12000, maximumAge:30000});
+        recordPresent(pos.coords.latitude, pos.coords.longitude, '');
+        return;
+      }catch(err2){
+        const reason = err2 && err2.code===1 ? 'Location permission denied.' : err2 && err2.code===2 ? "GPS/location seems off — check phone Location settings." : 'Location timed out.';
+        if(msg) msg.textContent = `${reason} Marked present without location.`;
+        recordPresent(0, 0, 'geo-error-'+(err2&&err2.code));
+      }
+    }
+  };
+  btn.addEventListener('click', ()=>{
+    const msg = document.getElementById('geoMsg');
+    if(location.protocol === 'file:'){
+      if(msg) msg.textContent = 'This file:// page can never get location — open the hosted https:// link instead.';
+      return;
+    }
+    if(!window.isSecureContext){
+      if(msg) msg.textContent = 'Needs https:// for location — marked without it.';
+      recordPresent(0, 0, 'insecure-context'); return;
+    }
+    if(!navigator.geolocation){
+      if(msg) msg.textContent='Location not supported on this device — marking without it.';
+      recordPresent(0, 0, 'no-geo-support'); return;
+    }
+    // Pre-check permission state where supported, so we can tell the person
+    // exactly what's going on instead of guessing from a generic error.
+    if(navigator.permissions && navigator.permissions.query){
+      navigator.permissions.query({name:'geolocation'}).then(status=>{
+        if(status.state==='denied'){
+          if(msg) msg.textContent = 'Location blocked for this site — open your browser\'s site settings to allow it, then try again.';
+          recordPresent(0, 0, 'permission-denied-cached');
+          return;
+        }
+        if(msg) msg.textContent = status.state==='prompt' ? 'Waiting for you to allow location…' : 'Getting your location…';
+        requestLocation(msg);
+      }).catch(()=>{
+        if(msg) msg.textContent = 'Waiting for location…';
+        requestLocation(msg);
+      });
+    } else {
+      if(msg) msg.textContent = 'Waiting for location…';
+      requestLocation(msg);
+    }
+  });
+}
+
+/* ============================= ATTENDANCE MAP (admin) ============================= */
+function dateKeyToTs(dateKey){
+  const [y,m,d] = dateKey.split('-').map(Number);
+  return new Date(y, m-1, d, 12).getTime();
+}
+// Day-wise list of every employee, marked Present if they have any
+// attendance record that day (works with both new 'present' entries and
+// any legacy 'checkin'/'checkout' records).
+function computePresenceByDate(){
+  const byDate = {};
+  S.attendance.forEach(a=>{
+    const dk = localDateKey(a.timestamp);
+    byDate[dk] = byDate[dk] || new Set();
+    byDate[dk].add(a.username);
+  });
+  const relevantUsers = S.users.filter(u=>u.role!=='admin');
+  return Object.keys(byDate).sort().reverse().slice(0,30).map(dk=>({
+    dateKey: dk,
+    dateTs: dateKeyToTs(dk),
+    entries: relevantUsers.map(u=>({ name:u.name, present: byDate[dk].has(u.username) }))
+  }));
+}
+function renderAttendanceMap(){
+  const presence = computePresenceByDate();
+  const loginSections = groupByDate(S.loginLog.slice().sort((a,b)=>b.at-a.at).slice(0,100), l=>l.at);
+  return `
+  <div class="card">
+    <h2>Attendance</h2>
+    <p class="desc">Day-wise presence — who marked attendance each day.</p>
+    ${presence.length===0?`<div class="empty">No attendance marked yet.</div>`:
+      presence.map(p=>dateGroupHeaderHtml(dateHeading(p.dateTs))+`<table><thead><tr><th>Employee</th><th>Status</th></tr></thead><tbody>
+      ${p.entries.map(e=>`<tr><td>${esc(e.name)}</td><td>${e.present?'<span class="badge badge-approved">Present</span>':'<span class="mono">—</span>'}</td></tr>`).join('')}
+      </tbody></table>`).join('')}
+  </div>
+  <div class="card">
+    <h2>Login activity</h2>
+    <p class="desc">Which employee logged in, and when.</p>
+    ${S.loginLog.length===0?`<div class="empty">No logins recorded yet.</div>`:
+      loginSections.map(sec=>dateGroupHeaderHtml(sec.heading)+`<table><thead><tr><th>Name</th><th>Role</th><th>Time</th></tr></thead><tbody>
+      ${sec.items.map(l=>`<tr><td>${esc(l.name)}</td><td class="mono">${esc(ROLES[l.role]?ROLES[l.role].label:l.role)}</td><td class="mono">${fmtTime(l.at)}</td></tr>`).join('')}
+      </tbody></table>`).join('')}
+  </div>
+  <div class="card">
+    <h2>Raw activity log</h2>
+    <p class="desc">Every attendance stamp with GPS location.</p>
+    ${S.attendance.length===0?`<div class="empty">No attendance activity yet.</div>`:
+      groupByDate(S.attendance.slice().sort((a,b)=>b.timestamp-a.timestamp), a=>a.timestamp).map(s=>dateGroupHeaderHtml(s.heading)+`<table><thead><tr><th>Name</th><th>Time</th><th>Location</th></tr></thead><tbody>
+      ${s.items.map(a=>{
+        const hasLoc = a.lat||a.lng;
+        const locCell = hasLoc ? `<a href="https://www.google.com/maps?q=${a.lat},${a.lng}" target="_blank" rel="noopener" class="mono" style="color:var(--primary);">📍 ${a.lat.toFixed(4)}, ${a.lng.toFixed(4)}</a>` : `<span class="mono">no location</span>`;
+        return `<tr><td>${esc(a.name)}</td><td class="mono">${fmtTime(a.timestamp)}</td><td>${locCell}</td></tr>`;
+      }).join('')}
+      </tbody></table>`).join('')}
+  </div>`;
+}
+function bindAttendanceMap(){ /* no-op — map removed, location is a Google Maps link per row */ }
+
+/* ============================= MODAL ============================= */
+// Centered red alert dialog — replaces the native browser showAlert() everywhere,
+// since a browser-native popup looks jarring and inconsistent with the app.
+function showAlert(message){
+  const existing = document.getElementById('appAlertOverlay');
+  if(existing) existing.remove(); // don't stack multiple alerts
+  const overlay = document.createElement('div');
+  overlay.className = 'app-alert-overlay';
+  overlay.id = 'appAlertOverlay';
+  overlay.innerHTML = `
+    <div class="app-alert-box">
+      <div class="app-alert-icon">⚠️</div>
+      <div class="app-alert-message">${esc(message)}</div>
+      <button type="button" class="app-alert-ok-btn" id="appAlertOkBtn">OK</button>
+    </div>`;
+  const host = document.querySelector('.device-screen') || document.body;
+  host.appendChild(overlay);
+  const close = ()=>{ overlay.remove(); };
+  overlay.addEventListener('click', (e)=>{ if(e.target===overlay) close(); });
+  overlay.querySelector('#appAlertOkBtn').addEventListener('click', close);
+}
+function showModal(innerHtml){
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'modalOverlay';
+  overlay.innerHTML = `<div class="modal"><div class="sheet-handle"></div>${innerHtml}</div>`;
+  const host = document.querySelector('.device-screen') || document.body;
+  host.appendChild(overlay);
+  overlay.addEventListener('click', (e)=>{ if(e.target===overlay) closeModal(); });
+  const cancelBtn = overlay.querySelector('#cancelModal');
+  if(cancelBtn) cancelBtn.addEventListener('click', closeModal);
+}
+function closeModal(){ const o = document.getElementById('modalOverlay'); if(o) o.remove(); }
+
+/* ============================= INIT ============================= */
+/* ============================= DEVICE PERMISSIONS (ask once, up front) ============================= */
+function primeDevicePermissions(){
+  try{
+    if('Notification' in window && Notification.permission==='default'){
+      Notification.requestPermission().catch(()=>{});
+    }
+  }catch(e){}
+  try{
+    if(navigator.geolocation){
+      navigator.geolocation.getCurrentPosition(()=>{}, ()=>{}, {timeout:8000, maximumAge:600000});
+    }
+  }catch(e){}
+  primeAudioUnlock();
+}
+// Browsers block audio (our notification "ring") until the page has had a
+// real user gesture — unlock it on the very first tap/click anywhere.
+let audioUnlocked = false;
+function primeAudioUnlock(){
+  if(audioUnlocked) return;
+  const unlock = ()=>{
+    if(audioUnlocked) return;
+    try{
+      if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if(audioCtx.state==='suspended') audioCtx.resume();
+      audioUnlocked = true;
+    }catch(e){}
+    document.removeEventListener('click', unlock);
+    document.removeEventListener('touchstart', unlock);
+  };
+  document.addEventListener('click', unlock, {once:true});
+  document.addEventListener('touchstart', unlock, {once:true});
+}
+
+/* ============================= NOTIFICATION "RING" ============================= */
+let lastKnownNotifCount = 0;
+let audioCtx = null;
+function playNotifRing(){
+  try{
+    if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const now = audioCtx.currentTime;
+    [0, 0.18].forEach(off=>{
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine'; osc.frequency.value = 880;
+      gain.gain.setValueAtTime(0.0001, now+off);
+      gain.gain.exponentialRampToValueAtTime(0.18, now+off+0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now+off+0.16);
+      osc.connect(gain); gain.connect(audioCtx.destination);
+      osc.start(now+off); osc.stop(now+off+0.18);
+    });
+  }catch(e){}
+}
+function checkForNewNotifRing(){
+  if(!S.currentUser) return;
+  const count = myNotifCount(getStockAlerts());
+  if(count > lastKnownNotifCount) playNotifRing();
+  lastKnownNotifCount = count;
+}
+
+/* ============================= INIT ============================= */
+let loadAllPromise = null;
+(async function init(){
+  loadOfflineQueue();
+  render();
+  primeDevicePermissions();
+  loadAllPromise = loadAll();
+  await loadAllPromise;
+  render();
+  if(S.currentUser){ primeDevicePermissions(); lastKnownNotifCount = myNotifCount(getStockAlerts()); }
+  flushOfflineQueue(); // in case saves were queued from a previous session
+  window.addEventListener('online', ()=>{ showToast('Back online — syncing…'); flushOfflineQueue(); });
+  window.addEventListener('offline', ()=>{ showToast('No connection — changes will be saved and synced automatically', true); });
+  startSyncPolling(4000);
+  startSessionExpiryWatch();
+  setInterval(checkForNewNotifRing, 5000);
+})();
+</script>
+</body>
+</html>
