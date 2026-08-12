@@ -395,7 +395,7 @@
 /* ============================= PRODUCT CATALOG ============================= */
 /* ============================= BRANDING ============================= */
 const COMPANY_LOGO = "https://static.wixstatic.com/media/f34ac6_16010ac0fe9c48739c4860abefec3cbb~mv2.png/v1/fill/w_410,h_409,al_c,lg_1,q_85,enc_avif,quality_auto/M%20A%20Products%20INDIA%20Logo.png";
-const APP_BUILD = "2026-08-11-nopush1";
+const APP_BUILD = "2026-08-11-dispatchflow1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -514,6 +514,23 @@ function getCaseSize(name, size){
   return DEFAULT_CASE_SIZE[norm] || null;
 }
 function itemKey(name,size){ return name+'__'+size; }
+// Transport names typed anywhere get remembered so the dropdown grows on its own.
+function rememberTransport(name){
+  name = (name||'').trim();
+  if(!name) return;
+  if(!S.transports.some(t=>t.toLowerCase()===name.toLowerCase())){
+    S.transports = [...S.transports, name];
+    safeSet('app:transports', S.transports);
+  }
+}
+// Party details are looked up LIVE from the customer record (not a frozen
+// snapshot on the order) — editing a customer's city/transport/etc. in Team
+// & Customers instantly reflects on every one of their orders, past and
+// future, and on the public tracking link too.
+function liveCustomerFor(order){
+  if(!order.customerId) return null;
+  return S.customers.find(c=>c.id===order.customerId) || null;
+}
 // Friendly, human-readable order number for display/receipts only — NOT
 // used for access control. The actual tracking link is secured by the
 // order's real (unguessable) id; this is just a nicer label to show people.
@@ -629,7 +646,7 @@ const S = {
   loaded:false,
   users:[], orders:[], customers:[], attendance:[], tasks:[], loginLog:[],
   rawMaterial:{}, filledStock:{}, readyStock:{}, expenses:[], activityLog:[], stockTasks:[], dominoPrints:[],
-  lowStock:{raw:{}, filled:{}, ready:{}}, rolePermissions:{}, customRoles:[], catalogItems:[],
+  lowStock:{raw:{}, filled:{}, ready:{}}, rolePermissions:{}, customRoles:[], catalogItems:[], transports:[],
   _partitionKeysSeen:{orders:new Set(), activityLog:new Set(), attendance:new Set(), expenses:new Set(), dominoPrints:new Set(), loginLog:new Set()},
   currentUser:null, view:'home', stockView:'raw', notifOpen:false, moreOpen:false, profileOpen:false, toast:null,
   postLoginPhase:null, pendingUser:null, postLoginLoadingStep:0,
@@ -1024,6 +1041,7 @@ function applyServerData(data){
   applyRolePermissionsToROLES();
   S.catalogItems = (data.catalogItems && data.catalogItems.length) ? data.catalogItems : flattenDefaultCatalog();
   rebuildCatalogFlat();
+  S.transports = data.transports || [];
 }
 
 async function loadAll(){
@@ -1346,12 +1364,12 @@ function activityAmount(e){
 }
 function applyActivityForward(e){
   if(e.kind==='purchase'){ S.rawMaterial[e.cat] = (S.rawMaterial[e.cat]||0) + e.ml; }
-  if(e.kind==='filling'){ S.rawMaterial[e.rawCat] = (S.rawMaterial[e.rawCat]||0) - (e.qty*e.mlPer); S.filledStock[e.key] = (S.filledStock[e.key]||0) + e.qty; }
+  if(e.kind==='filling'){ const mlUsed = e.actualMl!=null ? e.actualMl : (e.qty*e.mlPer); S.rawMaterial[e.rawCat] = (S.rawMaterial[e.rawCat]||0) - mlUsed; S.filledStock[e.key] = (S.filledStock[e.key]||0) + e.qty; }
   if(e.kind==='packaging'){ S.filledStock[e.key] = (S.filledStock[e.key]||0) - e.qty; S.readyStock[e.key] = (S.readyStock[e.key]||0) + e.qty; }
 }
 function revertActivity(e){
   if(e.kind==='purchase'){ S.rawMaterial[e.cat] = (S.rawMaterial[e.cat]||0) - e.ml; }
-  if(e.kind==='filling'){ S.rawMaterial[e.rawCat] = (S.rawMaterial[e.rawCat]||0) + (e.qty*e.mlPer); S.filledStock[e.key] = (S.filledStock[e.key]||0) - e.qty; }
+  if(e.kind==='filling'){ const mlUsed = e.actualMl!=null ? e.actualMl : (e.qty*e.mlPer); S.rawMaterial[e.rawCat] = (S.rawMaterial[e.rawCat]||0) + mlUsed; S.filledStock[e.key] = (S.filledStock[e.key]||0) - e.qty; }
   if(e.kind==='packaging'){ S.filledStock[e.key] = (S.filledStock[e.key]||0) + e.qty; S.readyStock[e.key] = (S.readyStock[e.key]||0) - e.qty; }
 }
 function saveAfterActivityChange(entry){
@@ -1396,11 +1414,19 @@ function bindLogView(){
 }
 function openEditLogModal(e){
   const isPurchase = e.kind==='purchase';
+  const isFilling = e.kind==='filling';
+  const currentActualL = isFilling ? ((e.actualMl!=null ? e.actualMl : (e.qty*e.mlPer))/1000).toFixed(2) : null;
+  const standardL = isFilling ? ((e.qty*e.mlPer)/1000).toFixed(2) : null;
   showModal(`
     <h3>Edit — ${esc(activityLabel(e))}</h3>
     <div class="field"><label>New quantity ${isPurchase?'(Liters)':'(pieces)'}</label>
       <input id="editLogVal" type="number" min="0" ${isPurchase?`max="${MAX_PURCHASE_L}" step="0.01"`:`max="${MAX_PC_ENTRY}"`} value="${isPurchase?(e.ml/1000):e.qty}" />
     </div>
+    ${isFilling ? `
+    <div class="field"><label>Actual oil used (Liters)</label>
+      <input id="editLogActualL" type="number" min="0" step="0.01" value="${currentActualL}" />
+      <div class="mono" style="margin-top:6px;">Standard for this qty: ${standardL} L. Adjust here if more/less oil was actually used (spillage, wastage, etc.) — the difference is reflected in raw material stock.</div>
+    </div>` : ''}
     <div class="modal-actions">
       <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
       <button type="button" class="btn btn-primary" id="editLogSave">Save</button>
@@ -1411,7 +1437,15 @@ function openEditLogModal(e){
     const cap = isPurchase ? MAX_PURCHASE_L : MAX_PC_ENTRY;
     if(val>cap){ alert(`Max allowed is ${cap} ${isPurchase?'L':'pc'} per entry.`); return; }
     revertActivity(e);
-    if(isPurchase){ e.ml = val*1000; } else { e.qty = Math.round(val); }
+    if(isPurchase){ e.ml = val*1000; }
+    else {
+      e.qty = Math.round(val);
+      if(isFilling){
+        const actualLInput = document.getElementById('editLogActualL');
+        const actualL = actualLInput ? parseFloat(actualLInput.value) : NaN;
+        e.actualMl = !isNaN(actualL) && actualL>=0 ? actualL*1000 : null; // null = fall back to standard qty*mlPer
+      }
+    }
     applyActivityForward(e);
     saveAfterActivityChange(e);
     closeModal(); render(); showToast('Entry updated');
@@ -1781,17 +1815,94 @@ function bindShell(){
 function orderIsFullyStocked(o){
   return o.items.every(d => (S.readyStock[d.key]||0) >= 0);
 }
-// Call after any stock-affecting action so orders auto-advance to "ready"
-// the moment every item on them is actually in stock.
+// Orders now move Processing -> Ready only through explicit fulfillment
+// tracking — either every item gets individually ticked "packed" (see
+// toggleItemPacked), or admin uses "Mark Ready" to force it and cancel
+// whatever's left unpacked. Just having enough overall stock is no longer
+// enough on its own — it's not proof this specific order was packed.
 function autoAdvanceOrders(){
   let changed = false;
   const touchedDays = new Set();
   S.orders.forEach(o=>{
-    if(o.status==='processing' && orderIsFullyStocked(o)){ o.status='ready'; changed=true; touchedDays.add(localDateKey(o.createdAt)); }
+    if(o.status==='processing' && o.items.length && o.items.every(it=>it.packed || it.cancelled)){
+      o.status='ready'; changed=true; touchedDays.add(localDateKey(o.createdAt));
+    }
   });
   touchedDays.forEach(d=>savePartitionDay('orders', d));
   return changed;
 }
+// Toggles one order item's "packed" flag (packaging team ticking items off
+// as they physically pack them). When every item ends up packed or
+// cancelled, the order automatically advances to "Ready" on its own.
+function toggleItemPacked(orderId, itemIdx){
+  const o = S.orders.find(x=>x.id===orderId); if(!o) return;
+  const it = o.items[itemIdx]; if(!it || it.cancelled) return;
+  it.packed = !it.packed;
+  if(o.status==='processing' && o.items.every(x=>x.packed || x.cancelled)){
+    o.status = 'ready';
+    showToast('All items packed — order is Ready ✅');
+  }
+  savePartitionForItem('orders', o);
+  render();
+}
+// Admin can jump straight to Ready before every item is individually ticked
+// — whatever wasn't packed yet gets marked Cancelled. Undoable: reverses
+// only the items THIS action cancelled, and puts the order back to Processing.
+function markOrderReadyNow(orderId){
+  const o = S.orders.find(x=>x.id===orderId); if(!o) return;
+  if(!confirm('Mark this order Ready now? Any item not yet packed will be marked Cancelled.')) return;
+  o.items.forEach(it=>{
+    if(!it.packed && !it.cancelled){ it.cancelled = true; it.autoCancelledByReady = true; }
+  });
+  o.status = 'ready';
+  savePartitionForItem('orders', o);
+  render();
+  showToast('Order marked Ready — unpacked items cancelled (undoable)');
+}
+function undoMarkOrderReady(orderId){
+  const o = S.orders.find(x=>x.id===orderId); if(!o) return;
+  o.items.forEach(it=>{
+    if(it.autoCancelledByReady){ it.cancelled = false; delete it.autoCancelledByReady; }
+  });
+  o.status = 'processing';
+  savePartitionForItem('orders', o);
+  render();
+  showToast('Undone — back to Processing');
+}
+
+function openDispatchModal(orderId){
+  const o = S.orders.find(x=>x.id===orderId); if(!o) return;
+  const cust = liveCustomerFor(o);
+  const prefillTransport = (cust && cust.transport) || '';
+  showModal(`
+    <h3>Processed & Dispatched</h3>
+    <p class="desc" style="margin-top:-6px;">Confirm transport details to complete this order.</p>
+    <div class="field"><label>Transport Name</label>
+      <input id="dispatchTransport" list="dispatchTransportList" value="${esc(prefillTransport)}" placeholder="e.g. XYZ Roadways" required />
+      <datalist id="dispatchTransportList">${S.transports.map(t=>`<option value="${esc(t)}"></option>`).join('')}</datalist>
+    </div>
+    <div class="field"><label>Total No. of Cases</label><input id="dispatchCases" type="number" min="0" placeholder="e.g. 12" /></div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
+      <button type="button" class="btn btn-primary" id="dispatchBookedBtn">Booked</button>
+    </div>
+  `);
+  document.getElementById('dispatchBookedBtn').addEventListener('click', ()=>{
+    const transportName = document.getElementById('dispatchTransport').value.trim();
+    const casesVal = document.getElementById('dispatchCases').value.trim();
+    if(!transportName){ alert('Enter a transport name.'); return; }
+    rememberTransport(transportName);
+    o.transportName = transportName;
+    o.totalCases = casesVal ? parseInt(casesVal) : null;
+    o.dispatchedAt = Date.now();
+    o.status = 'processed';
+    o.processedAt = Date.now(); // tracking link expires 7 days after this
+    savePartitionForItem('orders', o);
+    closeModal(); render();
+    showToast('Order Processed & Dispatched ✅');
+  });
+}
+
 function setOrderStatus(id, status){
   const o = S.orders.find(x=>x.id===id); if(!o) return;
   let shortItems = [];
@@ -2503,39 +2614,56 @@ function countPresentToday(){
 }
 
 /* ============================= ORDERS ============================= */
-const ORDER_STAGE_LABEL = {pending:'New', processing:'Processing', ready:'Ready', processed:'Processed', rejected:'Rejected'};
+const ORDER_STAGE_LABEL = {pending:'New', processing:'Processing', ready:'Ready', processed:'Processed & Dispatched', rejected:'Rejected'};
 function orderDisplayLabel(o){
   const role = S.currentUser.role;
   if(role==='admin' || role==='manager') return o.customerName;
-  return o.customerCity ? `📍 ${o.customerCity}` : '📍 City not set';
+  const cust = liveCustomerFor(o);
+  const city = (cust && cust.city) || o.customerCity;
+  const transport = (cust && cust.transport) || o.transportName;
+  const parts = [];
+  parts.push(city ? `📍 ${city}` : '📍 City not set');
+  if(transport) parts.push(`🚚 ${transport}`);
+  return parts.join(' · ');
 }
 function renderOrderTile(o){
   const isAdmin = S.currentUser.role==='admin';
+  const canTogglePacked = isAdmin || S.currentUser.role==='packaging';
+  const showPackChecklist = o.status==='processing';
   return `<div class="order-tile">
     <div class="ot-top"><span class="ot-name">${esc(orderDisplayLabel(o))}${o.source==='website'?' <span class="mono" style="font-weight:400;">🌐 Website</span>':''}</span><span class="badge badge-${o.status}">${esc(ORDER_STAGE_LABEL[o.status]||o.status)}</span></div>
-    <div class="ot-items">${o.items.map(i=>{
+    <div class="ot-items">${o.items.map((i,idx)=>{
       const it = findItem(i.key);
       const caseSize = it ? it.caseSize : null;
+      const qtyLabel = `${esc(i.name)} ${esc(i.size)} <span class="mono">×${fmtQtyPreferCase(i.qty, caseSize)}</span>`;
+      if(i.cancelled){
+        return `<span style="color:var(--ink-soft);text-decoration:line-through;">✖ ${qtyLabel} <i>(cancelled)</i></span>`;
+      }
+      if(showPackChecklist){
+        const packBtn = canTogglePacked ? `<button type="button" class="btn btn-sm ${i.packed?'btn-success':'btn-outline'}" data-toggle-packed="${o.id}|${idx}" style="padding:2px 8px;font-size:11px;margin-left:6px;">${i.packed?'✔ Packed':'Mark packed'}</button>` : (i.packed?' <span style="color:var(--success);">✔ Packed</span>':'');
+        return `${i.packed?'<span style="color:var(--success);">✔</span>':'⬜'} ${qtyLabel}${packBtn}`;
+      }
       const stockNow = S.readyStock[i.key]||0;
       let avail, shortQty;
       if(!o.stockDeducted){
-        // Not accepted yet — this is a live PREVIEW only, nothing has been reserved/deducted.
         avail = stockNow >= i.qty;
         shortQty = avail ? 0 : (i.qty - Math.max(stockNow,0));
       } else {
-        // Already accepted — this order's own qty is already baked into current stock.
         avail = stockNow >= 0;
         shortQty = avail ? 0 : -stockNow;
       }
       const mark = avail ? '<span style="color:var(--success);">✔</span>' : `<span style="color:var(--danger);">✘ (short by ${fmtQtyPreferCase(shortQty, caseSize)})</span>`;
-      return `${mark} ${esc(i.name)} ${esc(i.size)} <span class="mono">×${fmtQtyPreferCase(i.qty, caseSize)}</span>`;
+      return `${mark} ${qtyLabel}`;
     }).join('<br/>')}</div>
+    ${o.transportName?`<div class="ot-meta"><b>🚚 ${esc(o.transportName)}</b>${o.totalCases?` · ${o.totalCases} cases`:''}${o.dispatchedAt?` · ${fmtDate(o.dispatchedAt)}`:''}</div>`:''}
     <div class="ot-meta">${o.orderNumber?`#${esc(o.orderNumber)} · `:''}by ${esc(o.createdBy)} · ${fmtTime(o.createdAt)}</div>
     <div class="row-actions">
       <button class="btn btn-sm btn-outline" data-track-link="${o.id}">🔗 Track link</button>
       ${isAdmin?`
       ${o.status==='pending'?`<button class="btn btn-sm btn-success" data-approve-order="${o.id}">Accept</button><button class="btn btn-sm btn-danger" data-reject-order="${o.id}">Reject</button>`:''}
-      ${o.status==='ready'?`<button class="btn btn-sm btn-success" data-process-order="${o.id}">Mark processed</button>`:''}
+      ${o.status==='processing'?`<button class="btn btn-sm btn-outline" data-mark-ready-now="${o.id}">Mark Ready</button>`:''}
+      ${o.status==='ready' && o.items.some(it=>it.autoCancelledByReady)?`<button class="btn btn-sm btn-outline" data-undo-ready="${o.id}">↩ Undo Ready</button>`:''}
+      ${o.status==='ready'?`<button class="btn btn-sm btn-success" data-dispatch-order="${o.id}">Processed &amp; Dispatched</button>`:''}
       ${(o.status==='pending'||o.status==='processing')?`<button class="btn btn-sm btn-outline" data-edit-order="${o.id}">Edit</button>`:''}
       <button class="btn btn-sm btn-outline" data-del-order="${o.id}">Delete</button>
       `:''}
@@ -2606,7 +2734,13 @@ function bindOrderRowActions(closeAfter){
   }));
   document.querySelectorAll('[data-approve-order]').forEach(b=>b.addEventListener('click', ()=>{ setOrderStatus(b.dataset.approveOrder,'processing'); if(closeAfter) closeModal(); render(); }));
   document.querySelectorAll('[data-reject-order]').forEach(b=>b.addEventListener('click', ()=>{ setOrderStatus(b.dataset.rejectOrder,'rejected'); if(closeAfter) closeModal(); render(); }));
-  document.querySelectorAll('[data-process-order]').forEach(b=>b.addEventListener('click', ()=>{ setOrderStatus(b.dataset.processOrder,'processed'); if(closeAfter) closeModal(); render(); }));
+  document.querySelectorAll('[data-toggle-packed]').forEach(b=>b.addEventListener('click', ()=>{
+    const [orderId, idx] = b.dataset.togglePacked.split('|');
+    toggleItemPacked(orderId, parseInt(idx));
+  }));
+  document.querySelectorAll('[data-mark-ready-now]').forEach(b=>b.addEventListener('click', ()=>{ markOrderReadyNow(b.dataset.markReadyNow); }));
+  document.querySelectorAll('[data-undo-ready]').forEach(b=>b.addEventListener('click', ()=>{ undoMarkOrderReady(b.dataset.undoReady); }));
+  document.querySelectorAll('[data-dispatch-order]').forEach(b=>b.addEventListener('click', ()=>{ openDispatchModal(b.dataset.dispatchOrder); if(closeAfter) closeModal(); }));
   document.querySelectorAll('[data-edit-order]').forEach(b=>b.addEventListener('click', ()=>{
     const o = S.orders.find(x=>x.id===b.dataset.editOrder); if(o) openOrderModal(o);
   }));
@@ -2996,6 +3130,10 @@ function openCustomerModal(existingCust){
       <div class="field"><label>City</label><input id="custCity" value="${existingCust?esc(existingCust.city||''):''}" placeholder="e.g. Jaipur" required /></div>
       <div class="field"><label>Address</label><textarea id="custAddr" rows="2">${existingCust?esc(existingCust.address||''):''}</textarea></div>
       <div class="field"><label>GSTIN (optional)</label><input id="custGstin" value="${existingCust?esc(existingCust.gstin||''):''}" placeholder="22AAAAA0000A1Z5" style="text-transform:uppercase;" /></div>
+      <div class="field"><label>Preferred Transport (optional)</label>
+        <input id="custTransport" list="custTransportList" value="${existingCust?esc(existingCust.transport||''):''}" placeholder="e.g. XYZ Roadways" />
+        <datalist id="custTransportList">${S.transports.map(t=>`<option value="${esc(t)}"></option>`).join('')}</datalist>
+      </div>
       <div class="modal-actions">
         <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
         <button type="submit" class="btn btn-primary">${existingCust?'Save changes':'Add customer'}</button>
@@ -3012,7 +3150,9 @@ function openCustomerModal(existingCust){
       city: document.getElementById('custCity').value.trim(),
       address: document.getElementById('custAddr').value.trim(),
       gstin: document.getElementById('custGstin').value.trim().toUpperCase(),
+      transport: document.getElementById('custTransport').value.trim(),
     };
+    rememberTransport(fields.transport);
     if(existingCust){
       Object.assign(existingCust, fields);
     } else {
@@ -3708,14 +3848,20 @@ function openFillingModal(prefillKey, prefillQty){
     if(qty<=0) return;
     if(qty>MAX_PC_ENTRY){ alert(`Max ${MAX_PC_ENTRY} pc per entry.`); return; }
     const mlNeeded = qty*it.ml;
-    S.rawMaterial[it.rawCat] = (S.rawMaterial[it.rawCat]||0) - mlNeeded;
+    const rawAvail = S.rawMaterial[it.rawCat]||0;
+    if(rawAvail < mlNeeded){
+      const shortL = ((mlNeeded-rawAvail)/1000).toFixed(2);
+      alert(`Not enough ${it.rawCat} — short by ${shortL} L. Record a purchase first.`);
+      return;
+    }
+    S.rawMaterial[it.rawCat] = rawAvail - mlNeeded;
     S.filledStock[key] = (S.filledStock[key]||0) + qty;
     Promise.all([safeSet('app:rawMaterial',S.rawMaterial), safeSet('app:filledStock',S.filledStock)]);
     logActivity({kind:'filling', key, itemLabel:`${it.name} ${it.size}`, qty, rawCat:it.rawCat, mlPer:it.ml});
     completeStockTasksForItem('filled', key);
     syncStockTasksFromAlerts();
     closeModal(); render();
-    showToast(S.rawMaterial[it.rawCat]<0 ? `Recorded — ⚠ ${it.rawCat} raw material now short` : 'Filling recorded');
+    showToast('Filling recorded');
   });
 }
 
@@ -3788,7 +3934,12 @@ function openPackagingModal(prefillKey, prefillQty){
     const qty = (it && it.caseSize ? cases*it.caseSize : 0) + pcs;
     if(qty<=0){ alert('Enter a quantity (cases and/or pieces).'); return; }
     if(qty>MAX_PC_ENTRY){ alert(`Max ${MAX_PC_ENTRY} pc per entry.`); return; }
-    S.filledStock[key] = (S.filledStock[key]||0) - qty;
+    const filledAvail = S.filledStock[key]||0;
+    if(filledAvail < qty){
+      alert(`${it.name} ${it.size} is short by ${qty-filledAvail} pc in Filled stock — fill more before packing.`);
+      return;
+    }
+    S.filledStock[key] = filledAvail - qty;
     S.readyStock[key] = (S.readyStock[key]||0) + qty;
     Promise.all([safeSet('app:filledStock',S.filledStock), safeSet('app:readyStock',S.readyStock)]);
     logActivity({kind:'packaging', key, itemLabel: it?`${it.name} ${it.size}`:key, qty, note});
@@ -3796,7 +3947,7 @@ function openPackagingModal(prefillKey, prefillQty){
     autoAdvanceOrders();
     syncStockTasksFromAlerts();
     closeModal(); render();
-    showToast(S.filledStock[key]<0 ? 'Recorded — ⚠ filled stock now short' : 'Packaging recorded');
+    showToast('Packaging recorded');
   });
 }
 
