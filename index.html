@@ -360,6 +360,23 @@
     position:absolute;inset:0;background:rgba(10,16,32,0.5);display:flex;align-items:flex-end;justify-content:center;
     z-index:100;
   }
+  .app-alert-overlay{
+    position:absolute;inset:0;background:rgba(10,16,32,0.6);display:flex;align-items:center;justify-content:center;
+    z-index:500;padding:20px;
+  }
+  .app-alert-box{
+    background:#fff;border-radius:16px;padding:22px 20px;max-width:320px;width:100%;text-align:center;
+    border:2px solid var(--danger);box-shadow:0 20px 50px -12px rgba(216,72,59,0.4);
+    animation:appAlertPop .18s cubic-bezier(.2,.8,.3,1);
+  }
+  @keyframes appAlertPop{ from{transform:scale(0.9);opacity:0;} to{transform:scale(1);opacity:1;} }
+  .app-alert-icon{font-size:32px;margin-bottom:10px;}
+  .app-alert-message{font-size:14px;color:var(--ink);line-height:1.5;margin-bottom:18px;white-space:pre-line;}
+  .app-alert-ok-btn{
+    background:var(--danger);color:#fff;border:none;border-radius:11px;padding:11px 32px;
+    font-weight:800;font-size:14px;cursor:pointer;width:100%;
+  }
+  .app-alert-ok-btn:active{transform:scale(0.96);}
   .modal{
     background:var(--surface);border-radius:22px 22px 0 0;padding:10px 20px calc(20px + var(--sab));
     max-width:100%;width:100%;max-height:86%;overflow:auto;
@@ -395,7 +412,7 @@
 /* ============================= PRODUCT CATALOG ============================= */
 /* ============================= BRANDING ============================= */
 const COMPANY_LOGO = "https://static.wixstatic.com/media/f34ac6_16010ac0fe9c48739c4860abefec3cbb~mv2.png/v1/fill/w_410,h_409,al_c,lg_1,q_85,enc_avif,quality_auto/M%20A%20Products%20INDIA%20Logo.png";
-const APP_BUILD = "2026-08-12-revert-mask1";
+const APP_BUILD = "2026-08-12-loading-alerts-perf1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -1435,7 +1452,7 @@ function openEditLogModal(e){
   document.getElementById('editLogSave').addEventListener('click', ()=>{
     let val = parseFloat(document.getElementById('editLogVal').value)||0;
     const cap = isPurchase ? MAX_PURCHASE_L : MAX_PC_ENTRY;
-    if(val>cap){ alert(`Max allowed is ${cap} ${isPurchase?'L':'pc'} per entry.`); return; }
+    if(val>cap){ showAlert(`Max allowed is ${cap} ${isPurchase?'L':'pc'} per entry.`); return; }
     revertActivity(e);
     if(isPurchase){ e.ml = val*1000; }
     else {
@@ -1463,8 +1480,21 @@ function alertBanner(list){
 
 /* ============================= RENDER ROOT ============================= */
 let lastRenderedView = null;
+function renderBrandedLoadingScreen(){
+  return `<div class="login-wrap">
+    <div class="welcome-screen">
+      <img src="${COMPANY_LOGO}" alt="M A Products India" class="welcome-logo" style="margin-bottom:22px;" />
+      <div class="postlogin-spinner"></div>
+      <div class="loading-msg-fade" style="margin-top:18px;font-size:14px;font-weight:700;letter-spacing:0.02em;">Loading Order Management System<br/>by M A Products INDIA</div>
+    </div>
+  </div>`;
+}
 function render(){
   const root = document.getElementById('root');
+  if(!S.loaded){
+    root.innerHTML = renderBrandedLoadingScreen();
+    return;
+  }
   if(!S.currentUser){
     if(S.postLoginPhase){
       root.innerHTML = renderPostLoginSequence();
@@ -1877,7 +1907,7 @@ function openDispatchModal(orderId){
   document.getElementById('dispatchBookedBtn').addEventListener('click', ()=>{
     const transportName = document.getElementById('dispatchTransport').value.trim();
     const casesVal = document.getElementById('dispatchCases').value.trim();
-    if(!transportName){ alert('Enter a transport name.'); return; }
+    if(!transportName){ showAlert('Enter a transport name.'); return; }
     rememberTransport(transportName);
     o.transportName = transportName;
     o.totalCases = casesVal ? parseInt(casesVal) : null;
@@ -2029,10 +2059,10 @@ function openDominoModal(){
   document.getElementById('dominoForm').addEventListener('submit', (e)=>{
     e.preventDefault();
     const impressions = parseInt(document.getElementById('domImpr').value)||0;
-    if(impressions<=0){ alert('Enter a valid number.'); return; }
+    if(impressions<=0){ showAlert('Enter a valid number.'); return; }
     let hrs = parseInt(document.getElementById('domDurH').value)||0;
     let mins = parseInt(document.getElementById('domDurM').value)||0;
-    if(mins>59){ alert('Minutes must be 0–59.'); return; }
+    if(mins>59){ showAlert('Minutes must be 0–59.'); return; }
     const durationMin = hrs*60 + mins;
     const entry = {id:uid(), impressions, durationMin, note:document.getElementById('domNote').value.trim(), by:S.currentUser.name, byUsername:S.currentUser.username, at:Date.now()};
     S.dominoPrints.push(entry);
@@ -2175,12 +2205,12 @@ function openCatalogItemModal(existingItem){
     const cat = document.getElementById('ciCat').value.trim();
     const rawCat = document.getElementById('ciRawCat').value.trim();
     const caseVal = document.getElementById('ciCase').value.trim();
-    if(!name || !size || !cat || !rawCat){ alert('Fill in all required fields.'); return; }
+    if(!name || !size || !cat || !rawCat){ showAlert('Fill in all required fields.'); return; }
     const newKey = itemKey(name, size);
 
     if(existingItem){
       const oldKey = existingItem.key;
-      if(newKey!==oldKey && S.catalogItems.some(it=>it.key===newKey)){ alert('Another item already has this exact name + size.'); return; }
+      if(newKey!==oldKey && S.catalogItems.some(it=>it.key===newKey)){ showAlert('Another item already has this exact name + size.'); return; }
       const entry = S.catalogItems.find(it=>it.key===oldKey);
       entry.name = name; entry.size = size; entry.mrp = mrp; entry.cat = cat; entry.rawCat = rawCat;
       entry.caseSize = caseVal ? parseInt(caseVal) : null;
@@ -2206,7 +2236,7 @@ function openCatalogItemModal(existingItem){
       safeSet('app:catalogItems', S.catalogItems);
       closeModal(); render(); showToast('Item updated');
     } else {
-      if(S.catalogItems.some(it=>it.key===newKey)){ alert('An item with this exact name + size already exists.'); return; }
+      if(S.catalogItems.some(it=>it.key===newKey)){ showAlert('An item with this exact name + size already exists.'); return; }
       S.catalogItems.push({ key:newKey, name, size, mrp, cat, rawCat, caseSize: caseVal ? parseInt(caseVal) : null });
       rebuildCatalogFlat();
       safeSet('app:catalogItems', S.catalogItems);
@@ -2312,7 +2342,7 @@ function openExpenseModal(existing, type, forUsername){
   document.getElementById('expForm').addEventListener('submit', (e)=>{
     e.preventDefault();
     const amount = parseFloat(document.getElementById('expAmt').value)||0;
-    if(amount<=0){ alert('Enter a valid amount.'); return; }
+    if(amount<=0){ showAlert('Enter a valid amount.'); return; }
     const managerSel = document.getElementById('expManager');
     const byUsername = isAdmin && managerSel ? managerSel.value : S.currentUser.username;
     const byUser = S.users.find(u=>u.username===byUsername);
@@ -2776,12 +2806,12 @@ function openOrderModal(existingOrder){
   renderDraftList();
   document.getElementById('addItemBtn').addEventListener('click', ()=>{
     const it = resolveItemFromText(ordItemSel.value);
-    if(!it){ alert('Pick a valid item from the list.'); return; }
+    if(!it){ showAlert('Pick a valid item from the list.'); return; }
     const cases = parseInt(document.getElementById('ordItemCases').value)||0;
     const pcs = parseInt(document.getElementById('ordItemQty').value)||0;
     const qty = (it.caseSize ? cases*it.caseSize : 0) + pcs;
-    if(qty<=0){ alert('Enter a quantity (cases and/or pieces).'); return; }
-    if(qty>MAX_PC_ENTRY){ alert(`Max ${MAX_PC_ENTRY} pc per line item.`); return; }
+    if(qty<=0){ showAlert('Enter a quantity (cases and/or pieces).'); return; }
+    if(qty>MAX_PC_ENTRY){ showAlert(`Max ${MAX_PC_ENTRY} pc per line item.`); return; }
     const key = it.key;
     const existing = orderDraft.find(d=>d.key===key);
     if(existing) existing.qty += qty; else orderDraft.push({key, name:it.name, size:it.size, qty});
@@ -2790,10 +2820,10 @@ function openOrderModal(existingOrder){
     ordCaseRow.style.display='none';
   });
   document.getElementById('submitOrderBtn').addEventListener('click', ()=>{
-    if(orderDraft.length===0){ alert('Add at least one item.'); return; }
+    if(orderDraft.length===0){ showAlert('Add at least one item.'); return; }
     const nameInput = document.getElementById('ordCustomer');
     const typedName = nameInput.value.trim();
-    if(!typedName){ alert('Enter the party name.'); return; }
+    if(!typedName){ showAlert('Enter the party name.'); return; }
     const existingCust = S.customers.find(c=>c.name.trim().toLowerCase()===typedName.toLowerCase());
     let custId = existingCust ? existingCust.id : null;
     let custName = existingCust ? existingCust.name : typedName;
@@ -2902,8 +2932,8 @@ function renderDraftList(){
     const cases = casesInput ? (parseInt(casesInput.value)||0) : 0;
     const pcs = parseInt(pcsInput.value)||0;
     const qty = (caseSize ? cases*caseSize : 0) + pcs;
-    if(qty<=0){ alert('Enter a quantity.'); return; }
-    if(qty>MAX_PC_ENTRY){ alert(`Max ${MAX_PC_ENTRY} pc per line item.`); return; }
+    if(qty<=0){ showAlert('Enter a quantity.'); return; }
+    if(qty>MAX_PC_ENTRY){ showAlert(`Max ${MAX_PC_ENTRY} pc per line item.`); return; }
     d.qty = qty;
     editingDraftIndex = null;
     renderDraftList();
@@ -3018,15 +3048,15 @@ function openChatOrderModal(){
   };
   document.getElementById('chatParseBtn').addEventListener('click', ()=>{
     const text = document.getElementById('chatOrderText').value.trim();
-    if(!text){ alert('Type, paste, or speak an order first.'); return; }
+    if(!text){ showAlert('Type, paste, or speak an order first.'); return; }
     parsed = parseOrderText(text);
     renderChatDraftPreview(parsed);
   });
   document.getElementById('chatConfirmBtn').addEventListener('click', ()=>{
     const nameInput = document.getElementById('chatCustInput');
     const typedName = nameInput ? nameInput.value.trim() : '';
-    if(!typedName){ alert('Enter the party name.'); return; }
-    if(!parsed || parsed.items.length===0){ alert('No items to order.'); return; }
+    if(!typedName){ showAlert('Enter the party name.'); return; }
+    if(!parsed || parsed.items.length===0){ showAlert('No items to order.'); return; }
     const existingCust = S.customers.find(c=>c.name.trim().toLowerCase()===typedName.toLowerCase());
     let custId = existingCust ? existingCust.id : null;
     let custName = existingCust ? existingCust.name : typedName;
@@ -3120,7 +3150,7 @@ function openCustomerModal(existingCust){
   document.getElementById('custForm').addEventListener('submit', (e)=>{
     e.preventDefault();
     const phone = document.getElementById('custPhone').value.trim();
-    if(!/^\d{10}$/.test(phone)){ alert('Enter a valid 10-digit WhatsApp number.'); return; }
+    if(!/^\d{10}$/.test(phone)){ showAlert('Enter a valid 10-digit WhatsApp number.'); return; }
     const fields = {
       name: document.getElementById('custName').value.trim(),
       phone,
@@ -3236,7 +3266,7 @@ function bindTeamListModal(){
   document.querySelectorAll('[data-del-team]').forEach(b=>b.addEventListener('click', (e)=>{
     e.stopPropagation();
     const role = b.dataset.delTeam;
-    if(S.users.some(u=>u.role===role)){ alert('Reassign or remove the members of this team before deleting it.'); return; }
+    if(S.users.some(u=>u.role===role)){ showAlert('Reassign or remove the members of this team before deleting it.'); return; }
     if(!confirm(`Delete the "${ROLES[role].label}" team? This cannot be undone.`)) return;
     S.customRoles = S.customRoles.filter(c=>c.key!==role);
     delete S.rolePermissions[role];
@@ -3254,7 +3284,7 @@ function bindTeamListModal(){
   const saveNewTeamBtn = document.getElementById('saveNewTeamBtn');
   if(saveNewTeamBtn) saveNewTeamBtn.addEventListener('click', ()=>{
     const name = document.getElementById('newTeamName').value.trim();
-    if(!name){ alert('Enter a team name.'); return; }
+    if(!name){ showAlert('Enter a team name.'); return; }
     const key = slugifyTeamName(name);
     S.customRoles.push({key, label:name});
     rebuildRolesRegistry();
@@ -3338,7 +3368,7 @@ function openPermissionConfirm(role, viewChecked, entryChecked){
 function resetAllDataExceptUsers(){
   const pwd = prompt("Enter your admin password to confirm — this wipes everything except Users:");
   if(pwd===null) return;
-  if(pwd !== S.currentUser.password){ alert('Incorrect password.'); return; }
+  if(pwd !== S.currentUser.password){ showAlert('Incorrect password.'); return; }
   if(!confirm('This will permanently erase ALL orders, customers, stock levels, expenses, logs, tasks, attendance, login history, and domino records. Users stay. This cannot be undone. Continue?')) return;
   // Every day-partition row we've ever seen for these entities needs to be
   // deleted on the backend too, or old days would silently reappear the
@@ -3447,7 +3477,7 @@ function openUserModal(id){
   fileInput.addEventListener('change', async ()=>{
     const file = fileInput.files[0];
     if(!file) return;
-    if(!file.type.startsWith('image/')){ alert('Please choose an image file.'); return; }
+    if(!file.type.startsWith('image/')){ showAlert('Please choose an image file.'); return; }
     try{
       const dataUrl = await resizeImageFileSafe(file);
       if(dataUrl.length > 10000){
@@ -3456,7 +3486,7 @@ function openUserModal(id){
       pendingPhoto = dataUrl;
       const wrap = document.getElementById('uPhotoPreviewWrap');
       wrap.innerHTML = `<img id="uPhotoPreview" src="${dataUrl}" style="width:100%;height:100%;object-fit:cover;" />`;
-    }catch(e){ alert('Could not read that image — try a different file.'); }
+    }catch(e){ showAlert('Could not read that image — try a different file.'); }
   });
   const removeBtn = document.getElementById('uPhotoRemoveBtn');
   if(removeBtn) removeBtn.addEventListener('click', ()=>{
@@ -3475,7 +3505,7 @@ function openUserModal(id){
     const address = document.getElementById('uAddr').value.trim();
     const photo = pendingPhoto;
     if(S.users.some(u=>u.username.toLowerCase()===username.toLowerCase() && (!existing || u.id!==existing.id))){
-      alert('That username is already taken.'); return;
+      showAlert('That username is already taken.'); return;
     }
     const newRecord = existing
       ? Object.assign({}, existing, {name, username, password, role, post, phone, address, photo})
@@ -3488,7 +3518,7 @@ function openUserModal(id){
       if(confirm("Saving everyone's data together is getting too large to store reliably (mostly from photos). Save this person WITHOUT a photo instead?")){
         newRecord.photo = '';
       } else {
-        alert('Not saved. Remove a photo from another team member first, or skip the photo for this one.');
+        showAlert('Not saved. Remove a photo from another team member first, or skip the photo for this one.');
         return;
       }
     }
@@ -3793,8 +3823,8 @@ function openPurchaseModal(){
     const unit = document.getElementById('purUnit').value;
     const ml = unit==='L'? qty*1000 : qty;
     const litres = ml/1000;
-    if(litres>MAX_PURCHASE_L){ alert(`Max ${MAX_PURCHASE_L} L allowed in a single purchase entry.`); return; }
-    if(litres<=0){ alert('Enter a valid quantity.'); return; }
+    if(litres>MAX_PURCHASE_L){ showAlert(`Max ${MAX_PURCHASE_L} L allowed in a single purchase entry.`); return; }
+    if(litres<=0){ showAlert('Enter a valid quantity.'); return; }
     S.rawMaterial[cat] = (S.rawMaterial[cat]||0) + ml;
     safeSet('app:rawMaterial', S.rawMaterial);
     logActivity({kind:'purchase', cat, ml});
@@ -3820,15 +3850,15 @@ function openFillingModal(prefillKey, prefillQty){
     e.preventDefault();
     const key = prefillKey || (resolveItemFromText(document.getElementById('fillItem').value)||{}).key;
     const it = findItem(key);
-    if(!it){ alert('Pick a valid item from the list.'); return; }
+    if(!it){ showAlert('Pick a valid item from the list.'); return; }
     const qty = parseInt(document.getElementById('fillQty').value)||0;
     if(qty<=0) return;
-    if(qty>MAX_PC_ENTRY){ alert(`Max ${MAX_PC_ENTRY} pc per entry.`); return; }
+    if(qty>MAX_PC_ENTRY){ showAlert(`Max ${MAX_PC_ENTRY} pc per entry.`); return; }
     const mlNeeded = qty*it.ml;
     const rawAvail = S.rawMaterial[it.rawCat]||0;
     if(rawAvail < mlNeeded){
       const shortL = ((mlNeeded-rawAvail)/1000).toFixed(2);
-      alert(`Not enough ${it.rawCat} — short by ${shortL} L. Record a purchase first.`);
+      showAlert(`Not enough ${it.rawCat} — short by ${shortL} L. Record a purchase first.`);
       return;
     }
     S.rawMaterial[it.rawCat] = rawAvail - mlNeeded;
@@ -3904,16 +3934,16 @@ function openPackagingModal(prefillKey, prefillQty){
     e.preventDefault();
     const key = currentKey();
     const it = findItem(key);
-    if(!it){ alert('Pick a valid item from the list.'); return; }
+    if(!it){ showAlert('Pick a valid item from the list.'); return; }
     const cases = parseInt(document.getElementById('packCases').value)||0;
     const pcs = parseInt(document.getElementById('packQty').value)||0;
     const note = document.getElementById('packNote').value.trim();
     const qty = (it && it.caseSize ? cases*it.caseSize : 0) + pcs;
-    if(qty<=0){ alert('Enter a quantity (cases and/or pieces).'); return; }
-    if(qty>MAX_PC_ENTRY){ alert(`Max ${MAX_PC_ENTRY} pc per entry.`); return; }
+    if(qty<=0){ showAlert('Enter a quantity (cases and/or pieces).'); return; }
+    if(qty>MAX_PC_ENTRY){ showAlert(`Max ${MAX_PC_ENTRY} pc per entry.`); return; }
     const filledAvail = S.filledStock[key]||0;
     if(filledAvail < qty){
-      alert(`${it.name} ${it.size} is short by ${qty-filledAvail} pc in Filled stock — fill more before packing.`);
+      showAlert(`${it.name} ${it.size} is short by ${qty-filledAvail} pc in Filled stock — fill more before packing.`);
       return;
     }
     S.filledStock[key] = filledAvail - qty;
@@ -4240,6 +4270,26 @@ function renderAttendanceMap(){
 function bindAttendanceMap(){ /* no-op — map removed, location is a Google Maps link per row */ }
 
 /* ============================= MODAL ============================= */
+// Centered red alert dialog — replaces the native browser showAlert() everywhere,
+// since a browser-native popup looks jarring and inconsistent with the app.
+function showAlert(message){
+  const existing = document.getElementById('appAlertOverlay');
+  if(existing) existing.remove(); // don't stack multiple alerts
+  const overlay = document.createElement('div');
+  overlay.className = 'app-alert-overlay';
+  overlay.id = 'appAlertOverlay';
+  overlay.innerHTML = `
+    <div class="app-alert-box">
+      <div class="app-alert-icon">⚠️</div>
+      <div class="app-alert-message">${esc(message)}</div>
+      <button type="button" class="app-alert-ok-btn" id="appAlertOkBtn">OK</button>
+    </div>`;
+  const host = document.querySelector('.device-screen') || document.body;
+  host.appendChild(overlay);
+  const close = ()=>{ overlay.remove(); };
+  overlay.addEventListener('click', (e)=>{ if(e.target===overlay) close(); });
+  overlay.querySelector('#appAlertOkBtn').addEventListener('click', close);
+}
 function showModal(innerHtml){
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
