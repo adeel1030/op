@@ -322,4 +322,1609 @@
     transition:background-color .2s ease, color .2s ease;
   }
   .navitem .ico{font-size:19px;line-height:1;}
-  .na
+  .navitem .lbl{font-size:9.5px;font-weight:700;letter-spacing:0.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:64px;}
+  .navitem.active{color:var(--gold);background-color:rgba(201,162,39,0.14);}
+  .navitem.active .ico{filter:drop-shadow(0 0 6px rgba(201,162,39,0.5));}
+  .navitem.just-activated{animation:navPop .3s cubic-bezier(.3,1.5,.5,1);}
+  @keyframes navPop{0%{transform:scale(0.85);}60%{transform:scale(1.08);}100%{transform:scale(1);}}
+  .navitem:active{transform:scale(0.94);}
+  .content{animation:contentFadeIn .18s ease;}
+  @keyframes contentFadeIn{from{opacity:0.4;}to{opacity:1;}}
+
+  /* ---------- Employee ID Card (profile panel) ---------- */
+  .id-card{
+    background:linear-gradient(165deg, #0E1F14 0%, var(--primary-dark) 55%, var(--primary) 100%);
+    border-radius:18px;overflow:hidden;color:#fff;
+    box-shadow:0 12px 30px -12px rgba(14,31,20,0.5);border:1px solid rgba(201,162,39,0.35);
+  }
+  .id-card-header{
+    padding:14px 16px;text-align:center;border-bottom:2px solid var(--gold);
+    background:rgba(0,0,0,0.15);
+  }
+  .id-card-company{font-weight:800;font-size:14px;letter-spacing:0.03em;}
+  .id-card-title{font-size:9.5px;color:var(--gold);text-transform:uppercase;letter-spacing:0.12em;font-weight:700;margin-top:2px;}
+  .id-card-body{padding:20px 18px 18px;text-align:center;}
+  .id-card-photo-wrap{margin-bottom:12px;}
+  .id-card-photo{
+    width:76px;height:76px;border-radius:50%;object-fit:cover;
+    border:3px solid var(--gold);box-shadow:0 6px 16px -4px rgba(0,0,0,0.4);
+  }
+  .id-card-photo-fallback{
+    display:inline-flex;align-items:center;justify-content:center;
+    background:rgba(255,255,255,0.12);font-weight:800;font-size:26px;color:var(--gold);
+  }
+  .id-card-name{font-size:17px;font-weight:800;margin-bottom:6px;}
+  .id-card-role-pill{
+    display:inline-block;background:var(--gold);color:var(--primary-dark);
+    font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;
+    padding:3px 10px;border-radius:20px;margin-bottom:16px;
+  }
+  .id-card-rows{text-align:left;border-top:1px dashed rgba(255,255,255,0.25);padding-top:14px;}
+  .id-card-row{display:flex;justify-content:space-between;gap:10px;padding:6px 0;font-size:12.5px;}
+  .id-card-label{color:rgba(255,255,255,0.6);flex:0 0 auto;}
+  .id-card-value{text-align:right;font-weight:600;}
+
+  /* ---------- Bottom sheet (modals + more menu + notifications) ---------- */
+  .modal-overlay{
+    position:absolute;inset:0;background:rgba(10,16,32,0.5);display:flex;align-items:flex-end;justify-content:center;
+    z-index:100;animation:overlayFadeIn .15s ease;
+  }
+  @keyframes overlayFadeIn{from{opacity:0;}to{opacity:1;}}
+  .app-toast{animation:toastSlideUp .25s cubic-bezier(.2,.8,.3,1) forwards;}
+  @keyframes toastSlideUp{from{transform:translateX(-50%) translateY(10px);opacity:0;}to{transform:translateX(-50%) translateY(0);opacity:1;}}
+  .app-alert-overlay{
+    position:absolute;inset:0;background:rgba(10,16,32,0.6);display:flex;align-items:center;justify-content:center;
+    z-index:500;padding:20px;
+  }
+  .app-alert-box{
+    background:#fff;border-radius:16px;padding:22px 20px;max-width:320px;width:100%;text-align:center;
+    border:2px solid var(--danger);box-shadow:0 20px 50px -12px rgba(216,72,59,0.4);
+    animation:appAlertPop .18s cubic-bezier(.2,.8,.3,1);
+  }
+  @keyframes appAlertPop{ from{transform:scale(0.9);opacity:0;} to{transform:scale(1);opacity:1;} }
+  .app-alert-icon{font-size:32px;margin-bottom:10px;}
+  .app-alert-message{font-size:14px;color:var(--ink);line-height:1.5;margin-bottom:18px;white-space:pre-line;}
+  .app-alert-ok-btn{
+    background:var(--danger);color:#fff;border:none;border-radius:11px;padding:11px 32px;
+    font-weight:800;font-size:14px;cursor:pointer;width:100%;
+  }
+  .app-alert-ok-btn:active{transform:scale(0.96);}
+  .modal{
+    background:var(--surface);border-radius:22px 22px 0 0;padding:10px 20px calc(20px + var(--sab));
+    max-width:100%;width:100%;max-height:86%;overflow:auto;
+    animation:sheetUp .22s cubic-bezier(.2,.8,.3,1);
+  }
+  @keyframes sheetUp{from{transform:translateY(24px);opacity:0.6;}to{transform:translateY(0);opacity:1;}}
+  .success-pop{display:inline-block;animation:successPop .3s cubic-bezier(.3,1.5,.5,1);}
+  @keyframes successPop{0%{transform:scale(0.4);opacity:0;}60%{transform:scale(1.15);}100%{transform:scale(1);opacity:1;}}
+  .sheet-handle{width:36px;height:4px;border-radius:3px;background:var(--border);margin:4px auto 14px;}
+  .modal h3{margin:0 0 14px;font-size:16px;}
+  .modal-actions{display:flex;gap:8px;margin-top:16px;}
+
+  #map{height:300px;border-radius:14px;margin-top:10px;}
+
+  /* ---------- More sheet grid ---------- */
+  .more-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:4px;}
+  .more-item{
+    background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:14px 6px;
+    display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;
+  }
+  .more-item .ico{font-size:22px;}
+  .more-item .lbl{font-size:11px;font-weight:700;color:var(--ink);text-align:center;}
+</style>
+</head>
+<body>
+<div class="device-wrap">
+  <div class="device">
+    <div class="device-screen">
+      <div id="root"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================= PRODUCT CATALOG ============================= */
+/* ============================= BRANDING ============================= */
+const COMPANY_LOGO = "https://static.wixstatic.com/media/f34ac6_16010ac0fe9c48739c4860abefec3cbb~mv2.png/v1/fill/w_410,h_409,al_c,lg_1,q_85,enc_avif,quality_auto/M%20A%20Products%20INDIA%20Logo.png";
+const APP_BUILD = "2026-08-12-scrollfix-anim2";
+
+const DEFAULT_CATALOG = [
+  { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
+    {name:"Olife Gold", size:"100mL", mrp:229},
+    {name:"Olife Gold", size:"200mL", mrp:399},
+    {name:"Olife Gold", size:"500mL", mrp:799},
+    {name:"Olife Gold", size:"1L", mrp:1100},
+  ]},
+  { cat:"Olife EV — Extra Virgin Olive Oil", rawCat:"Extra Virgin Olive Oil", items:[
+    {name:"Olife EV", size:"100mL", mrp:299},
+    {name:"Olife EV", size:"200mL", mrp:499},
+    {name:"Olife EV", size:"500mL", mrp:899},
+    {name:"Olife EV", size:"1L", mrp:1550},
+  ]},
+  { cat:"Castor Oil", rawCat:"Castor Oil", items:[
+    {name:"Castor Oil", size:"25 ml", mrp:40},
+    {name:"Castor Oil", size:"50 ml", mrp:75},
+    {name:"Castor Oil", size:"100 ml", mrp:125},
+    {name:"Castor Oil", size:"200mL", mrp:250},
+  ]},
+  { cat:"Roghan Badam — (Almond Oil)", rawCat:"Almond Oil", items:[
+    {name:"Roghan Badam", size:"10 ml", mrp:54},
+    {name:"Roghan Badam", size:"25 ml", mrp:120},
+    {name:"Roghan Badam", size:"50 ml", mrp:230},
+    {name:"Roghan Badam", size:"100 ml", mrp:440},
+  ]},
+  { cat:"Chameli Oil — (Jasmin Oil)", rawCat:"Jasmine Oil", items:[
+    {name:"Chameli Oil", size:"25 ml", mrp:35},
+    {name:"Chameli Oil", size:"50 ml", mrp:60},
+    {name:"Chameli Oil", size:"100 ml", mrp:110},
+  ]},
+  { cat:"Neem Oil", rawCat:"Neem Oil", items:[
+    {name:"Neem Oil", size:"25 ml", mrp:40},
+    {name:"Neem Oil", size:"50 ml", mrp:75},
+    {name:"Neem Oil", size:"100 ml", mrp:125},
+  ]},
+  { cat:"Kalonji Oil — (Nigella Sativa Seed Oil)", rawCat:"Kalonji Oil", items:[
+    {name:"Kalonji Oil", size:"25 ml", mrp:115},
+    {name:"Kalonji Oil", size:"50 ml", mrp:195},
+    {name:"Kalonji Oil", size:"100 ml", mrp:340},
+    {name:"Kalonji Oil", size:"200mL", mrp:650},
+  ]},
+  { cat:"Oliva — Olive Oil With Outer Box", rawCat:"Pure Olive Oil", items:[
+    {name:"Oliva", size:"25 ml", mrp:55},
+    {name:"Oliva", size:"50 ml", mrp:100},
+    {name:"Oliva", size:"100 ml", mrp:180},
+    {name:"Oliva", size:"200 ml", mrp:330},
+    {name:"Oliva", size:"440 ml", mrp:550},
+  ]},
+  { cat:"Til Oil — (Sesame Oil)", rawCat:"Sesame Oil", items:[
+    {name:"Til Oil", size:"50 ml", mrp:80},
+    {name:"Til Oil", size:"100 ml", mrp:155},
+    {name:"Til Oil", size:"200 ml", mrp:350},
+  ]},
+  { cat:"Tarpin Oil", rawCat:"Tarpin Oil", items:[
+    {name:"Tarpin Oil", size:"25 ml", mrp:35},
+    {name:"Tarpin Oil", size:"50 ml", mrp:65},
+  ]},
+  { cat:"Roghan Amla", rawCat:"Amla Oil", items:[
+    {name:"Roghan Amla", size:"100ml", mrp:80},
+  ]},
+  { cat:"Alsi Oil — (Flaxseed Oil)", rawCat:"Flaxseed Oil", items:[
+    {name:"Alsi Oil", size:"50 mL", mrp:75},
+    {name:"Alsi Oil", size:"100 mL", mrp:125},
+    {name:"Alsi Oil", size:"200mL", mrp:270},
+  ]},
+  { cat:"Clove Oil — (Long Oil)", rawCat:"Clove Oil", items:[
+    {name:"Clove Oil", size:"3 ml", mrp:30},
+  ]},
+  { cat:"Zeytin Green", rawCat:"Pure Olive Oil", items:[
+    {name:"Zeytin Green", size:"100mL", mrp:250},
+    {name:"Zeytin Green", size:"200mL", mrp:425},
+    {name:"Zeytin Green", size:"500mL", mrp:799},
+    {name:"Zeytin Green", size:"1L", mrp:1100},
+  ]},
+  { cat:"Zeytin EV", rawCat:"Extra Virgin Olive Oil", items:[
+    {name:"Zeytin EV", size:"100mL", mrp:299},
+    {name:"Zeytin EV", size:"200mL", mrp:499},
+    {name:"Zeytin EV", size:"1L", mrp:1550},
+  ]},
+  { cat:"Olio Classico Pure", rawCat:"Pure Olive Oil", items:[
+    {name:"Olio Classico Pure", size:"100mL", mrp:229},
+    {name:"Olio Classico Pure", size:"200mL", mrp:399},
+  ]},
+  { cat:"Olio Classico EV", rawCat:"Extra Virgin Olive Oil", items:[
+    {name:"Olio Classico EV", size:"200mL", mrp:499},
+  ]},
+];
+
+const DEFAULT_CASE_SIZE = {
+  '100ml':72, '200ml':48, '440ml':20, '50ml':168, '25ml':216, '3ml':750, '500ml':24, '1l':12,
+};
+const CASE_SIZE_EXCEPTIONS = [
+  { name:'Oliva', size:'200ml', caseSize:25 },
+];
+// Small-bottle "pkt" packs — every product EXCEPT Olife (both), Zeytin (both) & Olio Classico (both).
+const PKT_SIZE_BY_ML = { '3ml':25, '25ml':12, '50ml':12, '100ml':6 };
+const PKT_EXCLUDED_NAMES = ['Olife Gold','Olife EV','Zeytin Green','Zeytin EV','Olio Classico Pure','Olio Classico EV'];
+function getPktSize(name, size){
+  if(PKT_EXCLUDED_NAMES.includes(name)) return null;
+  return PKT_SIZE_BY_ML[normSize(size)] || null;
+}
+
+function normSize(s){ return String(s).toLowerCase().replace(/\s+/g,''); }
+function sizeToMl(s){
+  const norm = normSize(s);
+  const m = norm.match(/^([\d.]+)(ml|l)$/);
+  if(!m) return 0;
+  const num = parseFloat(m[1]);
+  return m[2]==='l' ? num*1000 : num;
+}
+function getCaseSize(name, size){
+  const norm = normSize(size);
+  const ex = CASE_SIZE_EXCEPTIONS.find(e => e.name===name && normSize(e.size)===norm);
+  if(ex) return ex.caseSize;
+  return DEFAULT_CASE_SIZE[norm] || null;
+}
+function itemKey(name,size){ return name+'__'+size; }
+// Transport names typed anywhere get remembered so the dropdown grows on its own.
+function rememberTransport(name){
+  name = (name||'').trim();
+  if(!name) return;
+  if(!S.transports.some(t=>t.toLowerCase()===name.toLowerCase())){
+    S.transports = [...S.transports, name];
+    safeSet('app:transports', S.transports);
+  }
+}
+// Party details are looked up LIVE from the customer record (not a frozen
+// snapshot on the order) — editing a customer's city/transport/etc. in Team
+// & Customers instantly reflects on every one of their orders, past and
+// future, and on the public tracking link too.
+function liveCustomerFor(order){
+  if(!order.customerId) return null;
+  return S.customers.find(c=>c.id===order.customerId) || null;
+}
+// Friendly, human-readable order number for display/receipts only — NOT
+// used for access control. The actual tracking link is secured by the
+// order's real (unguessable) id; this is just a nicer label to show people.
+function generateOrderNumber(ts){
+  const d = new Date(ts);
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  const dd = String(d.getDate()).padStart(2,'0');
+  const yyyy = d.getFullYear();
+  const dayKey = localDateKey(ts);
+  const countToday = S.orders.filter(o => localDateKey(o.createdAt) === dayKey).length + 1;
+  return `${mm}${dd}${yyyy}-${String(countToday).padStart(3,'0')}`;
+}
+// Public tracking link a party can open (no login) to see their order's
+// status — points at track-order.html hosted alongside this app. The day
+// key is included so the tracker knows exactly which partition to read.
+// order-form.html is hosted on its own subdomain, separate from this app —
+// point tracking links there explicitly rather than assuming same-domain.
+// order-form.html is hosted on its own subdomain, served at the domain root
+// (e.g. Netlify serves it as the site's index) — not at an /order-form.html path.
+const ORDER_FORM_BASE_URL = "https://order.maproductsindia.com/";
+function trackingLinkFor(order){
+  const dayKey = localDateKey(order.createdAt);
+  return `${ORDER_FORM_BASE_URL}?id=${encodeURIComponent(order.id)}&d=${dayKey}`;
+}
+
+// The product catalog is shared, backend-synced data (S.catalogItems) — both
+// this app and the customer-facing order form read the same list, and admin
+// can add new items/categories here without touching any code. DEFAULT_CATALOG
+// above is only the one-time seed used the very first time the app runs.
+function flattenDefaultCatalog(){
+  const flat = [];
+  DEFAULT_CATALOG.forEach(group=>{
+    group.items.forEach(it=>{
+      flat.push({ key: itemKey(it.name, it.size), cat: group.cat, rawCat: group.rawCat, name: it.name, size: it.size, mrp: it.mrp, caseSize: getCaseSize(it.name, it.size) });
+    });
+  });
+  return flat;
+}
+let CATALOG_FLAT = [];
+let RAW_CATEGORIES = [];
+function rebuildCatalogFlat(){
+  CATALOG_FLAT = S.catalogItems.map(it => ({
+    ...it,
+    ml: sizeToMl(it.size),
+    caseSize: (it.caseSize!=null && it.caseSize!=='') ? it.caseSize : getCaseSize(it.name, it.size),
+    pktSize: getPktSize(it.name, it.size),
+  }));
+  RAW_CATEGORIES = [...new Set(CATALOG_FLAT.map(it=>it.rawCat))];
+}
+function findItem(key){ return CATALOG_FLAT.find(i=>i.key===key); }
+function fmtMl(ml){
+  ml = Math.round(ml*100)/100;
+  if(Math.abs(ml) >= 1000) return (ml/1000).toFixed(2)+' L';
+  return ml+' mL';
+}
+// Total pc on its own line, then (*case+pc) and (#pkt+pc) as secondary lines.
+function fmtCase(qty, caseSize){
+  if(!caseSize) return `${qty} pc`;
+  const cases = Math.floor(Math.abs(qty)/caseSize);
+  const rem = Math.abs(qty)%caseSize;
+  const sign = qty<0 ? '-' : '';
+  return `${sign}${cases}c ${rem}pc <span class="mono" style="opacity:.7">(${qty} pc)</span>`;
+}
+// Wherever an item's quantity is shown, prefer "X cases" when it divides
+// evenly by the case size; otherwise fall back to plain pieces. Used on
+// order tiles, short-item indicators, and the Ready stock primary number.
+function fmtQtyPreferCase(qty, caseSize){
+  if(caseSize && qty!==0 && qty % caseSize === 0){
+    const cases = qty / caseSize;
+    return `${cases} case${Math.abs(cases)===1?'':'s'}`;
+  }
+  return `${qty} pc`;
+}
+function fmtReadyDisplay(qty, caseSize, pktSize){
+  const sign = qty<0 ? '-' : '';
+  const av = Math.abs(qty);
+  const wholeCase = caseSize && qty!==0 && av % caseSize === 0;
+  let html;
+  if(wholeCase){
+    const cases = av / caseSize;
+    html = `<b>${sign}${cases} case${cases===1?'':'s'}</b><br/><span class="mono" style="opacity:.75">(${qty} pc)</span>`;
+  } else {
+    html = `<b>${qty} pc</b>`;
+    if(caseSize){
+      const c = Math.floor(av/caseSize), r = av%caseSize;
+      html += `<br/><span class="mono" style="opacity:.75">(*${sign}${c}c ${r}pc)</span>`;
+    }
+  }
+  if(pktSize){
+    const p = Math.floor(av/pktSize), r2 = av%pktSize;
+    html += `<br/><span class="mono" style="opacity:.75">(#${sign}${p}pkt ${r2}pc)</span>`;
+  }
+  return html;
+}
+// Searchable item picker: a text input with a native datalist so the person
+// can type to filter instead of scrolling a long dropdown.
+function itemPickerHtml(inputId, prefillKey){
+  const preLabel = prefillKey ? (()=>{ const it=findItem(prefillKey); return it?`${it.name} ${it.size}`:''; })() : '';
+  return `<input id="${inputId}" list="${inputId}List" value="${esc(preLabel)}" placeholder="Type to search item…" autocomplete="off" ${prefillKey?'disabled':''} />
+    <datalist id="${inputId}List">${CATALOG_FLAT.map(it=>`<option value="${esc(it.name)} ${esc(it.size)}"></option>`).join('')}</datalist>`;
+}
+function resolveItemFromText(text){
+  const norm = String(text||'').trim().toLowerCase();
+  if(!norm) return null;
+  let hit = CATALOG_FLAT.find(it=>`${it.name} ${it.size}`.toLowerCase()===norm);
+  if(hit) return hit;
+  // fall back to a loose contains-match if no exact match
+  return CATALOG_FLAT.find(it=>norm.includes(it.name.toLowerCase()) && norm.includes(normSize(it.size))) || null;
+}
+
+/* ============================= STATE ============================= */
+const S = {
+  loaded:false,
+  users:[], orders:[], customers:[], attendance:[], tasks:[], loginLog:[],
+  rawMaterial:{}, filledStock:{}, readyStock:{}, expenses:[], activityLog:[], stockTasks:[], dominoPrints:[],
+  lowStock:{raw:{}, filled:{}, ready:{}}, rolePermissions:{}, customRoles:[], catalogItems:[], transports:[],
+  _partitionKeysSeen:{orders:new Set(), activityLog:new Set(), attendance:new Set(), expenses:new Set(), dominoPrints:new Set(), loginLog:new Set()},
+  currentUser:null, view:'home', stockView:'raw', notifOpen:false, moreOpen:false, profileOpen:false, toast:null,
+  postLoginPhase:null, pendingUser:null, postLoginLoadingStep:0,
+  search:{}, // per-view search text
+};
+
+// Per-entry caps
+const MAX_PC_ENTRY = 5000;   // max pieces in a single filling / packaging / order-item entry
+const MAX_PURCHASE_L = 2000; // max liters in a single purchase entry
+
+const ROLES = {
+  admin:{label:'Admin', tabs:['home','orders','customers','stock','domino','tasks','expenses','log','attendance','users']},
+  manager:{label:'Manager', tabs:['home','orders','stock','domino','tasks','expenses','checkin']},
+  sales:{label:'Sales', tabs:['home','orders','customers','stock','tasks','checkin']},
+  filling:{label:'Filling Team', tabs:['home','tasks','checkin','stock']},
+  packaging:{label:'Packaging Team', tabs:['home','tasks','checkin','stock','domino']},
+};
+// Immutable snapshot of each post's default access — used as the fallback
+// whenever admin hasn't customized a post's checklist yet, and as the
+// canonical module order when rendering the checklist itself.
+const DEFAULT_ROLE_TABS = Object.fromEntries(Object.keys(ROLES).map(r=>[r, ROLES[r].tabs.slice()]));
+const MODULE_ORDER = ['home','orders','customers','stock','domino','tasks','expenses','checkin','log','attendance','users'];
+// Applies the admin-configured access checklist (S.rolePermissions) onto the
+// live ROLES object, so every existing `ROLES[role].tabs` reference in the
+// app automatically reflects the latest permissions without needing to be
+// individually rewired.
+function applyRolePermissionsToROLES(){
+  Object.keys(ROLES).forEach(role=>{
+    const perm = S.rolePermissions[role];
+    if(perm){
+      // "stock" tab visibility is derived from the 3 granular sub-views —
+      // any one of Raw/Filled/Ready being viewable is enough to show the tab.
+      const effective = Object.assign({}, perm, { stock: !!(perm.stock_raw || perm.stock_filled || perm.stock_ready) });
+      const allowed = MODULE_ORDER.filter(t => t==='home' || effective[t]);
+      ROLES[role].tabs = allowed.length ? allowed : ['home'];
+    } else {
+      ROLES[role].tabs = DEFAULT_ROLE_TABS[role].slice();
+    }
+  });
+  if(S.currentUser && !ROLES[S.currentUser.role].tabs.includes(S.view)){
+    S.view = ROLES[S.currentUser.role].tabs[0];
+  }
+}
+// Which stock sub-view ('raw'|'filled'|'ready') a role can see. Falls back to
+// "all three" until the admin customizes that role in the Permission Manager,
+// matching the app's original behavior.
+function canViewStockSub(role, sub){
+  if(role==='admin') return true;
+  const perm = S.rolePermissions[role];
+  if(perm) return !!perm['stock_'+sub];
+  return (DEFAULT_ROLE_TABS[role]||[]).includes('stock');
+}
+const BASE_ROLE_KEYS = ['admin','manager','sales','filling','packaging'];
+// Admin-created teams beyond the 5 built-in ones. New teams start with only
+// Home until the admin sets their permissions in the Permission Manager —
+// they get full view/entry checklist control, but don't automatically plug
+// into the specialized Filling/Packaging fulfillment-queue view, since that
+// logic is tied specifically to those two built-in roles.
+function rebuildRolesRegistry(){
+  Object.keys(ROLES).forEach(k=>{ if(!BASE_ROLE_KEYS.includes(k) && !S.customRoles.some(c=>c.key===k)) delete ROLES[k]; });
+  S.customRoles.forEach(c=>{
+    if(!ROLES[c.key]) ROLES[c.key] = {label:c.label, tabs:['home']};
+    else ROLES[c.key].label = c.label;
+    if(!DEFAULT_ROLE_TABS[c.key]) DEFAULT_ROLE_TABS[c.key] = ['home'];
+    if(!DEFAULT_ENTRY_PERMS[c.key]) DEFAULT_ENTRY_PERMS[c.key] = {};
+  });
+}
+function slugifyTeamName(name){
+  let base = name.toLowerCase().trim().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'');
+  if(!base) base = 'team';
+  let key = base, n = 2;
+  while(ROLES[key]){ key = base+'_'+n; n++; }
+  return key;
+}
+// Data-entry permissions (separate from "can view this section") — controls
+// whether a role can actually record purchase/filling/packing/orders, not
+// just look at the numbers. Falls back to the app's original hard-coded
+// defaults until the admin customizes a role in the Permission Manager.
+const ENTRY_MODULES = [
+  {key:'entry_order', label:'Create orders'},
+  {key:'entry_purchase', label:'Record purchase (raw)'},
+  {key:'entry_filling', label:'Record filling'},
+  {key:'entry_packing', label:'Record packing'},
+];
+const DEFAULT_ENTRY_PERMS = {
+  admin:    {entry_order:true, entry_purchase:true, entry_filling:true, entry_packing:true},
+  manager:  {entry_order:true, entry_purchase:true, entry_filling:true, entry_packing:true},
+  sales:    {entry_order:true, entry_purchase:false, entry_filling:false, entry_packing:false},
+  filling:  {entry_order:false, entry_purchase:false, entry_filling:true, entry_packing:false},
+  packaging:{entry_order:false, entry_purchase:false, entry_filling:false, entry_packing:true},
+};
+function canDoEntry(role, key){
+  if(role==='admin') return true;
+  const perm = S.rolePermissions[role];
+  if(perm && Object.prototype.hasOwnProperty.call(perm, key)) return !!perm[key];
+  return !!(DEFAULT_ENTRY_PERMS[role] && DEFAULT_ENTRY_PERMS[role][key]);
+}
+
+const TAB_LABEL = {
+  home:'Home', orders:'Orders', customers:'Customers',
+  attendance:'Attendance', users:'Users', tasks:'Tasks', checkin:'Mark Attendance',
+  stock:'Stock', expenses:'Expenses', log:'Data Log', domino:'Domino Printing'
+};
+const TAB_ICON = {
+  home:'🏠', orders:'🧾', customers:'👤', attendance:'📋', users:'⚙️',
+  tasks:'✅', checkin:'📍', stock:'📦',
+  expenses:'💰', log:'🗂️', domino:'🖨️'
+};
+const TAB_SHORT = {
+  home:'Home', orders:'Orders', customers:'Clients', attendance:'Attend', users:'Team',
+  tasks:'Tasks', checkin:'Attend', stock:'Stock',
+  expenses:'Expense', log:'Log', domino:'Domino'
+};
+const NAV_MAX = 999; // nav is horizontally scrollable now — show every tab, no hidden "More"
+function navSplit(tabs){
+  return { primary: tabs, overflow: [] };
+}
+
+function uid(){ return (crypto.randomUUID ? crypto.randomUUID() : (Date.now()+'-'+Math.random().toString(36).slice(2))); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function fmtDate(ts){ const d=new Date(ts); return d.toLocaleDateString(undefined,{month:'short',day:'numeric'}) + ' ' + d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'}); }
+function fmtTime(ts){ return new Date(ts).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'}); }
+function dateHeading(ts){
+  const d = new Date(ts); const today = new Date(); const yest = new Date(Date.now()-86400000);
+  const sameDay = (a,b)=> a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
+  if(sameDay(d,today)) return 'Today';
+  if(sameDay(d,yest)) return 'Yesterday';
+  return d.toLocaleDateString(undefined,{weekday:'short', month:'short', day:'numeric', year: d.getFullYear()!==today.getFullYear()?'numeric':undefined});
+}
+// Groups an already-sorted (desc by `at`) list into {heading, items[]} sections by day.
+function groupByDate(list, atFn){
+  const sections = [];
+  let curHeading = null, curArr = null;
+  list.forEach(item=>{
+    const h = dateHeading(atFn(item));
+    if(h!==curHeading){ curHeading=h; curArr=[]; sections.push({heading:h, items:curArr}); }
+    curArr.push(item);
+  });
+  return sections;
+}
+function dateGroupHeaderHtml(h){
+  return `<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;color:var(--ink-soft);margin:14px 0 6px;padding-left:2px;">${esc(h)}</div>`;
+}
+function localDateKey(ts){
+  const d = new Date(ts);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function fmtDuration(mins){
+  if(mins==null) return '—';
+  mins = Math.max(0, Math.round(mins));
+  const h = Math.floor(mins/60), m = mins%60;
+  return h>0 ? `${h}h ${m}m` : `${m}m`;
+}
+// Pairs up each day's checkin/checkout events (per person) into a clean
+// summary: first check-in, last check-out, and total time worked that day.
+// Handles multiple check-in/out cycles in one day by summing each pair.
+function computeDailySummaries(records){
+  const byDateUser = {};
+  records.forEach(r=>{
+    const dateKey = localDateKey(r.timestamp);
+    byDateUser[dateKey] = byDateUser[dateKey] || {};
+    byDateUser[dateKey][r.username] = byDateUser[dateKey][r.username] || { name:r.name, events:[] };
+    byDateUser[dateKey][r.username].events.push(r);
+  });
+  const summaries = [];
+  Object.keys(byDateUser).forEach(dateKey=>{
+    Object.keys(byDateUser[dateKey]).forEach(username=>{
+      const entry = byDateUser[dateKey][username];
+      const events = entry.events.slice().sort((a,b)=>a.timestamp-b.timestamp);
+      let firstIn=null, lastOut=null, totalMs=0, openIn=null;
+      events.forEach(e=>{
+        if(e.type==='checkin'){ if(!firstIn) firstIn=e.timestamp; openIn=e.timestamp; }
+        else if(e.type==='checkout'){ lastOut=e.timestamp; if(openIn){ totalMs += e.timestamp-openIn; openIn=null; } }
+      });
+      summaries.push({
+        dateKey, dateTs: events[0].timestamp, username, name: entry.name,
+        checkin: firstIn, checkout: openIn?null:lastOut,
+        minutes: Math.round(totalMs/60000), ongoing: !!openIn
+      });
+    });
+  });
+  return summaries.sort((a,b)=> b.dateKey.localeCompare(a.dateKey) || a.name.localeCompare(b.name));
+}
+
+/* ============================= STORAGE (Google Apps Script backend) ============================= */
+const API_URL = "https://script.google.com/macros/s/AKfycbySvac4xY20RsmDywm2gfGKeRxhuzRZPtYsFf8WZWMVWlMpAaMB_oZQ_-u11yoTkaaXDA/exec";
+const SECRET = "MyOrderOps2026Secret";
+const KEY_MAP = { users:'users', orders:'orders', customers:'customers', attendance:'attendance', tasks:'tasks', rawMaterial:'rawMaterial', filledStock:'filledStock', readyStock:'readyStock' };
+let lastServerUpdatedAt = 0;
+let syncing = false;
+let syncBusyCount = 0;
+
+/* ---- Offline queue: a save that fails (dropped wifi, etc.) is kept here and
+   retried automatically — nothing is silently lost. Only the latest value per
+   key is kept (last write wins), since each save already carries the full
+   current array/object for that key, not a diff. ---- */
+const OFFLINE_QUEUE_KEY = 'orderops_offline_queue';
+let offlineQueue = {}; // { [key]: { value, queuedAt } }
+function loadOfflineQueue(){
+  try{
+    const raw = localStorage.getItem(OFFLINE_QUEUE_KEY);
+    offlineQueue = raw ? JSON.parse(raw) : {};
+  }catch(e){ offlineQueue = {}; }
+}
+function persistOfflineQueue(){
+  try{ localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(offlineQueue)); }catch(e){}
+}
+function queueOfflineSave(key, value){
+  offlineQueue[key] = { value, queuedAt: Date.now() };
+  persistOfflineQueue();
+  updateSyncStatusUI();
+}
+function removeFromOfflineQueue(key){
+  if(offlineQueue[key]){ delete offlineQueue[key]; persistOfflineQueue(); updateSyncStatusUI(); }
+}
+function pendingSaveCount(){ return Object.keys(offlineQueue).length; }
+// Refreshes just the little sync indicator in the topbar without a full
+// re-render, so a pending-count change doesn't disturb whatever the person
+// is doing (typing, scrolling, a modal open, etc.).
+// Turns a raw backend key into a short, human-friendly label for the sync
+// status indicator — e.g. "orders_2026-08-10" -> "orders".
+function friendlySyncLabel(key){
+  for(const p of PARTITIONED_ENTITIES){
+    if(key.indexOf(p+'_')===0){
+      const map2 = { orders:'orders', activityLog:'activity log', attendance:'attendance', expenses:'expenses', dominoPrints:'domino log', loginLog:'login log' };
+      return map2[p] || p;
+    }
+  }
+  const map = { users:'users', customers:'customers', rawMaterial:'raw material', filledStock:'filled stock', readyStock:'ready stock', lowStock:'low-stock alerts', stockTasks:'stock tasks', rolePermissions:'permissions', customRoles:'teams', catalogItems:'catalog', tasks:'tasks' };
+  return map[key] || key;
+}
+let currentSyncLabel = null;
+function setSyncLabel(text){
+  currentSyncLabel = text;
+  const el = document.getElementById('syncStatusText');
+  if(el) el.textContent = text || (S.currentUser ? (TAB_LABEL[S.view]||'') : '');
+}
+
+function updateSyncStatusUI(){
+  const dot = document.getElementById('syncDot');
+  const label = document.getElementById('syncPendingLabel');
+  const pending = pendingSaveCount();
+  if(dot) dot.classList.toggle('pending', pending>0);
+  if(label) label.textContent = pending>0 ? ` · ${pending} pending` : '';
+}
+let flushingQueue = false;
+async function flushOfflineQueue(){
+  if(flushingQueue || !navigator.onLine) return;
+  const keys = Object.keys(offlineQueue);
+  if(keys.length===0) return;
+  flushingQueue = true;
+  setSyncing(true);
+  for(const key of keys){
+    const entry = offlineQueue[key];
+    if(!entry) continue;
+    try{
+      await apiSave(key, entry.value);
+      removeFromOfflineQueue(key);
+    }catch(e){ /* still offline / server unreachable — leave queued, try again next round */ }
+  }
+  setSyncing(false);
+  flushingQueue = false;
+}
+
+function setSyncing(on){
+  syncBusyCount += on ? 1 : -1;
+  syncing = syncBusyCount > 0;
+  const el = document.getElementById('syncDot');
+  if(el) el.classList.toggle('syncing', syncing);
+}
+
+async function apiFetchAll(){
+  const res = await fetch(`${API_URL}?secret=${encodeURIComponent(SECRET)}&_=${Date.now()}`);
+  const json = await res.json();
+  if(json.error) throw new Error(json.error);
+  return json; // {data:{...}, updatedAt}
+}
+async function apiFetchVersion(){
+  const res = await fetch(`${API_URL}?action=version&secret=${encodeURIComponent(SECRET)}&_=${Date.now()}`);
+  const json = await res.json();
+  if(json.error) throw new Error(json.error);
+  return json.updatedAt || 0;
+}
+async function apiSave(key, value){
+  setSyncLabel(`Saving ${friendlySyncLabel(key)}…`);
+  try{
+    const res = await fetch(API_URL, {
+      method:'POST',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({ secret:SECRET, action:'save', key, value })
+    });
+    const json = await res.json();
+    if(json.error) throw new Error(json.error);
+    if(json.updatedAt) lastServerUpdatedAt = json.updatedAt;
+    return json;
+  } finally {
+    setSyncLabel(null);
+  }
+}
+
+// safeSet's key can be a static key ('app:users') or a day-partition key
+// ('app:orders_2026-08-10') — it just maps onto the backend's plain key name.
+function backendKey(oldKey){ return oldKey.replace(/^app:/, ''); }
+
+// Local-first: the caller has already mutated S.* synchronously, so we do NOT
+// await this — UI renders instantly off local state, and this just pushes the
+// change to the server in the background. If the network is down or the
+// request fails, the save is queued and retried automatically (offline
+// queue) instead of being silently lost.
+function safeSet(oldKey, value){
+  const key = backendKey(oldKey);
+  setSyncing(true);
+  return apiSave(key, value).then(()=>{
+    removeFromOfflineQueue(key);
+  }).catch(e=>{
+    console.error('sync save failed — queued for retry', key, e);
+    queueOfflineSave(key, value);
+    showToast('No connection — saved on this device, will sync automatically', true);
+  }).finally(()=>{ setSyncing(false); });
+}
+
+// Day-wise partitioned storage: orders/activityLog/attendance/expenses/
+// dominoPrints/loginLog grow without bound, so each is stored on the
+// backend as one row PER CALENDAR DAY ("orders_2026-08-10") instead of one
+// giant cell. This keeps every row comfortably under Sheets' ~50,000
+// character per-cell limit no matter how much history accumulates.
+const PARTITIONED_TS_FIELD = { orders:'createdAt', activityLog:'at', attendance:'timestamp', expenses:'at', dominoPrints:'at', loginLog:'at' };
+const PARTITIONED_ENTITIES = Object.keys(PARTITIONED_TS_FIELD);
+function mergePartitionedEntity(rawData, entity){
+  const merged = [];
+  Object.keys(rawData).forEach(k=>{
+    if(k.indexOf(entity+'_')===0 && Array.isArray(rawData[k])) merged.push(...rawData[k]);
+  });
+  return merged;
+}
+// Which day-partition keys currently exist on the backend for each entity —
+// tracked so "Reset all data" knows exactly what to delete (including days
+// that might otherwise be left orphaned once S[entity] is cleared locally).
+function trackPartitionKeys(rawData){
+  PARTITIONED_ENTITIES.forEach(entity=>{
+    const days = new Set();
+    Object.keys(rawData).forEach(k=>{
+      if(k.indexOf(entity+'_')===0) days.add(k.substring(entity.length+1));
+    });
+    S._partitionKeysSeen[entity] = days;
+  });
+}
+function savePartitionDay(entity, dateKey){
+  const tsField = PARTITIONED_TS_FIELD[entity];
+  const dayItems = S[entity].filter(item => localDateKey(item[tsField]) === dateKey);
+  (S._partitionKeysSeen[entity] = S._partitionKeysSeen[entity] || new Set()).add(dateKey);
+  return safeSet('app:'+entity+'_'+dateKey, dayItems);
+}
+function savePartitionForItem(entity, item){
+  return savePartitionDay(entity, localDateKey(item[PARTITIONED_TS_FIELD[entity]]));
+}
+// Saves every distinct day currently present in S[entity] — for bulk
+// operations that may have touched several different days at once.
+function savePartitionAllDays(entity){
+  const tsField = PARTITIONED_TS_FIELD[entity];
+  const days = new Set(S[entity].map(item=>localDateKey(item[tsField])));
+  return Promise.all([...days].map(d=>savePartitionDay(entity, d)));
+}
+async function apiDeleteKeys(keys){
+  if(!keys.length) return;
+  const res = await fetch(API_URL, {
+    method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify({ secret:SECRET, action:'deleteKeys', keys })
+  });
+  return res.json();
+}
+
+function applyServerData(data){
+  S.users = data.users || [];
+  S.orders = mergePartitionedEntity(data, 'orders').sort((a,b)=>a.createdAt-b.createdAt);
+  S.customers = data.customers || [];
+  S.attendance = mergePartitionedEntity(data, 'attendance').sort((a,b)=>a.timestamp-b.timestamp);
+  S.tasks = data.tasks || [];
+  S.rawMaterial = data.rawMaterial || {};
+  S.filledStock = data.filledStock || {};
+  S.readyStock = data.readyStock || {};
+  S.expenses = mergePartitionedEntity(data, 'expenses').sort((a,b)=>a.at-b.at);
+  S.activityLog = mergePartitionedEntity(data, 'activityLog').sort((a,b)=>a.at-b.at);
+  S.lowStock = data.lowStock || {raw:{}, filled:{}, ready:{}};
+  S.stockTasks = data.stockTasks || [];
+  S.dominoPrints = mergePartitionedEntity(data, 'dominoPrints').sort((a,b)=>a.at-b.at);
+  S.loginLog = mergePartitionedEntity(data, 'loginLog').sort((a,b)=>a.at-b.at);
+  trackPartitionKeys(data);
+  S.customRoles = data.customRoles || [];
+  S.rolePermissions = data.rolePermissions || {};
+  rebuildRolesRegistry();
+  applyRolePermissionsToROLES();
+  S.catalogItems = (data.catalogItems && data.catalogItems.length) ? data.catalogItems : flattenDefaultCatalog();
+  rebuildCatalogFlat();
+  S.transports = data.transports || [];
+}
+
+async function loadAll(){
+  setSyncing(true);
+  setSyncLabel('Loading data…');
+  try{
+    const { data, updatedAt } = await apiFetchAll();
+    lastServerUpdatedAt = updatedAt || 0;
+    applyServerData(data || {});
+
+    if(S.users.length === 0){
+      S.users.push({id:uid(), username:'admin', password:'admin123', name:'Admin', role:'admin'});
+      await safeSet('app:users', S.users);
+    }
+    if(!data || !data.catalogItems || !data.catalogItems.length){
+      safeSet('app:catalogItems', S.catalogItems); // first run ever — seed the backend so the order form can read it too
+    }
+    restoreSession();
+  }catch(e){
+    console.error('initial load failed', e);
+    showToast('Sync server unreachable — check connection', true);
+  }
+  S.loaded = true;
+  setSyncLabel(null);
+  setSyncing(false);
+}
+
+// Poll the backend so every device stays in sync in near real time,
+// without disturbing whatever the person is doing (typing in a modal etc).
+function startSyncPolling(intervalMs){
+  setInterval(async ()=>{
+    if(!S.currentUser) return;
+    flushOfflineQueue(); // fire-and-forget; retries any saves that failed while offline
+    if(syncing) return;
+    const modalOpen = !!document.getElementById('modalOverlay');
+    if(modalOpen) return;
+    try{
+      const serverUpdatedAt = await apiFetchVersion();
+      if(serverUpdatedAt && serverUpdatedAt > lastServerUpdatedAt){
+        setSyncLabel('Updating…');
+        const { data, updatedAt } = await apiFetchAll();
+        lastServerUpdatedAt = updatedAt || serverUpdatedAt;
+        applyServerData(data || {});
+        autoAdvanceOrders();
+        syncStockTasksFromAlerts();
+        setSyncLabel(null);
+        render();
+      }
+    }catch(e){ /* transient network hiccup — try again next tick */ }
+  }, intervalMs || 4000);
+}
+
+/* ============================= TOAST ============================= */
+let toastTimer=null;
+function showToast(msg, isErr){
+  S.toast = {msg, isErr};
+  render();
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>{ S.toast=null; render(); }, 2800);
+}
+
+/* ============================= AUTH ============================= */
+// Session persists across app restarts using localStorage, but auto-expires
+// 6 hours after login (SESSION_MAX_MS) — after that the person is signed out
+// automatically and has to log back in.
+// Note: this only works when the app is actually hosted/opened in a real browser
+// tab (as this Apps-Script-backed app is meant to be) — a claude.ai artifact
+// preview iframe blocks storage APIs, so persistence won't show there.
+const SESSION_KEY = 'orderops_session_user_id';
+const SESSION_AT_KEY = 'orderops_session_started_at';
+const SESSION_MAX_MS = 6 * 60 * 60 * 1000; // 6 hours
+function persistSession(user){
+  try{
+    localStorage.setItem(SESSION_KEY, user ? user.id : '');
+    localStorage.setItem(SESSION_AT_KEY, user ? String(Date.now()) : '');
+  }catch(e){}
+}
+function restoreSession(){
+  try{
+    const id = localStorage.getItem(SESSION_KEY);
+    const startedAt = parseInt(localStorage.getItem(SESSION_AT_KEY))||0;
+    if(!id) return;
+    if(!startedAt || (Date.now()-startedAt) > SESSION_MAX_MS){
+      persistSession(null); // expired — force a fresh login
+      return;
+    }
+    const u = S.users.find(x=>x.id===id);
+    if(u){ S.currentUser = u; S.view = ROLES[u.role].tabs[0]; }
+  }catch(e){}
+}
+function startSessionExpiryWatch(){
+  setInterval(()=>{
+    if(!S.currentUser) return;
+    try{
+      const startedAt = parseInt(localStorage.getItem(SESSION_AT_KEY))||0;
+      if(startedAt && (Date.now()-startedAt) > SESSION_MAX_MS){
+        doLogout();
+        showToast('Signed out after 6 hours — please log in again.');
+      }
+    }catch(e){}
+  }, 60000);
+}
+function findMatchingUser(username, password){
+  return S.users.find(u => u.username.toLowerCase() === username.trim().toLowerCase() && u.password === password) || null;
+}
+function finalizeLogin(u){
+  S.currentUser = u;
+  S.view = ROLES[u.role].tabs[0];
+  persistSession(u);
+  primeDevicePermissions();
+  S.loginLog.push({id:uid(), username:u.username, name:u.name, role:u.role, at:Date.now()});
+  if(S.loginLog.length>2000) S.loginLog = S.loginLog.slice(-2000); // day-partitioned now, but keep an overall sanity cap
+  savePartitionForItem('loginLog', S.loginLog[S.loginLog.length-1]);
+  S.postLoginPhase = null; S.pendingUser = null;
+  render();
+}
+function doLogout(){ S.currentUser = null; S.notifOpen=false; S.moreOpen=false; S.profileOpen=false; persistSession(null); render(); }
+
+/* ============================= STOCK ALERTS (cascading) =============================
+   If ready stock is short: check filled stock can cover it -> if not, check raw oil
+   can cover the remaining shortfall -> if raw also can't cover it, raise all 3 alerts. */
+function getStockAlerts(){
+  const raw = Object.entries(S.rawMaterial).filter(([c,v])=>v<0).map(([c,v])=>({id:c, label:c, text:fmtMl(v), team:'Owner / Manager — purchase more raw oil', level:'critical'}));
+  const filledDirect = Object.entries(S.filledStock).filter(([k,v])=>v<0).map(([k,v])=>{const it=findItem(k); return {id:k, label: it?`${it.name} ${it.size}`:k, text:`${v} pc — need ${-v} pc`, needQty:-v, level:'critical', team:'Filling team — fill more'};});
+  const ready = [];
+  const filledCascade = [];
+  const rawCascade = [];
+  Object.entries(S.readyStock).filter(([k,v])=>v<0).forEach(([k,v])=>{
+    const it = findItem(k); if(!it) return;
+    const shortfall = -v; // pieces short in ready
+    const filledAvail = S.filledStock[k]||0;
+    ready.push({id:k, label:`${it.name} ${it.size}`, text:`${v} pc — need ${shortfall} pc`, needQty:shortfall, team:'Packaging team — package more', level:'critical'});
+    if(filledAvail < shortfall){
+      const stillShort = shortfall - Math.max(filledAvail,0);
+      filledCascade.push({id:k, label:`${it.name} ${it.size}`, text:`need ${stillShort} more pc`, needQty:stillShort, team:'Filling team — fill more', level:'critical'});
+      const rawAvail = S.rawMaterial[it.rawCat]||0;
+      const mlNeeded = stillShort * it.ml;
+      if(rawAvail < mlNeeded){
+        rawCascade.push({id:it.rawCat, label:it.rawCat, text:`short ~${fmtMl(mlNeeded-rawAvail)}`, team:'Owner / Manager — purchase more raw oil', level:'critical'});
+      }
+    }
+  });
+  // Low-stock (owner-set threshold), only when not already negative
+  RAW_CATEGORIES.forEach(cat=>{
+    const v = S.rawMaterial[cat]||0; const th = S.lowStock.raw[cat];
+    if(th && v>=0 && v<=th) raw.push({id:cat, label:cat, text:`${fmtMl(v)} (low, alert at ${fmtMl(th)})`, team:'Owner / Manager — running low, plan a purchase', level:'low'});
+  });
+  CATALOG_FLAT.forEach(it=>{
+    const vf = S.filledStock[it.key]||0; const thf = S.lowStock.filled[it.key];
+    if(thf && vf>=0 && vf<=thf) filledDirect.push({id:it.key, label:`${it.name} ${it.size}`, text:`${vf} pc — low (alert at ${thf} pc)`, needQty:Math.max(thf-vf,1), team:'Filling team — running low', level:'low'});
+    const vr = S.readyStock[it.key]||0; const thr = S.lowStock.ready[it.key];
+    if(thr && vr>=0 && vr<=thr) ready.push({id:it.key, label:`${it.name} ${it.size}`, text:`${vr} pc — low (alert at ${thr} pc)`, needQty:Math.max(thr-vr,1), team:'Packaging team — running low', level:'low'});
+  });
+  // merge direct + cascaded, de-duped by id (keep most severe)
+  const dedupe = (list)=>{ const seen=new Map(); list.forEach(a=>{ const ex=seen.get(a.id); if(!ex || (ex.level!=='critical'&&a.level==='critical')) seen.set(a.id,a); }); return [...seen.values()]; };
+  const filled = dedupe([...filledDirect, ...filledCascade]);
+  const rawAll = dedupe([...raw, ...rawCascade]);
+  return {raw:rawAll, filled, ready, total: rawAll.length+filled.length+ready.length};
+}
+
+/* Search + "non-zero on top" sort helper for inventory lists */
+function filterSortInventory(list, searchKey, valueFn, labelFn){
+  const q = (S.search[searchKey]||'').trim().toLowerCase();
+  let out = list.filter(it => !q || labelFn(it).toLowerCase().includes(q));
+  out = out.slice().sort((a,b)=>{
+    const va = valueFn(a), vb = valueFn(b);
+    const aNz = va!==0, bNz = vb!==0;
+    if(aNz!==bNz) return aNz ? -1 : 1;
+    return Math.abs(vb)-Math.abs(va);
+  });
+  return out;
+}
+function searchBarHtml(searchKey, placeholder){
+  return `<div class="search-wrap"><input type="text" id="search_${searchKey}" placeholder="${esc(placeholder)}" value="${esc(S.search[searchKey]||'')}" /></div>`;
+}
+function bindSearchBar(searchKey){
+  const el = document.getElementById('search_'+searchKey);
+  if(!el) return;
+  let t = null;
+  el.addEventListener('input', ()=>{
+    S.search[searchKey]=el.value;
+    clearTimeout(t);
+    t = setTimeout(()=>{
+      render();
+      setTimeout(()=>{ const e2=document.getElementById('search_'+searchKey); if(e2){ e2.focus(); e2.setSelectionRange(e2.value.length,e2.value.length); } },0);
+    }, 120);
+  });
+}
+
+/* ============================= ACTIVITY LOG (who entered what — admin can edit/delete) ============================= */
+/* ============================= STOCK TASKS (owner sends a low/short-stock alert to the relevant team) ============================= */
+function sendStockTask(kind, itemId, label, qtyText){
+  const targetRole = kind==='filled' ? 'filling' : kind==='ready' ? 'packaging' : null;
+  if(!targetRole){ showToast('Owner purchases raw material — nothing to send.', true); return; }
+  const already = S.stockTasks.some(t=>t.status==='open' && t.kind===kind && t.itemId===itemId);
+  if(already){ showToast('Already sent — still open'); return; }
+  S.stockTasks.push({id:uid(), kind, itemId, label, qtyText:qtyText||'', targetRole, createdBy:S.currentUser.name, createdAt:Date.now(), status:'open'});
+  safeSet('app:stockTasks', S.stockTasks);
+  showToast('Sent to '+(targetRole==='filling'?'filling team':'packaging team'));
+}
+// Filling team fills more -> clears any open "filled stock low" task for that item.
+function completeStockTasksForItem(kind, key){
+  let changed=false;
+  S.stockTasks.forEach(t=>{ if(t.status==='open' && t.kind===kind && t.itemId===key){ t.status='done'; changed=true; } });
+  if(changed) safeSet('app:stockTasks', S.stockTasks);
+}
+// Auto-closes any open stock task whose underlying shortage/low-stock alert
+// no longer exists — e.g. an order was deleted or edited and the item is no
+// longer short, so the task the team was working on is removed automatically.
+function reconcileStockTasks(){
+  const alerts = getStockAlerts();
+  const stillAlerting = (kind, id)=> (kind==='filled'?alerts.filled:alerts.ready).some(a=>a.id===id);
+  let changed = false;
+  S.stockTasks.forEach(t=>{
+    if(t.status==='open' && !stillAlerting(t.kind, t.itemId)){ t.status='done'; changed=true; }
+  });
+  if(changed) safeSet('app:stockTasks', S.stockTasks);
+  return changed;
+}
+// Automatically pushes every active filled/ready shortage into the relevant
+// team's task list — no manual "send" needed. Idempotent (skips ones already open).
+function syncStockTasksFromAlerts(){
+  let changed = false;
+  // Anyone's action can resolve a shortage, so reconciliation (closing tasks
+  // that no longer apply) always runs. Only admin/manager *create* new tasks,
+  // to avoid every role's routine actions spawning tasks on a technicality.
+  if(S.currentUser && ['admin','manager'].includes(S.currentUser.role)){
+    const alerts = getStockAlerts();
+    const ensure = (kind, list)=>{
+      list.forEach(a=>{
+        const already = S.stockTasks.some(t=>t.status==='open' && t.kind===kind && t.itemId===a.id);
+        if(!already){
+          S.stockTasks.push({id:uid(), kind, itemId:a.id, label:a.label, qtyText:a.text||'', targetRole: kind==='filled'?'filling':'packaging', createdBy:'Auto', createdAt:Date.now(), status:'open'});
+          changed = true;
+        }
+      });
+    };
+    ensure('filled', alerts.filled);
+    ensure('ready', alerts.ready);
+  }
+  if(reconcileStockTasks()) changed = true;
+  if(changed) safeSet('app:stockTasks', S.stockTasks);
+  return changed;
+}
+function assignAllStockTasks(kind){
+  const alerts = getStockAlerts();
+  const list = kind==='filled' ? alerts.filled : alerts.ready;
+  let count = 0;
+  list.forEach(a=>{
+    const already = S.stockTasks.some(t=>t.status==='open' && t.kind===kind && t.itemId===a.id);
+    if(!already){
+      S.stockTasks.push({id:uid(), kind, itemId:a.id, label:a.label, qtyText:a.text||'', targetRole: kind==='filled'?'filling':'packaging', createdBy:S.currentUser.name, createdAt:Date.now(), status:'open'});
+      count++;
+    }
+  });
+  if(count) safeSet('app:stockTasks', S.stockTasks);
+  showToast(count ? `${count} task(s) assigned to the ${kind==='filled'?'filling':'packaging'} team` : 'Already all assigned');
+  render();
+}
+const STOCK_KIND_LABEL = { raw:'Raw material', filled:'Filled stock', ready:'Ready stock' };
+function renderAlertTiles(alerts, kind, stacked){
+  // kind: 'raw' | 'filled' | 'ready' — only filled (->filling team) & ready (->packaging team) are sendable.
+  if(!alerts.length) return '';
+  const targetRole = kind==='filled' ? 'filling' : kind==='ready' ? 'packaging' : null;
+  const taskWord = kind==='filled' ? 'filling' : 'packing';
+  return `<div class="alert-tile-grid${stacked?' stacked':''}" style="margin-bottom:12px;">
+    ${alerts.map(a=>{
+      const sendable = kind==='filled' || kind==='ready';
+      const alreadySent = sendable && S.stockTasks.some(t=>t.status==='open' && t.kind===kind && t.itemId===a.id);
+      return `<div class="alert-tile ${a.level==='low'?'mild':''}">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;margin-bottom:2px;">
+          <span class="mono" style="text-transform:uppercase;letter-spacing:0.03em;font-size:9.5px;">${esc(STOCK_KIND_LABEL[kind])}</span>
+          <span class="badge badge-${a.level==='low'?'pending':'rejected'}">${a.level==='low'?'Low':'Short'}</span>
+        </div>
+        <div class="at-label">${esc(a.label)}</div>
+        <div class="at-detail"><b>${esc(a.text)}</b></div>
+        ${sendable?`<div class="at-detail" style="margin-bottom:6px;">→ ${targetRole==='filling'?'Filling':'Packaging'} task${alreadySent?' (sent)':''}</div>`:`<div class="at-detail" style="margin-bottom:6px;">Owner purchases this</div>`}
+        ${sendable?`<button class="btn btn-sm ${alreadySent?'btn-outline':'btn-primary'}" ${alreadySent?'disabled':''} data-send-task="${kind}|${esc(a.id)}|${esc(a.label)}|${esc(a.text||'')}">${alreadySent?'Task sent ✓':`Send ${taskWord} task`}</button>`:''}
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+function renderAlertSection(kind, list, stacked){
+  if(!list.length) return '';
+  const titleMap = {raw:'🛢️ Purchase (Raw material)', filled:'🧴 Filling', ready:'📦 Packaging'};
+  const bulk = (kind==='filled'||kind==='ready') ? `<button class="btn btn-sm btn-outline" data-bulk-assign="${kind}">Assign all as tasks</button>` : '';
+  return `<div style="margin-bottom:16px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
+      <div style="font-weight:800;font-size:13.5px;">${titleMap[kind]} <span class="mono" style="font-weight:400;">(${list.length})</span></div>
+      ${bulk}
+    </div>
+    ${renderAlertTiles(list, kind, stacked)}
+  </div>`;
+}
+function bindAlertTiles(){
+  document.querySelectorAll('[data-send-task]').forEach(b=>b.addEventListener('click', ()=>{
+    const [kind, id, label, qtyText] = b.dataset.sendTask.split('|');
+    sendStockTask(kind, id, label, qtyText);
+    render();
+  }));
+  document.querySelectorAll('[data-bulk-assign]').forEach(b=>b.addEventListener('click', ()=>{
+    assignAllStockTasks(b.dataset.bulkAssign);
+  }));
+}
+
+function logActivity(entry){
+  entry.id = uid(); entry.at = Date.now(); entry.by = S.currentUser.name; entry.byUsername = S.currentUser.username;
+  S.activityLog.push(entry);
+  savePartitionForItem('activityLog', entry);
+}
+function activityLabel(e){
+  if(e.kind==='purchase') return `Purchase — ${e.cat}`;
+  if(e.kind==='filling') return `Filling — ${e.itemLabel}`;
+  if(e.kind==='packaging') return `Packaging — ${e.itemLabel}${e.note?` (${e.note})`:''}`;
+  return e.kind;
+}
+function activityAmount(e){
+  if(e.kind==='purchase') return fmtMl(e.ml);
+  return `${e.qty} pc`;
+}
+function applyActivityForward(e){
+  if(e.kind==='purchase'){ S.rawMaterial[e.cat] = (S.rawMaterial[e.cat]||0) + e.ml; }
+  if(e.kind==='filling'){ const mlUsed = e.actualMl!=null ? e.actualMl : (e.qty*e.mlPer); S.rawMaterial[e.rawCat] = (S.rawMaterial[e.rawCat]||0) - mlUsed; S.filledStock[e.key] = (S.filledStock[e.key]||0) + e.qty; }
+  if(e.kind==='packaging'){ S.filledStock[e.key] = (S.filledStock[e.key]||0) - e.qty; S.readyStock[e.key] = (S.readyStock[e.key]||0) + e.qty; }
+}
+function revertActivity(e){
+  if(e.kind==='purchase'){ S.rawMaterial[e.cat] = (S.rawMaterial[e.cat]||0) - e.ml; }
+  if(e.kind==='filling'){ const mlUsed = e.actualMl!=null ? e.actualMl : (e.qty*e.mlPer); S.rawMaterial[e.rawCat] = (S.rawMaterial[e.rawCat]||0) + mlUsed; S.filledStock[e.key] = (S.filledStock[e.key]||0) - e.qty; }
+  if(e.kind==='packaging'){ S.filledStock[e.key] = (S.filledStock[e.key]||0) + e.qty; S.readyStock[e.key] = (S.readyStock[e.key]||0) - e.qty; }
+}
+function saveAfterActivityChange(entry){
+  safeSet('app:rawMaterial', S.rawMaterial);
+  safeSet('app:filledStock', S.filledStock);
+  safeSet('app:readyStock', S.readyStock);
+  savePartitionForItem('activityLog', entry);
+}
+function renderLogView(){
+  const list = S.activityLog.slice().sort((a,b)=>b.at-a.at);
+  const sections = groupByDate(list, e=>e.at);
+  const rowsHtml = e=>`
+      <tr>
+        <td>${esc(activityLabel(e))}</td>
+        <td class="mono">${activityAmount(e)}</td>
+        <td class="mono">${esc(e.by)}</td>
+        <td class="mono">${fmtTime(e.at)}</td>
+        <td class="row-actions">
+          <button class="btn btn-sm btn-outline" data-edit-log="${e.id}">Edit</button>
+          <button class="btn btn-sm btn-danger" data-del-log="${e.id}">Delete</button>
+        </td>
+      </tr>`;
+  return `<div class="card">
+    <h2>Data entry log</h2>
+    <p class="desc">Who entered what, and when.</p>
+    ${list.length===0?`<div class="empty"><div class="big">🗂️</div>No entries yet.</div>`:
+      sections.map(s=>dateGroupHeaderHtml(s.heading)+`<table><thead><tr><th>Entry</th><th>Qty</th><th>By</th><th>Time</th><th></th></tr></thead><tbody>${s.items.map(rowsHtml).join('')}</tbody></table>`).join('')}
+  </div>`;
+}
+function bindLogView(){
+  document.querySelectorAll('[data-del-log]').forEach(b=>b.addEventListener('click', ()=>{
+    if(!confirm('Delete this entry? Its stock effect will be reversed.')) return;
+    const e = S.activityLog.find(x=>x.id===b.dataset.delLog); if(!e) return;
+    revertActivity(e);
+    S.activityLog = S.activityLog.filter(x=>x.id!==e.id);
+    saveAfterActivityChange(e); render(); showToast('Entry deleted & stock reverted');
+  }));
+  document.querySelectorAll('[data-edit-log]').forEach(b=>b.addEventListener('click', ()=>{
+    const e = S.activityLog.find(x=>x.id===b.dataset.editLog); if(!e) return;
+    openEditLogModal(e);
+  }));
+}
+function openEditLogModal(e){
+  const isPurchase = e.kind==='purchase';
+  const isFilling = e.kind==='filling';
+  const currentActualL = isFilling ? ((e.actualMl!=null ? e.actualMl : (e.qty*e.mlPer))/1000).toFixed(2) : null;
+  const standardL = isFilling ? ((e.qty*e.mlPer)/1000).toFixed(2) : null;
+  showModal(`
+    <h3>Edit — ${esc(activityLabel(e))}</h3>
+    <div class="field"><label>New quantity ${isPurchase?'(Liters)':'(pieces)'}</label>
+      <input id="editLogVal" type="number" min="0" ${isPurchase?`max="${MAX_PURCHASE_L}" step="0.01"`:`max="${MAX_PC_ENTRY}"`} value="${isPurchase?(e.ml/1000):e.qty}" />
+    </div>
+    ${isFilling ? `
+    <div class="field"><label>Actual oil used (Liters)</label>
+      <input id="editLogActualL" type="number" min="0" step="0.01" value="${currentActualL}" />
+      <div class="mono" style="margin-top:6px;">Standard for this qty: ${standardL} L. Adjust here if more/less oil was actually used (spillage, wastage, etc.) — the difference is reflected in raw material stock.</div>
+    </div>` : ''}
+    <div class="modal-actions">
+      <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
+      <button type="button" class="btn btn-primary" id="editLogSave">Save</button>
+    </div>
+  `);
+  document.getElementById('editLogSave').addEventListener('click', ()=>{
+    let val = parseFloat(document.getElementById('editLogVal').value)||0;
+    const cap = isPurchase ? MAX_PURCHASE_L : MAX_PC_ENTRY;
+    if(val>cap){ showAlert(`Max allowed is ${cap} ${isPurchase?'L':'pc'} per entry.`); return; }
+    revertActivity(e);
+    if(isPurchase){ e.ml = val*1000; }
+    else {
+      e.qty = Math.round(val);
+      if(isFilling){
+        const actualLInput = document.getElementById('editLogActualL');
+        const actualL = actualLInput ? parseFloat(actualLInput.value) : NaN;
+        e.actualMl = !isNaN(actualL) && actualL>=0 ? actualL*1000 : null; // null = fall back to standard qty*mlPer
+      }
+    }
+    applyActivityForward(e);
+    saveAfterActivityChange(e);
+    closeModal(); render(); showToast('Entry updated');
+  });
+}
+function alertBanner(list){
+  if(!list.length) return '';
+  const crit = list.filter(a=>a.level!=='low');
+  const low = list.filter(a=>a.level==='low');
+  let out = '';
+  if(crit.length) out += `<div class="alert-banner"><b>⚠ ${crit.length} item(s) short</b>${crit.map(a=>`${esc(a.label)}: <span class="stockneg">${a.text}</span> — ${esc(a.team)}<br/>`).join('')}</div>`;
+  if(low.length) out += `<div class="alert-banner warn-mild"><b>🔔 ${low.length} item(s) running low</b>${low.map(a=>`${esc(a.label)}: ${esc(a.text)} — ${esc(a.team)}<br/>`).join('')}</div>`;
+  return out;
+}
+
+/* ============================= RENDER ROOT ============================= */
+let lastRenderedView = null;
+let lastRenderedHtml = null;
+let navJustSwitched = false;
+function renderBrandedLoadingScreen(){
+  return `<div class="login-wrap">
+    <div class="welcome-screen">
+      <img src="${COMPANY_LOGO}" alt="M A Products India" class="welcome-logo" style="margin-bottom:22px;" />
+      <div class="postlogin-spinner"></div>
+      <div class="loading-msg-fade" style="margin-top:18px;font-size:14px;font-weight:700;letter-spacing:0.02em;">Loading Order Management System<br/>by M A Products INDIA</div>
+    </div>
+  </div>`;
+}
+function render(){
+  const root = document.getElementById('root');
+  if(!S.loaded){
+    root.innerHTML = renderBrandedLoadingScreen();
+    return;
+  }
+  if(!S.currentUser){
+    if(S.postLoginPhase){
+      root.innerHTML = renderPostLoginSequence();
+      bindPostLoginSequence();
+      return;
+    }
+    root.innerHTML = renderLogin();
+    bindLogin();
+    lastRenderedView = null;
+    return;
+  }
+  // Rebuilding innerHTML resets scroll to 0 by default — capture and restore
+  // the scrollable .content area's position so clicking anything doesn't
+  // yank the page back to the top. Only do this when staying on the same
+  // screen; switching tabs should still start fresh at the top.
+  const sameView = lastRenderedView === S.view;
+  navJustSwitched = !sameView; // read by the nav-item template to pop only the tab that's genuinely becoming active
+  const prevContent = root.querySelector('.content');
+  const savedScrollTop = sameView && prevContent ? prevContent.scrollTop : 0;
+  const newHtml = renderShell();
+  // Most background sync updates don't actually change anything THIS user
+  // can currently see (someone else marked attendance while you're viewing
+  // Orders, say) — skip the DOM replacement entirely when the screen would
+  // come out byte-for-byte identical. This is what was causing the visible
+  // "jump to top and back" on every sync tick: a full shell rebuild for a
+  // screen that hadn't actually changed at all.
+  if(sameView && newHtml === lastRenderedHtml) return;
+  lastRenderedHtml = newHtml;
+  root.innerHTML = newHtml;
+  bindShell();
+  const newContent = root.querySelector('.content');
+  if(newContent) newContent.scrollTop = savedScrollTop;
+  lastRenderedView = S.view;
+}
+
+/* ============================= LOGIN VIEW ============================= */
+let loginError = '';
+function renderLogin(){
+  return `
+  <div class="login-wrap">
+    <div class="login-card">
+      <div class="login-brand-lg">
+        <div class="login-logo"><img src="${COMPANY_LOGO}" alt="M A Products India" style="width:100%;height:100%;object-fit:contain;border-radius:12px;" /></div>
+        <div>
+          <div class="login-brand-name">M A Products INDIA</div>
+          <div class="login-brand-sub">Order Management System</div>
+        </div>
+      </div>
+      <h1>Sign in</h1>
+      <p class="sub">Enter your username and password to continue.</p>
+      ${loginError ? `<div class="err">${esc(loginError)}</div>` : ''}
+      <form id="loginForm">
+        <div class="field"><label>Username</label><input id="loginUser" autocomplete="username" required /></div>
+        <div class="field"><label>Password</label><input id="loginPass" type="password" autocomplete="current-password" required /></div>
+        <button class="btn btn-primary" type="submit">Sign in</button>
+      </form>
+    </div>
+  </div>`;
+}
+let loginSubmitting = false;
+function bindLogin(){
+  loginSubmitting = false; // reset every time the login form is (re)shown — e.g. after logout — so a stuck flag from a prior successful login never blocks the next one
+  document.getElementById('loginForm').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    // Guards against a double-submit (e.g. impatient double-click / double
+    // Enter) firing this handler twice while still awaiting loadAllPromise —
+    // that used to race two loading sequences against each other and made
+    // the delay look like it got skipped or cut short.
+    if(loginSubmitting) return;
+    loginSubmitting = true;
+    const u = document.getElementById('loginUser').value;
+    const p = document.getElementById('loginPass').value;
+    if(loadAllPromise) await loadAllPromise; // data may still be loading in the background — wait for it before checking credentials
+    const matched = findMatchingUser(u, p);
+    if(matched){ loginError=''; startPostLoginSequence(matched); }
+    else { loginSubmitting = false; startWrongLoginSequence(); }
+  });
+}
+
+/* ============================= POST-LOGIN SEQUENCE (loading -> welcome) ============================= */
+const POST_LOGIN_LOADING_MSGS = ['Loading Orders…','Loading Stock…','Updating other features…'];
+function startPostLoginSequence(user){
+  if(S.postLoginPhase) return; // a sequence is already running — never start a second one on top of it
+  S.pendingUser = user;
+  S.postLoginPhase = 'loading';
+  S.postLoginLoadingStep = 0;
+  render();
+  const stepMs = 750; // 3 steps ≈ 2.25s total, comfortably over the requested 2s
+  const tick = ()=>{
+    S.postLoginLoadingStep++;
+    if(S.postLoginLoadingStep < POST_LOGIN_LOADING_MSGS.length){
+      render();
+      setTimeout(tick, stepMs);
+    } else {
+      S.postLoginPhase = 'welcome';
+      render();
+    }
+  };
+  setTimeout(tick, stepMs);
+}
+const WRONG_LOGIN_MSGS = ['Searching for employee ID…','Fake login found','Report sent to company'];
+function startWrongLoginSequence(){
+  if(S.postLoginPhase) return; // don't overlap with an already-running sequence
+  S.postLoginPhase = 'wrongLogin';
+  S.postLoginLoadingStep = 0;
+  render();
+  const stepMs = 1330; // 3 steps ≈ 4s total
+  const tick = ()=>{
+    S.postLoginLoadingStep++;
+    if(S.postLoginLoadingStep < WRONG_LOGIN_MSGS.length){
+      render();
+      setTimeout(tick, stepMs);
+    } else {
+      S.postLoginPhase = null;
+      loginError = 'Invalid Login ID & Password';
+      render();
+    }
+  };
+  setTimeout(tick, stepMs);
+}
+function renderPostLoginSequence(){
+  if(S.postLoginPhase === 'welcome'){
+    const name = S.pendingUser ? S.pendingUser.name : '';
+    return `<div class="login-wrap">
+      <div class="welcome-screen">
+        <div class="welcome-fade d1">Hello, ${esc(name)}</div>
+        <div class="welcome-fade d2" style="opacity:0.75;font-size:14px;margin-top:10px;">Welcome to</div>
+        <div class="welcome-fade d3 welcome-brand">M A Products INDIA</div>
+        <div class="welcome-fade d4"><img src="${COMPANY_LOGO}" alt="M A Products India" class="welcome-logo" /></div>
+        <button class="btn btn-primary welcome-fade d4" id="continueBtn" style="width:auto;padding:13px 30px;margin-top:8px;">Tap to Continue ›</button>
+      </div>
+    </div>`;
+  }
+  const msg = S.postLoginPhase === 'wrongLogin'
+    ? (WRONG_LOGIN_MSGS[S.postLoginLoadingStep] || 'Checking…')
+    : (POST_LOGIN_LOADING_MSGS[S.postLoginLoadingStep] || 'Loading…');
+  return `<div class="login-wrap">
+    <div class="welcome-screen">
+      <img src="${COMPANY_LOGO}" alt="M A Products India" class="welcome-logo" style="margin-bottom:22px;" />
+      <div class="postlogin-spinner ${S.postLoginPhase==='wrongLogin'?'spinner-alert':''}"></div>
+      <div class="loading-msg-fade" style="margin-top:18px;font-size:14px;font-weight:700;letter-spacing:0.02em;">${esc(msg)}</div>
+    </div>
+  </div>`;
+}
+function bindPostLoginSequence(){
+  const btn = document.getElementById('continueBtn');
+  if(btn) btn.addEventListener('click', ()=>finalizeLogin(S.pendingUser));
+}
+
+/* ============================= APP SHELL ============================= */
+function myRoleAlerts(stockAlerts){
+  // Each role only sees alerts relevant to their own job.
+  const role = S.currentUser.role;
+  if(role==='admin' || role==='manager') return [...stockAlerts.raw, ...stockAlerts.filled, ...stockAlerts.ready];
+  if(role==='filling') return stockAlerts.filled;   // filled stock short -> filling team fills more
+  if(role==='packaging') return stockAlerts.ready;  // ready stock short -> packaging team packs more
+  if(role==='sales') return stockAlerts.ready;
+  return [];
+}
+function myNotifCount(stockAlerts){
+  const role = S.currentUser.role;
+  const pendingOrders = S.orders.filter(o=>o.status==='pending').length;
+  const reviewTasks = S.orders.filter(o => o.fillingStatus==='review' || o.packagingStatus==='review').length;
+  const myAlerts = myRoleAlerts(stockAlerts).length;
+  if(role==='admin') return pendingOrders+reviewTasks+myAlerts;
+  if(role==='manager') return myAlerts + S.orders.filter(o=>o.status==='processing' && (o.fillingStatus!=='done'||o.packagingStatus!=='done')).length;
+  if(role==='filling') return myAlerts + S.orders.filter(o=>o.status==='processing' && o.fillingStatus!=='done').length;
+  if(role==='packaging') return myAlerts + S.orders.filter(o=>o.status==='processing' && o.fillingStatus==='done' && o.packagingStatus!=='done').length;
+  if(role==='sales') return myAlerts;
+  return 0;
+}
+function renderShell(){
+  const role = ROLES[S.currentUser.role];
+  const stockAlerts = getStockAlerts();
+  const notifCount = myNotifCount(stockAlerts);
+  const { primary, overflow } = navSplit(role.tabs);
+  const overflowActive = overflow.includes(S.view);
+
+  return `
+    <div class="topbar">
+      <div class="topbar-left">
+        <img src="${COMPANY_LOGO}" alt="M A Products India" style="width:28px;height:28px;object-fit:contain;border-radius:6px;background:#fff;padding:2px;flex:0 0 auto;" />
+        <div class="titles">
+          <b>Welcome, ${esc((S.currentUser.name||'').split(' ')[0]||S.currentUser.name)}</b>
+          <span class="screen-label"><span class="sync-dot" id="syncDot"></span><span id="syncStatusText">${esc(currentSyncLabel || TAB_LABEL[S.view] || '')}</span><span id="syncPendingLabel">${pendingSaveCount()>0?` · ${pendingSaveCount()} pending`:''}</span></span>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button class="bell" id="bellBtn" title="Notifications">🔔${notifCount>0?`<span class="badge badge-pulse-new">${notifCount}</span>`:''}</button>
+        <button class="avatar-btn" id="avatarBtn" title="${esc(S.currentUser.name)}">${S.currentUser.photo?`<img src="${esc(S.currentUser.photo)}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;" />`:esc((S.currentUser.name||'?').trim().charAt(0).toUpperCase())}</button>
+      </div>
+    </div>
+    <div class="content">
+      ${renderView()}
+    </div>
+    ${renderBottomNav(primary, overflow, overflowActive)}
+    ${S.notifOpen ? renderSheet(renderNotifPanel(stockAlerts), 'closeNotif') : ''}
+    ${S.moreOpen ? renderSheet(renderMorePanel(overflow), 'closeMore') : ''}
+    ${S.profileOpen ? renderSheet(renderProfilePanel(role), 'closeProfile') : ''}
+    ${S.toast ? `<div class="app-toast" style="position:absolute;bottom:calc(var(--navbar-h) + var(--sab) + 14px);left:50%;background:${S.toast.isErr?'var(--danger)':'var(--ink)'};color:#fff;padding:9px 16px;border-radius:30px;font-size:12.5px;z-index:200;max-width:88%;text-align:center;">${esc(S.toast.msg)}</div>` : ''}
+  `;
+}
+
+function renderSheet(innerHtml, closeId){
+  return `<div class="modal-overlay" data-sheet-overlay="${closeId}"><div class="modal"><div class="sheet-handle"></div>${innerHtml}</div></div>`;
+}
+
+function renderBottomNav(primary, overflow, overflowActive){
+  return `<div class="navbar">
+    ${primary.map(t=>`
+      <button class="navitem ${S.view===t?'active':''}${S.view===t && navJustSwitched?' just-activated':''}" data-tab="${t}">
+        <span class="ico">${TAB_ICON[t]||'▫️'}</span><span class="lbl">${esc(TAB_SHORT[t]||TAB_LABEL[t])}</span>
+      </button>`).join('')}
+    ${overflow.length ? `
+      <button class="navitem ${overflowActive?'active':''}" id="moreNavBtn">
+        <span class="ico">⋯</span><span class="lbl">More</span>
+      </button>` : ''}
+  </div>`;
+}
+
+function renderMorePanel(overflow){
+  return `<h3>More</h3>
+  <div class="more-grid">
+    ${overflow.map(t=>`
+      <div class="more-item" data-more-tab="${t}">
+        <span class="ico">${TAB_ICON[t]||'▫️'}</span><span class="lbl">${esc(TAB_LABEL[t])}</span>
+      </div>`).join('')}
+  </div>`;
+}
+
+function renderProfilePanel(role){
+  const u = S.currentUser;
+  return `
+  <div class="id-card">
+    <div class="id-card-header">
+      <div class="id-card-company">M A PRODUCTS INDIA</div>
+      <div class="id-card-title">EMPLOYEE ID CARD</div>
+    </div>
+    <div class="id-card-body">
+      <div class="id-card-photo-wrap">
+        ${u.photo
+          ? `<img src="${esc(u.photo)}" class="id-card-photo" />`
+          : `<span class="id-card-photo id-card-photo-fallback">${esc((u.name||'?').charAt(0).toUpperCase())}</span>`}
+      </div>
+      <div class="id-card-name">${esc(u.name)}</div>
+      <span class="id-card-role-pill">${esc(u.post || role.label)}</span>
+      <div class="id-card-rows">
+        <div class="id-card-row"><span class="id-card-label">Designation</span><span class="id-card-value">${esc(role.label)}${u.post?` · ${esc(u.post)}`:''}</span></div>
+        <div class="id-card-row"><span class="id-card-label">Username</span><span class="id-card-value mono">${esc(u.username)}</span></div>
+        <div class="id-card-row"><span class="id-card-label">Contact No.</span><span class="id-card-value">${u.phone?esc(u.phone):'—'}</span></div>
+        <div class="id-card-row"><span class="id-card-label">Address</span><span class="id-card-value">${u.address?esc(u.address):'—'}</span></div>
+      </div>
+    </div>
+  </div>
+  <button class="btn btn-danger" style="width:100%;margin-top:14px;" id="logoutBtn">Log out</button>
+  <p class="mono" style="text-align:center;margin-top:14px;opacity:0.5;">build ${APP_BUILD}</p>`;
+}
+
+function renderPulse(stockAlerts){
+  const pending = S.orders.filter(o=>o.status==='pending').length;
+  const ready = S.orders.filter(o=>o.status==='ready').length;
+  return `<div class="pulse">
+    <span>ORDERS <b>${S.orders.length}</b></span>
+    <span>NEW <b>${pending}</b></span>
+    <span>READY <b>${ready}</b></span>
+    <span>CUSTOMERS <b>${S.customers.length}</b></span>
+    <span>ALERTS <b class="${stockAlerts.total>0?'warn':''}">${stockAlerts.total}</b></span>
+  </div>`;
+}
+
+function myRoleAlertKinds(role){
+  if(role==='admin' || role==='manager') return ['raw','filled','ready'];
+  if(role==='filling') return ['filled'];
+  if(role==='packaging' || role==='sales') return ['ready'];
+  return [];
+}
+function renderNotifPanel(stockAlerts){
+  const role = S.currentUser.role;
+  const isAdmin = role==='admin';
+  const pendingOrders = isAdmin ? S.orders.filter(o=>o.status==='pending') : [];
+  const readyOrders = isAdmin ? S.orders.filter(o=>o.status==='ready') : [];
+  const reviewTasks = isAdmin ? S.orders.filter(o => o.fillingStatus==='review' || o.packagingStatus==='review') : [];
+  const alertKinds = myRoleAlertKinds(role);
+  const alertsHtml = alertKinds.map(k=>renderAlertSection(k, stockAlerts[k], true)).join('');
+  const alertCount = alertKinds.reduce((s,k)=>s+stockAlerts[k].length,0);
+  let myWork = [];
+  if(role==='filling') myWork = S.orders.filter(o=>o.status==='processing' && o.fillingStatus!=='done');
+  if(role==='packaging') myWork = S.orders.filter(o=>o.status==='processing' && o.fillingStatus==='done' && o.packagingStatus!=='done');
+  if(role==='manager') myWork = S.orders.filter(o=>o.status==='processing' && (o.fillingStatus!=='done'||o.packagingStatus!=='done'));
+  return `<h3>${isAdmin?'Pending your approval':'Your alerts'}</h3>
+    <p class="desc" style="margin-top:-8px;">${isAdmin?'Waiting on you.':'Your alerts.'}</p>
+    ${pendingOrders.length===0 && readyOrders.length===0 && reviewTasks.length===0 && alertCount===0 && myWork.length===0 ? `<div class="empty">Nothing waiting on you right now.</div>` : ''}
+    ${pendingOrders.map(o=>`
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);gap:10px;flex-wrap:wrap;">
+        <div style="font-size:13px;"><b>${esc(o.customerName)}</b> — ${o.items.map(i=>`${esc(i.name)} ${esc(i.size)} ×${i.qty}`).join(', ')} <span class="mono">(by ${esc(o.createdBy)})</span></div>
+        <div class="row-actions">
+          <button class="btn btn-sm btn-success" data-approve-order="${o.id}">Accept</button>
+          <button class="btn btn-sm btn-danger" data-reject-order="${o.id}">Reject</button>
+        </div>
+      </div>`).join('')}
+    ${readyOrders.map(o=>`
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);gap:10px;flex-wrap:wrap;">
+        <div style="font-size:13px;"><b>${esc(o.customerName)}</b> — fully stocked, ready to dispatch</div>
+        <div class="row-actions"><button class="btn btn-sm btn-success" data-process-order="${o.id}">Mark processed</button></div>
+      </div>`).join('')}
+    ${reviewTasks.map(o=>`
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);flex-wrap:wrap;gap:8px;">
+        <div style="font-size:13px;"><b>${esc(o.customerName)}</b> — ${o.fillingStatus==='review'?'Filling':'Packaging'} marked done, needs sign-off</div>
+        <div class="row-actions">
+          <button class="btn btn-sm btn-success" data-ack-task="${o.id}|${o.fillingStatus==='review'?'filling':'packaging'}">Confirm done</button>
+        </div>
+      </div>`).join('')}
+    ${!isAdmin && myWork.length ? `<div style="font-size:12.5px;margin:6px 0;"><b>${myWork.length}</b> order(s) waiting on your work — check Tasks.</div>` : ''}
+    ${alertCount? `<div style="margin-top:10px;">${alertsHtml}</div>` : ''}`;
+}
+
+function bindShell(){
+  const avatarBtn = document.getElementById('avatarBtn');
+  if(avatarBtn) avatarBtn.addEventListener('click', ()=>{ S.profileOpen=true; S.notifOpen=false; S.moreOpen=false; render(); });
+  const logoutBtn = document.getElementById('logoutBtn');
+  if(logoutBtn) logoutBtn.addEventListener('click', doLogout);
+
+  const bell = document.getElementById('bellBtn');
+  if(bell) bell.addEventListener('click', ()=>{ S.notifOpen = !S.notifOpen; S.moreOpen=false; S.profileOpen=false; render(); });
+
+  const moreBtn = document.getElementById('moreNavBtn');
+  if(moreBtn) moreBtn.addEventListener('click', ()=>{ S.moreOpen = !S.moreOpen; S.notifOpen=false; S.profileOpen=false; render(); });
+
+  document.querySelectorAll('[data-sheet-overlay]').forEach(ov=>{
+    ov.addEventListener('click', (e)=>{
+      if(e.target !== ov) return;
+      S.notifOpen=false; S.moreOpen=false; S.profileOpen=false; render();
+    });
+  });
+
+  document.querySelectorAll('.navitem[data-tab]').forEach(t=>{
+    t.addEventListener('click', ()=>{ S.view = t.dataset.tab; S.notifOpen=false; S.moreOpen=false; render(); });
+  });
+  document.querySelectorAll('[data-more-tab]').forEach(t=>{
+    t.addEventListener('click', ()=>{ S.view = t.dataset.moreTab; S.moreOpen=false; render(); });
+  });
+
+  document.querySelectorAll('[data-approve-order]').forEach(b=>b.addEventListener('click', ()=>{ setOrderStatus(b.dataset.approveOrder, 'processing'); render(); }));
+  document.querySelectorAll('[data-reject-order]').forEach(b=>b.addEventListener('click', ()=>{ setOrderStatus(b.dataset.rejectOrder, 'rejected'); render(); }));
+  document.querySelectorAll('[data-process-order]').forEach(b=>b.addEventListener('click', ()=>{ setOrderStatus(b.dataset.processOrder, 'processed'); render(); }));
+  document.querySelectorAll('[data-ack-task]').forEach(b=>b.addEventListener('click', ()=>{
+    const [id, kind] = b.dataset.ackTask.split('|');
+    ackTask(id, kind); render();
+  }));
+
+  const syncDot = document.getElementById('syncDot');
+  if(syncDot && syncing) syncDot.classList.add('syncing');
+  if(syncDot && pendingSaveCount()>0) syncDot.classList.add('pending');
+
+  bindView();
+}
+
+function orderIsFullyStocked(o){
+  return o.items.every(d => (S.readyStock[d.key]||0) >= 0);
+}
+// Orders move Processing -> Ready automatically the moment every item on
+// them is actually covered by current stock — driven purely by the normal
+// Record Packaging flow, no separate manual step needed.
+function autoAdvanceOrders(){
+  let changed = false;
+  const touchedDays = new Set();
+  S.orders.forEach(o=>{
+    if(o.status==='processing' && orderIsFullyStocked(o)){
+      o.status='ready'; changed=true; touchedDays.add(localDateKey(o.createdAt));
+    }
+  });
+  touchedDays.forEach(d=>savePartitionDay('orders', d));
+  return changed;
+}
+// Admin can jump straight to Ready before stock naturally catches up on
+// every item — whatever's still short right now gets marked Cancelled.
+// Undoable: reverses only the items THIS action cancelled, and puts the
+// order back to Processing.
+function markOrderReadyNow(orderId){
+  const o = S.orders.find(x=>x.id===orderId); if(!o) return;
+  if(!confirm('Mark this order Ready now? Any item still short in stock will be marked Cancelled.')) return;
+  o.items.forEach(it=>{
+    if(it.cancelled) return;
+    const stockNow = S.readyStock[it.key]||0;
+    if(stockNow < 0){ it.cancelled = true; it.autoCancelledByReady = true; }
+  });
+  o.status = 'ready';
+  savePartitionForItem('orders', o);
+  render();
+  showToast('Order marked Ready — short items cancelled (undoable)');
+}
+function undoMarkOrderReady(orderId){
+  const o = S.orders.find(x=>x.id===orderId); if(!o) return;
+  o.items.forEach(it=>{
+    if(it.autoCancelledByReady){ it.cancelled = false; delete it.autoCancelledByReady; }
+  });
+  o.status = 'processing';
+  savePartitionForItem('orders', o);
+  render();
+  showToast('Undone — back to Processing');
+}
+
+function openDispatchModal(orderId){
+  const o = S.orders.find(x=>x.id===orderId); if(!o) return;
+  const cust = liveCustomerFor(o);
+  const prefillTransport = (cust && cust.transport) || '';
+  showModal(`
+    <h3>Processed & Dispatched</h3>
+    <p class="desc" style="margin-top:-6px;">Confirm transport details to complete this order.</p>
+    <div class="field"><label>Transport Name</label>
+      <input id="dispatchTransport" list="dispatchTransportList" value="${esc(prefillTransport)}" placeholder="e.g. XYZ Roadways" required />
+      <datalist id="dispatchTransportList">${S.transports.map(t=>`<option value="${esc(t)}"></option>`).join('')}</datalist>
+    </div>
+    <div class="field"><label>Total No. of Cases</label><input id="dispatchCases" type="number" min="0" placeholder="e.g. 12" /></div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
+ 
