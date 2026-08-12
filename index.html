@@ -358,8 +358,11 @@
   /* ---------- Bottom sheet (modals + more menu + notifications) ---------- */
   .modal-overlay{
     position:absolute;inset:0;background:rgba(10,16,32,0.5);display:flex;align-items:flex-end;justify-content:center;
-    z-index:100;
+    z-index:100;animation:overlayFadeIn .15s ease;
   }
+  @keyframes overlayFadeIn{from{opacity:0;}to{opacity:1;}}
+  .app-toast{animation:toastSlideUp .25s cubic-bezier(.2,.8,.3,1) forwards;}
+  @keyframes toastSlideUp{from{transform:translateX(-50%) translateY(10px);opacity:0;}to{transform:translateX(-50%) translateY(0);opacity:1;}}
   .app-alert-overlay{
     position:absolute;inset:0;background:rgba(10,16,32,0.6);display:flex;align-items:center;justify-content:center;
     z-index:500;padding:20px;
@@ -412,7 +415,7 @@
 /* ============================= PRODUCT CATALOG ============================= */
 /* ============================= BRANDING ============================= */
 const COMPANY_LOGO = "https://static.wixstatic.com/media/f34ac6_16010ac0fe9c48739c4860abefec3cbb~mv2.png/v1/fill/w_410,h_409,al_c,lg_1,q_85,enc_avif,quality_auto/M%20A%20Products%20INDIA%20Logo.png";
-const APP_BUILD = "2026-08-12-loading-alerts-perf1";
+const APP_BUILD = "2026-08-12-partylock-livesync-anim1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -1684,7 +1687,7 @@ function renderShell(){
     ${S.notifOpen ? renderSheet(renderNotifPanel(stockAlerts), 'closeNotif') : ''}
     ${S.moreOpen ? renderSheet(renderMorePanel(overflow), 'closeMore') : ''}
     ${S.profileOpen ? renderSheet(renderProfilePanel(role), 'closeProfile') : ''}
-    ${S.toast ? `<div style="position:absolute;bottom:calc(var(--navbar-h) + var(--sab) + 14px);left:50%;transform:translateX(-50%);background:${S.toast.isErr?'var(--danger)':'var(--ink)'};color:#fff;padding:9px 16px;border-radius:30px;font-size:12.5px;z-index:200;max-width:88%;text-align:center;">${esc(S.toast.msg)}</div>` : ''}
+    ${S.toast ? `<div class="app-toast" style="position:absolute;bottom:calc(var(--navbar-h) + var(--sab) + 14px);left:50%;background:${S.toast.isErr?'var(--danger)':'var(--ink)'};color:#fff;padding:9px 16px;border-radius:30px;font-size:12.5px;z-index:200;max-width:88%;text-align:center;">${esc(S.toast.msg)}</div>` : ''}
   `;
 }
 
