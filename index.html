@@ -395,7 +395,7 @@
 /* ============================= PRODUCT CATALOG ============================= */
 /* ============================= BRANDING ============================= */
 const COMPANY_LOGO = "https://static.wixstatic.com/media/f34ac6_16010ac0fe9c48739c4860abefec3cbb~mv2.png/v1/fill/w_410,h_409,al_c,lg_1,q_85,enc_avif,quality_auto/M%20A%20Products%20INDIA%20Logo.png";
-const APP_BUILD = "2026-08-11-dispatchflow1";
+const APP_BUILD = "2026-08-12-revert-mask1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -1815,49 +1815,36 @@ function bindShell(){
 function orderIsFullyStocked(o){
   return o.items.every(d => (S.readyStock[d.key]||0) >= 0);
 }
-// Orders now move Processing -> Ready only through explicit fulfillment
-// tracking — either every item gets individually ticked "packed" (see
-// toggleItemPacked), or admin uses "Mark Ready" to force it and cancel
-// whatever's left unpacked. Just having enough overall stock is no longer
-// enough on its own — it's not proof this specific order was packed.
+// Orders move Processing -> Ready automatically the moment every item on
+// them is actually covered by current stock — driven purely by the normal
+// Record Packaging flow, no separate manual step needed.
 function autoAdvanceOrders(){
   let changed = false;
   const touchedDays = new Set();
   S.orders.forEach(o=>{
-    if(o.status==='processing' && o.items.length && o.items.every(it=>it.packed || it.cancelled)){
+    if(o.status==='processing' && orderIsFullyStocked(o)){
       o.status='ready'; changed=true; touchedDays.add(localDateKey(o.createdAt));
     }
   });
   touchedDays.forEach(d=>savePartitionDay('orders', d));
   return changed;
 }
-// Toggles one order item's "packed" flag (packaging team ticking items off
-// as they physically pack them). When every item ends up packed or
-// cancelled, the order automatically advances to "Ready" on its own.
-function toggleItemPacked(orderId, itemIdx){
-  const o = S.orders.find(x=>x.id===orderId); if(!o) return;
-  const it = o.items[itemIdx]; if(!it || it.cancelled) return;
-  it.packed = !it.packed;
-  if(o.status==='processing' && o.items.every(x=>x.packed || x.cancelled)){
-    o.status = 'ready';
-    showToast('All items packed — order is Ready ✅');
-  }
-  savePartitionForItem('orders', o);
-  render();
-}
-// Admin can jump straight to Ready before every item is individually ticked
-// — whatever wasn't packed yet gets marked Cancelled. Undoable: reverses
-// only the items THIS action cancelled, and puts the order back to Processing.
+// Admin can jump straight to Ready before stock naturally catches up on
+// every item — whatever's still short right now gets marked Cancelled.
+// Undoable: reverses only the items THIS action cancelled, and puts the
+// order back to Processing.
 function markOrderReadyNow(orderId){
   const o = S.orders.find(x=>x.id===orderId); if(!o) return;
-  if(!confirm('Mark this order Ready now? Any item not yet packed will be marked Cancelled.')) return;
+  if(!confirm('Mark this order Ready now? Any item still short in stock will be marked Cancelled.')) return;
   o.items.forEach(it=>{
-    if(!it.packed && !it.cancelled){ it.cancelled = true; it.autoCancelledByReady = true; }
+    if(it.cancelled) return;
+    const stockNow = S.readyStock[it.key]||0;
+    if(stockNow < 0){ it.cancelled = true; it.autoCancelledByReady = true; }
   });
   o.status = 'ready';
   savePartitionForItem('orders', o);
   render();
-  showToast('Order marked Ready — unpacked items cancelled (undoable)');
+  showToast('Order marked Ready — short items cancelled (undoable)');
 }
 function undoMarkOrderReady(orderId){
   const o = S.orders.find(x=>x.id===orderId); if(!o) return;
@@ -2628,8 +2615,6 @@ function orderDisplayLabel(o){
 }
 function renderOrderTile(o){
   const isAdmin = S.currentUser.role==='admin';
-  const canTogglePacked = isAdmin || S.currentUser.role==='packaging';
-  const showPackChecklist = o.status==='processing';
   return `<div class="order-tile">
     <div class="ot-top"><span class="ot-name">${esc(orderDisplayLabel(o))}${o.source==='website'?' <span class="mono" style="font-weight:400;">🌐 Website</span>':''}</span><span class="badge badge-${o.status}">${esc(ORDER_STAGE_LABEL[o.status]||o.status)}</span></div>
     <div class="ot-items">${o.items.map((i,idx)=>{
@@ -2638,10 +2623,6 @@ function renderOrderTile(o){
       const qtyLabel = `${esc(i.name)} ${esc(i.size)} <span class="mono">×${fmtQtyPreferCase(i.qty, caseSize)}</span>`;
       if(i.cancelled){
         return `<span style="color:var(--ink-soft);text-decoration:line-through;">✖ ${qtyLabel} <i>(cancelled)</i></span>`;
-      }
-      if(showPackChecklist){
-        const packBtn = canTogglePacked ? `<button type="button" class="btn btn-sm ${i.packed?'btn-success':'btn-outline'}" data-toggle-packed="${o.id}|${idx}" style="padding:2px 8px;font-size:11px;margin-left:6px;">${i.packed?'✔ Packed':'Mark packed'}</button>` : (i.packed?' <span style="color:var(--success);">✔ Packed</span>':'');
-        return `${i.packed?'<span style="color:var(--success);">✔</span>':'⬜'} ${qtyLabel}${packBtn}`;
       }
       const stockNow = S.readyStock[i.key]||0;
       let avail, shortQty;
@@ -2734,10 +2715,6 @@ function bindOrderRowActions(closeAfter){
   }));
   document.querySelectorAll('[data-approve-order]').forEach(b=>b.addEventListener('click', ()=>{ setOrderStatus(b.dataset.approveOrder,'processing'); if(closeAfter) closeModal(); render(); }));
   document.querySelectorAll('[data-reject-order]').forEach(b=>b.addEventListener('click', ()=>{ setOrderStatus(b.dataset.rejectOrder,'rejected'); if(closeAfter) closeModal(); render(); }));
-  document.querySelectorAll('[data-toggle-packed]').forEach(b=>b.addEventListener('click', ()=>{
-    const [orderId, idx] = b.dataset.togglePacked.split('|');
-    toggleItemPacked(orderId, parseInt(idx));
-  }));
   document.querySelectorAll('[data-mark-ready-now]').forEach(b=>b.addEventListener('click', ()=>{ markOrderReadyNow(b.dataset.markReadyNow); }));
   document.querySelectorAll('[data-undo-ready]').forEach(b=>b.addEventListener('click', ()=>{ undoMarkOrderReady(b.dataset.undoReady); }));
   document.querySelectorAll('[data-dispatch-order]').forEach(b=>b.addEventListener('click', ()=>{ openDispatchModal(b.dataset.dispatchOrder); if(closeAfter) closeModal(); }));
