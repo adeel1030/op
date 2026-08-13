@@ -445,7 +445,7 @@
 /* ============================= PRODUCT CATALOG ============================= */
 /* ============================= BRANDING ============================= */
 const COMPANY_LOGO = "icon-512.png";
-const APP_BUILD = "2026-08-14-dailywork1";
+const APP_BUILD = "2026-08-14-backup1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -1245,6 +1245,28 @@ function finalizeLogin(u){
   backfillCatalogCaseSizes();
 }
 function doLogout(){ S.currentUser = null; S.notifOpen=false; S.moreOpen=false; S.profileOpen=false; S.alertPanelOpen=null; persistSession(null); render(); }
+// Manual, on-demand backup — fetches everything fresh from the backend
+// (not just what's currently in memory) and downloads it as one JSON file.
+async function downloadBackupNow(){
+  showToast('Preparing backup…');
+  try{
+    const { data } = await apiFetchAll();
+    const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+    a.href = url;
+    a.download = `OrderOps-Backup-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    showToast('Backup downloaded ✅');
+  }catch(e){
+    console.error(e);
+    showToast('Could not download backup — try again', true);
+  }
+}
 
 /* ============================= STOCK ALERTS (cascading) =============================
    If ready stock is short: check filled stock can cover it -> if not, check raw oil
@@ -1904,6 +1926,7 @@ function renderProfilePanel(role){
       </div>
     </div>
   </div>
+  ${u.role==='admin' ? `<button class="btn btn-outline" style="width:100%;margin-top:14px;" id="downloadBackupBtn">⬇️ Download backup now</button>` : ''}
   <button class="btn btn-danger" style="width:100%;margin-top:14px;" id="logoutBtn">Log out</button>
   <p class="mono" style="text-align:center;margin-top:14px;opacity:0.5;">build ${APP_BUILD}</p>`;
 }
@@ -1976,6 +1999,8 @@ function bindShell(){
   if(avatarBtn) avatarBtn.addEventListener('click', ()=>{ S.profileOpen=true; S.notifOpen=false; S.moreOpen=false; S.alertPanelOpen=null; render(); });
   const logoutBtn = document.getElementById('logoutBtn');
   if(logoutBtn) logoutBtn.addEventListener('click', doLogout);
+  const downloadBackupBtn = document.getElementById('downloadBackupBtn');
+  if(downloadBackupBtn) downloadBackupBtn.addEventListener('click', downloadBackupNow);
 
   const bell = document.getElementById('bellBtn');
   if(bell) bell.addEventListener('click', ()=>{ S.notifOpen = !S.notifOpen; S.moreOpen=false; S.profileOpen=false; S.alertPanelOpen=null; render(); });
@@ -2198,55 +2223,78 @@ function renderDailyWork(){
   const packagingEntries = S.activityLog.filter(e=>e.kind==='packaging' && localDateKey(e.at)===date).sort((a,b)=>a.at-b.at);
   const expenseEntries = S.expenses.filter(e=>localDateKey(e.at)===date).sort((a,b)=>a.at-b.at);
   const totalExpense = expenseEntries.filter(e=>e.type!=='settlement').reduce((s,e)=>s+(e.amount||0),0);
-  const recordInfo = (S.dailyRecordMarks||{})[date];
-  const isRecorded = !!recordInfo;
+
+  const allEntries = [...fillingEntries, ...packagingEntries, ...expenseEntries];
+  const bookedCount = allEntries.filter(e=>e.booked).length;
+  const totalCount = allEntries.length;
+
+  const bookCell = (e, source)=> e.booked
+    ? `<button type="button" class="btn btn-sm btn-outline" data-book="${source}|${e.id}">↩ Undo</button>`
+    : `<button type="button" class="btn btn-sm btn-accent" data-book="${source}|${e.id}">✅ Book</button>`;
 
   return `
   <div class="card">
     <h2>📆 Daily Work</h2>
-    <p class="desc">Filling, packing, and expenses for the day — for updating your accounting software.</p>
+    <p class="desc">Filling, packing, and expenses for the day — book each one as you update your accounting software.</p>
     <div class="field"><label>Date</label><input type="date" id="dwDateSel" value="${date}" max="${localDateKey(Date.now())}" /></div>
-    ${isRecorded ? `<div style="background:var(--success-bg);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin:10px 0;font-size:12.5px;">✅ Marked recorded by ${esc(recordInfo.by)} on ${fmtDate(recordInfo.at)}</div>` : ''}
-    <button type="button" class="btn ${isRecorded?'btn-outline':'btn-primary'}" id="dwMarkBtn" style="width:100%;margin-top:6px;">${isRecorded?'↩ Unmark as recorded':'✅ Mark this day as recorded'}</button>
+    ${totalCount>0 ? `<div style="background:${bookedCount===totalCount?'var(--success-bg)':'var(--bg)'};border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin:10px 0;font-size:12.5px;font-weight:700;">${bookedCount===totalCount?'✅':'📋'} ${bookedCount} of ${totalCount} entries booked</div>` : ''}
+    ${(totalCount>0 && bookedCount<totalCount) ? `<button type="button" class="btn btn-outline" id="dwBookAllBtn" style="width:100%;">✅ Book all remaining (${totalCount-bookedCount})</button>` : ''}
   </div>
 
   <div class="card">
     <h2>🧴 Filling — ${fillingEntries.length} entr${fillingEntries.length===1?'y':'ies'}</h2>
     ${fillingEntries.length===0?`<div class="empty">No filling recorded this day.</div>`:`
-    <table><thead><tr><th>Item</th><th>Qty</th><th>By</th><th>Time</th></tr></thead><tbody>
-    ${fillingEntries.map(e=>`<tr><td>${esc(e.itemLabel)}</td><td class="mono">${e.qty} pc</td><td>${esc(e.by)}</td><td class="mono">${fmtTime(e.at)}</td></tr>`).join('')}
+    <table><thead><tr><th>Item</th><th>Qty</th><th>By</th><th>Time</th><th></th></tr></thead><tbody>
+    ${fillingEntries.map(e=>{
+      const it = findItem(e.key);
+      const qtyDisplay = it && it.caseSize ? fmtCase(e.qty, it.caseSize) : `${e.qty} pc`;
+      return `<tr${e.booked?' style="opacity:0.55;"':''}><td>${esc(e.itemLabel)}</td><td class="mono">${qtyDisplay}</td><td>${esc(e.by)}</td><td class="mono">${fmtTime(e.at)}</td><td>${bookCell(e,'activityLog')}</td></tr>`;
+    }).join('')}
     </tbody></table>`}
   </div>
 
   <div class="card">
     <h2>📦 Packing — ${packagingEntries.length} entr${packagingEntries.length===1?'y':'ies'}</h2>
     ${packagingEntries.length===0?`<div class="empty">No packing recorded this day.</div>`:`
-    <table><thead><tr><th>Item</th><th>Qty</th><th>By</th><th>Time</th></tr></thead><tbody>
-    ${packagingEntries.map(e=>`<tr><td>${esc(e.itemLabel)}${e.note?` <span class="mono">(${esc(e.note)})</span>`:''}</td><td class="mono">${e.qty} pc</td><td>${esc(e.by)}</td><td class="mono">${fmtTime(e.at)}</td></tr>`).join('')}
+    <table><thead><tr><th>Item</th><th>Qty</th><th>By</th><th>Time</th><th></th></tr></thead><tbody>
+    ${packagingEntries.map(e=>{
+      const it = findItem(e.key);
+      const qtyDisplay = it && it.caseSize ? fmtCase(e.qty, it.caseSize) : `${e.qty} pc`;
+      return `<tr${e.booked?' style="opacity:0.55;"':''}><td>${esc(e.itemLabel)}${e.note?` <span class="mono">(${esc(e.note)})</span>`:''}</td><td class="mono">${qtyDisplay}</td><td>${esc(e.by)}</td><td class="mono">${fmtTime(e.at)}</td><td>${bookCell(e,'activityLog')}</td></tr>`;
+    }).join('')}
     </tbody></table>`}
   </div>
 
   <div class="card">
     <h2>💰 Expenses — ${expenseEntries.length} entr${expenseEntries.length===1?'y':'ies'}${totalExpense?` · ₹${totalExpense.toLocaleString('en-IN')}`:''}</h2>
     ${expenseEntries.length===0?`<div class="empty">No expenses recorded this day.</div>`:`
-    <table><thead><tr><th>To</th><th>Description</th><th>Amount</th><th>Entered by</th><th>Time</th></tr></thead><tbody>
-    ${expenseEntries.map(e=>`<tr><td><b>${esc(e.byName)}</b></td><td>${esc(e.description||e.category||'—')}</td><td class="mono">${e.type==='settlement'?'− ':''}₹${(e.amount||0).toLocaleString('en-IN')}</td><td>${esc(e.enteredByName||e.byName)}</td><td class="mono">${fmtTime(e.at)}</td></tr>`).join('')}
+    <table><thead><tr><th>To</th><th>Description</th><th>Amount</th><th>Entered by</th><th>Time</th><th></th></tr></thead><tbody>
+    ${expenseEntries.map(e=>`<tr${e.booked?' style="opacity:0.55;"':''}><td><b>${esc(e.byName)}</b></td><td>${esc(e.description||e.category||'—')}</td><td class="mono">${e.type==='settlement'?'− ':''}₹${(e.amount||0).toLocaleString('en-IN')}</td><td>${esc(e.enteredByName||e.byName)}</td><td class="mono">${fmtTime(e.at)}</td><td>${bookCell(e,'expenses')}</td></tr>`).join('')}
     </tbody></table>`}
   </div>`;
+}
+function toggleEntryBooked(source, id){
+  const list = source==='expenses' ? S.expenses : S.activityLog;
+  const e = list.find(x=>x.id===id); if(!e) return;
+  e.booked = !e.booked;
+  savePartitionForItem(source, e);
+  render();
+  showToast(e.booked ? 'Booked ✅' : 'Unbooked');
 }
 function bindDailyWork(){
   const dateSel = document.getElementById('dwDateSel');
   if(dateSel) dateSel.addEventListener('change', ()=>{ S.dailyWorkDate = dateSel.value; render(); });
-  const markBtn = document.getElementById('dwMarkBtn');
-  if(markBtn) markBtn.addEventListener('click', ()=>{
+  document.querySelectorAll('[data-book]').forEach(b=>b.addEventListener('click', ()=>{
+    const [source, id] = b.dataset.book.split('|');
+    toggleEntryBooked(source, id);
+  }));
+  const bookAllBtn = document.getElementById('dwBookAllBtn');
+  if(bookAllBtn) bookAllBtn.addEventListener('click', ()=>{
     const date = S.dailyWorkDate || localDateKey(Date.now());
-    S.dailyRecordMarks = S.dailyRecordMarks || {};
-    if(S.dailyRecordMarks[date]){ delete S.dailyRecordMarks[date]; }
-    else { S.dailyRecordMarks[date] = { by: S.currentUser.name, at: Date.now() }; }
-    safeSet('app:dailyRecordMarks', S.dailyRecordMarks);
-    const nowMarked = !!S.dailyRecordMarks[date];
+    S.activityLog.filter(e=>(e.kind==='filling'||e.kind==='packaging') && localDateKey(e.at)===date && !e.booked).forEach(e=>{ e.booked = true; savePartitionForItem('activityLog', e); });
+    S.expenses.filter(e=>localDateKey(e.at)===date && !e.booked).forEach(e=>{ e.booked = true; savePartitionForItem('expenses', e); });
     render();
-    showToast(nowMarked ? 'Marked as recorded ✅' : 'Unmarked');
+    showToast('All entries booked ✅');
   });
 }
 
