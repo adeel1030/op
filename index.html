@@ -445,7 +445,7 @@
 /* ============================= PRODUCT CATALOG ============================= */
 /* ============================= BRANDING ============================= */
 const COMPANY_LOGO = "icon-512.png";
-const APP_BUILD = "2026-08-14-backup1";
+const APP_BUILD = "2026-08-14-batchsave1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -958,19 +958,48 @@ function updateSyncStatusUI(){
 }
 let flushingQueue = false;
 async function flushOfflineQueue(){
-  if(flushingQueue || !navigator.onLine) return;
+  if(flushingQueue) return;
   const keys = Object.keys(offlineQueue);
   if(keys.length===0) return;
+  if(!navigator.onLine){
+    showToast('No connection — saved on this device, will sync automatically', true);
+    return;
+  }
   flushingQueue = true;
   setSyncing(true);
-  for(const key of keys){
-    const entry = offlineQueue[key];
-    if(!entry) continue;
-    try{
-      await apiSave(key, entry.value);
-      removeFromOfflineQueue(key);
-    }catch(e){ /* still offline / server unreachable — leave queued, try again next round */ }
+  // Snapshot queuedAt per key — if a NEWER safeSet() overwrites the same key
+  // while this batch is in flight, we must NOT delete that newer entry once
+  // the (older) batch succeeds, or its data would be silently lost without
+  // ever having been sent.
+  const snapshot = keys.map(k=>({key:k, entry:offlineQueue[k]}));
+  const items = snapshot.map(({key,entry})=>({key, value:entry.value}));
+  setSyncLabel(items.length===1 ? `Saving ${friendlySyncLabel(items[0].key)}…` : `Saving ${items.length} changes…`);
+  const settle = ()=>{
+    snapshot.forEach(({key, entry})=>{
+      if(offlineQueue[key] === entry) removeFromOfflineQueue(key);
+      (batchResolvers[key]||[]).forEach(r=>r());
+      delete batchResolvers[key];
+    });
+  };
+  try{
+    const res = await fetch(API_URL, {
+      method:'POST',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({ secret:SECRET, action:'batchSave', items })
+    });
+    const json = await res.json();
+    if(json.error) throw new Error(json.error);
+    if(json.updatedAt) lastServerUpdatedAt = json.updatedAt;
+    settle();
+  }catch(e){
+    console.error('batch sync failed — still queued, will retry', e);
+    showToast('No connection — saved on this device, will sync automatically', true);
+    // Resolve pending `await safeSet(...)` callers so they don't hang
+    // forever, but (per settle()'s own check) never delete anything here —
+    // items simply stay queued for the next retry.
+    settle();
   }
+  setSyncLabel(null);
   setSyncing(false);
   flushingQueue = false;
 }
@@ -1020,16 +1049,24 @@ function backendKey(oldKey){ return oldKey.replace(/^app:/, ''); }
 // change to the server in the background. If the network is down or the
 // request fails, the save is queued and retried automatically (offline
 // queue) instead of being silently lost.
+// Every save is queued locally FIRST (durable via localStorage immediately,
+// same safety net as the offline-queue always had) and a short debounce
+// timer coalesces whatever else gets queued in the same burst — so one
+// logical action that touches several keys (e.g. accepting an order, which
+// touches readyStock, stockTasks, and the order itself) becomes ONE network
+// request instead of several separate ones each queuing for the backend
+// lock. This is what was causing the pileup of concurrent "Running" saves.
+let batchResolvers = {}; // key -> [resolve, ...] waiting on the next successful flush
+let batchFlushTimer = null;
 function safeSet(oldKey, value){
   const key = backendKey(oldKey);
-  setSyncing(true);
-  return apiSave(key, value).then(()=>{
-    removeFromOfflineQueue(key);
-  }).catch(e=>{
-    console.error('sync save failed — queued for retry', key, e);
-    queueOfflineSave(key, value);
-    showToast('No connection — saved on this device, will sync automatically', true);
-  }).finally(()=>{ setSyncing(false); });
+  queueOfflineSave(key, value);
+  const p = new Promise(resolve=>{
+    (batchResolvers[key] = batchResolvers[key] || []).push(resolve);
+  });
+  if(batchFlushTimer) clearTimeout(batchFlushTimer);
+  batchFlushTimer = setTimeout(()=>{ batchFlushTimer=null; flushOfflineQueue(); }, 60);
+  return p;
 }
 
 // Day-wise partitioned storage: orders/activityLog/attendance/expenses/
