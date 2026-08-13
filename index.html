@@ -445,7 +445,7 @@
 /* ============================= PRODUCT CATALOG ============================= */
 /* ============================= BRANDING ============================= */
 const COMPANY_LOGO = "icon-512.png";
-const APP_BUILD = "2026-08-13-tilepermissions1";
+const APP_BUILD = "2026-08-14-dailywork1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -710,7 +710,7 @@ const S = {
   loadFailed:false,
   users:[], orders:[], customers:[], attendance:[], tasks:[], loginLog:[],
   rawMaterial:{}, filledStock:{}, readyStock:{}, expenses:[], activityLog:[], stockTasks:[], dominoPrints:[],
-  lowStock:{raw:{}, filled:{}, ready:{}}, watchStock:{raw:{}, filled:{}, ready:{}}, rolePermissions:{}, customRoles:[], catalogItems:[], transports:[],
+  lowStock:{raw:{}, filled:{}, ready:{}}, watchStock:{raw:{}, filled:{}, ready:{}}, rolePermissions:{}, customRoles:[], catalogItems:[], transports:[], dailyRecordMarks:{}, dailyWorkDate:null,
   _partitionKeysSeen:{orders:new Set(), activityLog:new Set(), attendance:new Set(), expenses:new Set(), dominoPrints:new Set(), loginLog:new Set()},
   currentUser:null, view:'home', stockView:'raw', notifOpen:false, moreOpen:false, profileOpen:false, alertPanelOpen:null, toast:null,
   postLoginPhase:null, pendingUser:null, postLoginLoadingStep:0,
@@ -722,7 +722,7 @@ const MAX_PC_ENTRY = 5000;   // max pieces in a single filling / packaging / ord
 const MAX_PURCHASE_L = 2000; // max liters in a single purchase entry
 
 const ROLES = {
-  admin:{label:'Admin', tabs:['home','orders','customers','stock','domino','tasks','expenses','log','attendance','users']},
+  admin:{label:'Admin', tabs:['home','orders','customers','stock','domino','tasks','expenses','dailywork','log','attendance','users']},
   manager:{label:'Manager', tabs:['home','orders','stock','domino','tasks','expenses','checkin']},
   sales:{label:'Sales', tabs:['home','orders','customers','stock','tasks','checkin']},
   filling:{label:'Filling Team', tabs:['home','tasks','checkin','stock']},
@@ -732,7 +732,7 @@ const ROLES = {
 // whenever admin hasn't customized a post's checklist yet, and as the
 // canonical module order when rendering the checklist itself.
 const DEFAULT_ROLE_TABS = Object.fromEntries(Object.keys(ROLES).map(r=>[r, ROLES[r].tabs.slice()]));
-const MODULE_ORDER = ['home','orders','customers','stock','domino','tasks','expenses','checkin','log','attendance','users'];
+const MODULE_ORDER = ['home','orders','customers','stock','domino','tasks','expenses','dailywork','checkin','log','attendance','users'];
 // Applies the admin-configured access checklist (S.rolePermissions) onto the
 // live ROLES object, so every existing `ROLES[role].tabs` reference in the
 // app automatically reflects the latest permissions without needing to be
@@ -812,17 +812,17 @@ function canDoEntry(role, key){
 const TAB_LABEL = {
   home:'Home', orders:'Orders', customers:'Customers',
   attendance:'Attendance', users:'Users', tasks:'Tasks', checkin:'Mark Attendance',
-  stock:'Stock', expenses:'Expenses', log:'Data Log', domino:'Domino Printing'
+  stock:'Stock', expenses:'Expenses', log:'Data Log', domino:'Domino Printing', dailywork:'Daily Work'
 };
 const TAB_ICON = {
   home:'🏠', orders:'🧾', customers:'👤', attendance:'📋', users:'⚙️',
   tasks:'✅', checkin:'📍', stock:'📦',
-  expenses:'💰', log:'🗂️', domino:'🖨️'
+  expenses:'💰', log:'🗂️', domino:'🖨️', dailywork:'📆'
 };
 const TAB_SHORT = {
   home:'Home', orders:'Orders', customers:'Clients', attendance:'Attend', users:'Team',
   tasks:'Tasks', checkin:'Attend', stock:'Stock',
-  expenses:'Expense', log:'Log', domino:'Domino'
+  expenses:'Expense', log:'Log', domino:'Domino', dailywork:'Daily'
 };
 const NAV_MAX = 999; // nav is horizontally scrollable now — show every tab, no hidden "More"
 function navSplit(tabs){
@@ -1107,6 +1107,7 @@ function applyServerData(data){
   S.catalogItems = (data.catalogItems && data.catalogItems.length) ? data.catalogItems : flattenDefaultCatalog();
   rebuildCatalogFlat();
   S.transports = data.transports || [];
+  S.dailyRecordMarks = data.dailyRecordMarks || {};
 }
 
 async function loadAll(){
@@ -2166,6 +2167,7 @@ function renderView(){
     case 'expenses': return renderExpenses();
     case 'log': return renderLogView();
     case 'domino': return renderDomino();
+    case 'dailywork': return renderDailyWork();
     default: return '';
   }
 }
@@ -2185,7 +2187,67 @@ function bindView(){
     case 'expenses': return bindExpenses();
     case 'log': return bindLogView();
     case 'domino': return bindDomino();
+    case 'dailywork': return bindDailyWork();
   }
+}
+
+/* ============================= DAILY WORK (admin — for updating external accounting) ============================= */
+function renderDailyWork(){
+  const date = S.dailyWorkDate || localDateKey(Date.now());
+  const fillingEntries = S.activityLog.filter(e=>e.kind==='filling' && localDateKey(e.at)===date).sort((a,b)=>a.at-b.at);
+  const packagingEntries = S.activityLog.filter(e=>e.kind==='packaging' && localDateKey(e.at)===date).sort((a,b)=>a.at-b.at);
+  const expenseEntries = S.expenses.filter(e=>localDateKey(e.at)===date).sort((a,b)=>a.at-b.at);
+  const totalExpense = expenseEntries.filter(e=>e.type!=='settlement').reduce((s,e)=>s+(e.amount||0),0);
+  const recordInfo = (S.dailyRecordMarks||{})[date];
+  const isRecorded = !!recordInfo;
+
+  return `
+  <div class="card">
+    <h2>📆 Daily Work</h2>
+    <p class="desc">Filling, packing, and expenses for the day — for updating your accounting software.</p>
+    <div class="field"><label>Date</label><input type="date" id="dwDateSel" value="${date}" max="${localDateKey(Date.now())}" /></div>
+    ${isRecorded ? `<div style="background:var(--success-bg);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin:10px 0;font-size:12.5px;">✅ Marked recorded by ${esc(recordInfo.by)} on ${fmtDate(recordInfo.at)}</div>` : ''}
+    <button type="button" class="btn ${isRecorded?'btn-outline':'btn-primary'}" id="dwMarkBtn" style="width:100%;margin-top:6px;">${isRecorded?'↩ Unmark as recorded':'✅ Mark this day as recorded'}</button>
+  </div>
+
+  <div class="card">
+    <h2>🧴 Filling — ${fillingEntries.length} entr${fillingEntries.length===1?'y':'ies'}</h2>
+    ${fillingEntries.length===0?`<div class="empty">No filling recorded this day.</div>`:`
+    <table><thead><tr><th>Item</th><th>Qty</th><th>By</th><th>Time</th></tr></thead><tbody>
+    ${fillingEntries.map(e=>`<tr><td>${esc(e.itemLabel)}</td><td class="mono">${e.qty} pc</td><td>${esc(e.by)}</td><td class="mono">${fmtTime(e.at)}</td></tr>`).join('')}
+    </tbody></table>`}
+  </div>
+
+  <div class="card">
+    <h2>📦 Packing — ${packagingEntries.length} entr${packagingEntries.length===1?'y':'ies'}</h2>
+    ${packagingEntries.length===0?`<div class="empty">No packing recorded this day.</div>`:`
+    <table><thead><tr><th>Item</th><th>Qty</th><th>By</th><th>Time</th></tr></thead><tbody>
+    ${packagingEntries.map(e=>`<tr><td>${esc(e.itemLabel)}${e.note?` <span class="mono">(${esc(e.note)})</span>`:''}</td><td class="mono">${e.qty} pc</td><td>${esc(e.by)}</td><td class="mono">${fmtTime(e.at)}</td></tr>`).join('')}
+    </tbody></table>`}
+  </div>
+
+  <div class="card">
+    <h2>💰 Expenses — ${expenseEntries.length} entr${expenseEntries.length===1?'y':'ies'}${totalExpense?` · ₹${totalExpense.toLocaleString('en-IN')}`:''}</h2>
+    ${expenseEntries.length===0?`<div class="empty">No expenses recorded this day.</div>`:`
+    <table><thead><tr><th>To</th><th>Description</th><th>Amount</th><th>Entered by</th><th>Time</th></tr></thead><tbody>
+    ${expenseEntries.map(e=>`<tr><td><b>${esc(e.byName)}</b></td><td>${esc(e.description||e.category||'—')}</td><td class="mono">${e.type==='settlement'?'− ':''}₹${(e.amount||0).toLocaleString('en-IN')}</td><td>${esc(e.enteredByName||e.byName)}</td><td class="mono">${fmtTime(e.at)}</td></tr>`).join('')}
+    </tbody></table>`}
+  </div>`;
+}
+function bindDailyWork(){
+  const dateSel = document.getElementById('dwDateSel');
+  if(dateSel) dateSel.addEventListener('change', ()=>{ S.dailyWorkDate = dateSel.value; render(); });
+  const markBtn = document.getElementById('dwMarkBtn');
+  if(markBtn) markBtn.addEventListener('click', ()=>{
+    const date = S.dailyWorkDate || localDateKey(Date.now());
+    S.dailyRecordMarks = S.dailyRecordMarks || {};
+    if(S.dailyRecordMarks[date]){ delete S.dailyRecordMarks[date]; }
+    else { S.dailyRecordMarks[date] = { by: S.currentUser.name, at: Date.now() }; }
+    safeSet('app:dailyRecordMarks', S.dailyRecordMarks);
+    const nowMarked = !!S.dailyRecordMarks[date];
+    render();
+    showToast(nowMarked ? 'Marked as recorded ✅' : 'Unmarked');
+  });
 }
 
 /* ============================= DOMINO PRINTING (impressions log) ============================= */
