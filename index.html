@@ -441,7 +441,7 @@
 /* ============================= PRODUCT CATALOG ============================= */
 /* ============================= BRANDING ============================= */
 const COMPANY_LOGO = "icon-512.png";
-const APP_BUILD = "2026-08-13-logo-everywhere1";
+const APP_BUILD = "2026-08-13-loadretry-fix1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -690,6 +690,7 @@ function resolveItemFromText(text){
 /* ============================= STATE ============================= */
 const S = {
   loaded:false,
+  loadFailed:false,
   users:[], orders:[], customers:[], attendance:[], tasks:[], loginLog:[],
   rawMaterial:{}, filledStock:{}, readyStock:{}, expenses:[], activityLog:[], stockTasks:[], dominoPrints:[],
   lowStock:{raw:{}, filled:{}, ready:{}}, rolePermissions:{}, customRoles:[], catalogItems:[], transports:[],
@@ -1093,22 +1094,40 @@ function applyServerData(data){
 async function loadAll(){
   setSyncing(true);
   setSyncLabel('Loading data…');
-  try{
-    const { data, updatedAt } = await apiFetchAll();
-    lastServerUpdatedAt = updatedAt || 0;
-    applyServerData(data || {});
+  const MAX_ATTEMPTS = 3;
+  let lastErr = null;
+  for(let attempt=1; attempt<=MAX_ATTEMPTS; attempt++){
+    try{
+      const { data, updatedAt } = await apiFetchAll();
+      lastServerUpdatedAt = updatedAt || 0;
+      applyServerData(data || {});
 
-    if(S.users.length === 0){
-      S.users.push({id:uid(), username:'admin', password:'admin123', name:'Admin', role:'admin'});
-      await safeSet('app:users', S.users);
+      if(S.users.length === 0){
+        S.users.push({id:uid(), username:'admin', password:'admin123', name:'Admin', role:'admin'});
+        await safeSet('app:users', S.users);
+      }
+      if(!data || !data.catalogItems || !data.catalogItems.length){
+        safeSet('app:catalogItems', S.catalogItems); // first run ever — seed the backend so the order form can read it too
+      }
+      restoreSession();
+      S.loadFailed = false;
+      lastErr = null;
+      break; // success
+    }catch(e){
+      lastErr = e;
+      console.error(`initial load failed (attempt ${attempt}/${MAX_ATTEMPTS})`, e);
+      if(attempt < MAX_ATTEMPTS){
+        setSyncLabel(`Connecting… retry ${attempt}/${MAX_ATTEMPTS-1}`);
+        await new Promise(r=>setTimeout(r, 1500)); // brief pause helps a lot with Apps Script cold-start
+      }
     }
-    if(!data || !data.catalogItems || !data.catalogItems.length){
-      safeSet('app:catalogItems', S.catalogItems); // first run ever — seed the backend so the order form can read it too
-    }
-    restoreSession();
-  }catch(e){
-    console.error('initial load failed', e);
-    showToast('Sync server unreachable — check connection', true);
+  }
+  if(lastErr){
+    // Never show a login screen with an empty/stale user list — that's what
+    // was causing correct credentials to be falsely rejected as "invalid".
+    // Show a clear, honest retry state instead.
+    S.loadFailed = true;
+    showToast('Could not connect — check your internet and try again', true);
   }
   S.loaded = true;
   setSyncLabel(null);
@@ -1520,10 +1539,36 @@ function renderBrandedLoadingScreen(){
     </div>
   </div>`;
 }
+function renderConnectionFailedScreen(){
+  return `<div class="login-wrap">
+    <div class="welcome-screen">
+      <img src="${COMPANY_LOGO}" alt="M A Products India" class="welcome-logo" style="margin-bottom:20px;" />
+      <div style="font-size:38px;margin-bottom:10px;">📡</div>
+      <div style="font-size:15px;font-weight:800;margin-bottom:8px;">Couldn't connect</div>
+      <div style="font-size:13px;opacity:0.8;line-height:1.5;margin-bottom:22px;max-width:280px;">Please check your internet connection and try again.</div>
+      <button class="btn btn-primary" id="retryLoadBtn" style="width:auto;padding:12px 30px;">↻ Retry</button>
+    </div>
+  </div>`;
+}
+function bindConnectionFailedScreen(){
+  const btn = document.getElementById('retryLoadBtn');
+  if(btn) btn.addEventListener('click', async ()=>{
+    S.loaded = false;
+    render();
+    loadAllPromise = loadAll();
+    await loadAllPromise;
+    render();
+  });
+}
 function render(){
   const root = document.getElementById('root');
   if(!S.loaded){
     root.innerHTML = renderBrandedLoadingScreen();
+    return;
+  }
+  if(S.loadFailed && !S.currentUser){
+    root.innerHTML = renderConnectionFailedScreen();
+    bindConnectionFailedScreen();
     return;
   }
   if(!S.currentUser){
