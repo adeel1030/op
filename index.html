@@ -2,7 +2,14 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1E3F1B">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Order Ops">
+<link rel="apple-touch-icon" href="https://static.wixstatic.com/media/f34ac6_16010ac0fe9c48739c4860abefec3cbb~mv2.png">
 <title>M A Products INDIA Order Management System</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
@@ -199,8 +206,15 @@
   /* ---------- App bar ---------- */
   .topbar{
     background:linear-gradient(115deg, #4C9A6E 0%, var(--primary) 45%, var(--primary-dark) 100%);
-    color:#fff;padding:calc(12px + var(--sat)) 16px 12px;display:flex;align-items:center;justify-content:space-between;gap:10px;
+    color:#fff;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px;
     flex:0 0 auto;overflow:visible;box-shadow:0 2px 10px -4px rgba(18,74,46,0.4);position:relative;z-index:20;
+  }
+  /* Only add the notch/status-bar safe-area padding when running installed
+     as a standalone app (no browser chrome) — in a normal browser tab the
+     browser's own address bar already occupies that space, so adding this
+     too was creating a visibly oversized gap above the header on phones. */
+  @media (display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui){
+    .topbar{ padding-top:calc(12px + var(--sat)); }
   }
   .topbar-left{display:flex;align-items:center;gap:9px;min-width:0;overflow:visible;}
   .topbar-left .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex:0 0 auto;}
@@ -426,7 +440,7 @@
 /* ============================= PRODUCT CATALOG ============================= */
 /* ============================= BRANDING ============================= */
 const COMPANY_LOGO = "https://static.wixstatic.com/media/f34ac6_16010ac0fe9c48739c4860abefec3cbb~mv2.png/v1/fill/w_410,h_409,al_c,lg_1,q_85,enc_avif,quality_auto/M%20A%20Products%20INDIA%20Logo.png";
-const APP_BUILD = "2026-08-12-scrollfix-anim2";
+const APP_BUILD = "2026-08-12-doublecredit-audit1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -1892,491 +1906,41 @@ function autoAdvanceOrders(){
 function markOrderReadyNow(orderId){
   const o = S.orders.find(x=>x.id===orderId); if(!o) return;
   if(!confirm('Mark this order Ready now? Any item still short in stock will be marked Cancelled.')) return;
+  let stockChanged = false;
   o.items.forEach(it=>{
     if(it.cancelled) return;
     const stockNow = S.readyStock[it.key]||0;
-    if(stockNow < 0){ it.cancelled = true; it.autoCancelledByReady = true; }
+    if(stockNow < 0){
+      it.cancelled = true; it.autoCancelledByReady = true;
+      // This item's need no longer exists — credit back the qty that was
+      // deducted for it at accept time, same as deleting an order does.
+      // Otherwise the shortage number (and the filling/packing task it
+      // drives) stays inflated for a need that's no longer real.
+      S.readyStock[it.key] = stockNow + it.qty;
+      stockChanged = true;
+    }
   });
   o.status = 'ready';
   savePartitionForItem('orders', o);
+  if(stockChanged){ safeSet('app:readyStock', S.readyStock); syncStockTasksFromAlerts(); }
   render();
   showToast('Order marked Ready — short items cancelled (undoable)');
 }
 function undoMarkOrderReady(orderId){
   const o = S.orders.find(x=>x.id===orderId); if(!o) return;
+  let stockChanged = false;
   o.items.forEach(it=>{
-    if(it.autoCancelledByReady){ it.cancelled = false; delete it.autoCancelledByReady; }
+    if(it.autoCancelledByReady){
+      it.cancelled = false; delete it.autoCancelledByReady;
+      // Re-deduct the qty that was credited back, since this item is
+      // needed again now that the order is back in Processing.
+      S.readyStock[it.key] = (S.readyStock[it.key]||0) - it.qty;
+      stockChanged = true;
+    }
   });
   o.status = 'processing';
   savePartitionForItem('orders', o);
-  render();
-  showToast('Undone — back to Processing');
-}
-
-function openDispatchModal(orderId){
-  const o = S.orders.find(x=>x.id===orderId); if(!o) return;
-  const cust = liveCustomerFor(o);
-  const prefillTransport = (cust && cust.transport) || '';
-  showModal(`
-    <h3>Processed & Dispatched</h3>
-    <p class="desc" style="margin-top:-6px;">Confirm transport details to complete this order.</p>
-    <div class="field"><label>Transport Name</label>
-      <input id="dispatchTransport" list="dispatchTransportList" value="${esc(prefillTransport)}" placeholder="e.g. XYZ Roadways" required />
-      <datalist id="dispatchTransportList">${S.transports.map(t=>`<option value="${esc(t)}"></option>`).join('')}</datalist>
-    </div>
-    <div class="field"><label>Total No. of Cases</label><input id="dispatchCases" type="number" min="0" placeholder="e.g. 12" /></div>
-    <div class="modal-actions">
-      <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
-
-       <button type="button" class="btn btn-primary" id="editLogSave">Save</button>
-    </div>
-  `);
-  document.getElementById('editLogSave').addEventListener('click', ()=>{
-    let val = parseFloat(document.getElementById('editLogVal').value)||0;
-    const cap = isPurchase ? MAX_PURCHASE_L : MAX_PC_ENTRY;
-    if(val>cap){ showAlert(`Max allowed is ${cap} ${isPurchase?'L':'pc'} per entry.`); return; }
-    revertActivity(e);
-    if(isPurchase){ e.ml = val*1000; }
-    else {
-      e.qty = Math.round(val);
-      if(isFilling){
-        const actualLInput = document.getElementById('editLogActualL');
-        const actualL = actualLInput ? parseFloat(actualLInput.value) : NaN;
-        e.actualMl = !isNaN(actualL) && actualL>=0 ? actualL*1000 : null; // null = fall back to standard qty*mlPer
-      }
-    }
-    applyActivityForward(e);
-    saveAfterActivityChange(e);
-    closeModal(); render(); showToast('Entry updated');
-  });
-}
-function alertBanner(list){
-  if(!list.length) return '';
-  const crit = list.filter(a=>a.level!=='low');
-  const low = list.filter(a=>a.level==='low');
-  let out = '';
-  if(crit.length) out += `<div class="alert-banner"><b>⚠ ${crit.length} item(s) short</b>${crit.map(a=>`${esc(a.label)}: <span class="stockneg">${a.text}</span> — ${esc(a.team)}<br/>`).join('')}</div>`;
-  if(low.length) out += `<div class="alert-banner warn-mild"><b>🔔 ${low.length} item(s) running low</b>${low.map(a=>`${esc(a.label)}: ${esc(a.text)} — ${esc(a.team)}<br/>`).join('')}</div>`;
-  return out;
-}
-
-/* ============================= RENDER ROOT ============================= */
-let lastRenderedView = null;
-let lastRenderedHtml = null;
-let navJustSwitched = false;
-function renderBrandedLoadingScreen(){
-  return `<div class="login-wrap">
-    <div class="welcome-screen">
-      <img src="${COMPANY_LOGO}" alt="M A Products India" class="welcome-logo" style="margin-bottom:22px;" />
-      <div class="postlogin-spinner"></div>
-      <div class="loading-msg-fade" style="margin-top:18px;font-size:14px;font-weight:700;letter-spacing:0.02em;">Loading Order Management System<br/>by M A Products INDIA</div>
-    </div>
-  </div>`;
-}
-function render(){
-  const root = document.getElementById('root');
-  if(!S.loaded){
-    root.innerHTML = renderBrandedLoadingScreen();
-    return;
-  }
-  if(!S.currentUser){
-    if(S.postLoginPhase){
-      root.innerHTML = renderPostLoginSequence();
-      bindPostLoginSequence();
-      return;
-    }
-    root.innerHTML = renderLogin();
-    bindLogin();
-    lastRenderedView = null;
-    return;
-  }
-  // Rebuilding innerHTML resets scroll to 0 by default — capture and restore
-  // the scrollable .content area's position so clicking anything doesn't
-  // yank the page back to the top. Only do this when staying on the same
-  // screen; switching tabs should still start fresh at the top.
-  const sameView = lastRenderedView === S.view;
-  navJustSwitched = !sameView; // read by the nav-item template to pop only the tab that's genuinely becoming active
-  const prevContent = root.querySelector('.content');
-  const savedScrollTop = sameView && prevContent ? prevContent.scrollTop : 0;
-  const newHtml = renderShell();
-  // Most background sync updates don't actually change anything THIS user
-  // can currently see (someone else marked attendance while you're viewing
-  // Orders, say) — skip the DOM replacement entirely when the screen would
-  // come out byte-for-byte identical. This is what was causing the visible
-  // "jump to top and back" on every sync tick: a full shell rebuild for a
-  // screen that hadn't actually changed at all.
-  if(sameView && newHtml === lastRenderedHtml) return;
-  lastRenderedHtml = newHtml;
-  root.innerHTML = newHtml;
-  bindShell();
-  const newContent = root.querySelector('.content');
-  if(newContent) newContent.scrollTop = savedScrollTop;
-  lastRenderedView = S.view;
-}
-
-/* ============================= LOGIN VIEW ============================= */
-let loginError = '';
-function renderLogin(){
-  return `
-  <div class="login-wrap">
-    <div class="login-card">
-      <div class="login-brand-lg">
-        <div class="login-logo"><img src="${COMPANY_LOGO}" alt="M A Products India" style="width:100%;height:100%;object-fit:contain;border-radius:12px;" /></div>
-        <div>
-          <div class="login-brand-name">M A Products INDIA</div>
-          <div class="login-brand-sub">Order Management System</div>
-        </div>
-      </div>
-      <h1>Sign in</h1>
-      <p class="sub">Enter your username and password to continue.</p>
-      ${loginError ? `<div class="err">${esc(loginError)}</div>` : ''}
-      <form id="loginForm">
-        <div class="field"><label>Username</label><input id="loginUser" autocomplete="username" required /></div>
-        <div class="field"><label>Password</label><input id="loginPass" type="password" autocomplete="current-password" required /></div>
-        <button class="btn btn-primary" type="submit">Sign in</button>
-      </form>
-    </div>
-  </div>`;
-}
-let loginSubmitting = false;
-function bindLogin(){
-  loginSubmitting = false; // reset every time the login form is (re)shown — e.g. after logout — so a stuck flag from a prior successful login never blocks the next one
-  document.getElementById('loginForm').addEventListener('submit', async (e)=>{
-    e.preventDefault();
-    // Guards against a double-submit (e.g. impatient double-click / double
-    // Enter) firing this handler twice while still awaiting loadAllPromise —
-    // that used to race two loading sequences against each other and made
-    // the delay look like it got skipped or cut short.
-    if(loginSubmitting) return;
-    loginSubmitting = true;
-    const u = document.getElementById('loginUser').value;
-    const p = document.getElementById('loginPass').value;
-    if(loadAllPromise) await loadAllPromise; // data may still be loading in the background — wait for it before checking credentials
-    const matched = findMatchingUser(u, p);
-    if(matched){ loginError=''; startPostLoginSequence(matched); }
-    else { loginSubmitting = false; startWrongLoginSequence(); }
-  });
-}
-
-/* ============================= POST-LOGIN SEQUENCE (loading -> welcome) ============================= */
-const POST_LOGIN_LOADING_MSGS = ['Loading Orders…','Loading Stock…','Updating other features…'];
-function startPostLoginSequence(user){
-  if(S.postLoginPhase) return; // a sequence is already running — never start a second one on top of it
-  S.pendingUser = user;
-  S.postLoginPhase = 'loading';
-  S.postLoginLoadingStep = 0;
-  render();
-  const stepMs = 750; // 3 steps ≈ 2.25s total, comfortably over the requested 2s
-  const tick = ()=>{
-    S.postLoginLoadingStep++;
-    if(S.postLoginLoadingStep < POST_LOGIN_LOADING_MSGS.length){
-      render();
-      setTimeout(tick, stepMs);
-    } else {
-      S.postLoginPhase = 'welcome';
-      render();
-    }
-  };
-  setTimeout(tick, stepMs);
-}
-const WRONG_LOGIN_MSGS = ['Searching for employee ID…','Fake login found','Report sent to company'];
-function startWrongLoginSequence(){
-  if(S.postLoginPhase) return; // don't overlap with an already-running sequence
-  S.postLoginPhase = 'wrongLogin';
-  S.postLoginLoadingStep = 0;
-  render();
-  const stepMs = 1330; // 3 steps ≈ 4s total
-  const tick = ()=>{
-    S.postLoginLoadingStep++;
-    if(S.postLoginLoadingStep < WRONG_LOGIN_MSGS.length){
-      render();
-      setTimeout(tick, stepMs);
-    } else {
-      S.postLoginPhase = null;
-      loginError = 'Invalid Login ID & Password';
-      render();
-    }
-  };
-  setTimeout(tick, stepMs);
-}
-function renderPostLoginSequence(){
-  if(S.postLoginPhase === 'welcome'){
-    const name = S.pendingUser ? S.pendingUser.name : '';
-    return `<div class="login-wrap">
-      <div class="welcome-screen">
-        <div class="welcome-fade d1">Hello, ${esc(name)}</div>
-        <div class="welcome-fade d2" style="opacity:0.75;font-size:14px;margin-top:10px;">Welcome to</div>
-        <div class="welcome-fade d3 welcome-brand">M A Products INDIA</div>
-        <div class="welcome-fade d4"><img src="${COMPANY_LOGO}" alt="M A Products India" class="welcome-logo" /></div>
-        <button class="btn btn-primary welcome-fade d4" id="continueBtn" style="width:auto;padding:13px 30px;margin-top:8px;">Tap to Continue ›</button>
-      </div>
-    </div>`;
-  }
-  const msg = S.postLoginPhase === 'wrongLogin'
-    ? (WRONG_LOGIN_MSGS[S.postLoginLoadingStep] || 'Checking…')
-    : (POST_LOGIN_LOADING_MSGS[S.postLoginLoadingStep] || 'Loading…');
-  return `<div class="login-wrap">
-    <div class="welcome-screen">
-      <img src="${COMPANY_LOGO}" alt="M A Products India" class="welcome-logo" style="margin-bottom:22px;" />
-      <div class="postlogin-spinner ${S.postLoginPhase==='wrongLogin'?'spinner-alert':''}"></div>
-      <div class="loading-msg-fade" style="margin-top:18px;font-size:14px;font-weight:700;letter-spacing:0.02em;">${esc(msg)}</div>
-    </div>
-  </div>`;
-}
-function bindPostLoginSequence(){
-  const btn = document.getElementById('continueBtn');
-  if(btn) btn.addEventListener('click', ()=>finalizeLogin(S.pendingUser));
-}
-
-/* ============================= APP SHELL ============================= */
-function myRoleAlerts(stockAlerts){
-  // Each role only sees alerts relevant to their own job.
-  const role = S.currentUser.role;
-  if(role==='admin' || role==='manager') return [...stockAlerts.raw, ...stockAlerts.filled, ...stockAlerts.ready];
-  if(role==='filling') return stockAlerts.filled;   // filled stock short -> filling team fills more
-  if(role==='packaging') return stockAlerts.ready;  // ready stock short -> packaging team packs more
-  if(role==='sales') return stockAlerts.ready;
-  return [];
-}
-function myNotifCount(stockAlerts){
-  const role = S.currentUser.role;
-  const pendingOrders = S.orders.filter(o=>o.status==='pending').length;
-  const reviewTasks = S.orders.filter(o => o.fillingStatus==='review' || o.packagingStatus==='review').length;
-  const myAlerts = myRoleAlerts(stockAlerts).length;
-  if(role==='admin') return pendingOrders+reviewTasks+myAlerts;
-  if(role==='manager') return myAlerts + S.orders.filter(o=>o.status==='processing' && (o.fillingStatus!=='done'||o.packagingStatus!=='done')).length;
-  if(role==='filling') return myAlerts + S.orders.filter(o=>o.status==='processing' && o.fillingStatus!=='done').length;
-  if(role==='packaging') return myAlerts + S.orders.filter(o=>o.status==='processing' && o.fillingStatus==='done' && o.packagingStatus!=='done').length;
-  if(role==='sales') return myAlerts;
-  return 0;
-}
-function renderShell(){
-  const role = ROLES[S.currentUser.role];
-  const stockAlerts = getStockAlerts();
-  const notifCount = myNotifCount(stockAlerts);
-  const { primary, overflow } = navSplit(role.tabs);
-  const overflowActive = overflow.includes(S.view);
-
-  return `
-    <div class="topbar">
-      <div class="topbar-left">
-        <img src="${COMPANY_LOGO}" alt="M A Products India" style="width:28px;height:28px;object-fit:contain;border-radius:6px;background:#fff;padding:2px;flex:0 0 auto;" />
-        <div class="titles">
-          <b>Welcome, ${esc((S.currentUser.name||'').split(' ')[0]||S.currentUser.name)}</b>
-          <span class="screen-label"><span class="sync-dot" id="syncDot"></span><span id="syncStatusText">${esc(currentSyncLabel || TAB_LABEL[S.view] || '')}</span><span id="syncPendingLabel">${pendingSaveCount()>0?` · ${pendingSaveCount()} pending`:''}</span></span>
-        </div>
-      </div>
-      <div class="topbar-right">
-        <button class="bell" id="bellBtn" title="Notifications">🔔${notifCount>0?`<span class="badge badge-pulse-new">${notifCount}</span>`:''}</button>
-        <button class="avatar-btn" id="avatarBtn" title="${esc(S.currentUser.name)}">${S.currentUser.photo?`<img src="${esc(S.currentUser.photo)}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;" />`:esc((S.currentUser.name||'?').trim().charAt(0).toUpperCase())}</button>
-      </div>
-    </div>
-    <div class="content">
-      ${renderView()}
-    </div>
-    ${renderBottomNav(primary, overflow, overflowActive)}
-    ${S.notifOpen ? renderSheet(renderNotifPanel(stockAlerts), 'closeNotif') : ''}
-    ${S.moreOpen ? renderSheet(renderMorePanel(overflow), 'closeMore') : ''}
-    ${S.profileOpen ? renderSheet(renderProfilePanel(role), 'closeProfile') : ''}
-    ${S.toast ? `<div class="app-toast" style="position:absolute;bottom:calc(var(--navbar-h) + var(--sab) + 14px);left:50%;background:${S.toast.isErr?'var(--danger)':'var(--ink)'};color:#fff;padding:9px 16px;border-radius:30px;font-size:12.5px;z-index:200;max-width:88%;text-align:center;">${esc(S.toast.msg)}</div>` : ''}
-  `;
-}
-
-function renderSheet(innerHtml, closeId){
-  return `<div class="modal-overlay" data-sheet-overlay="${closeId}"><div class="modal"><div class="sheet-handle"></div>${innerHtml}</div></div>`;
-}
-
-function renderBottomNav(primary, overflow, overflowActive){
-  return `<div class="navbar">
-    ${primary.map(t=>`
-      <button class="navitem ${S.view===t?'active':''}${S.view===t && navJustSwitched?' just-activated':''}" data-tab="${t}">
-        <span class="ico">${TAB_ICON[t]||'▫️'}</span><span class="lbl">${esc(TAB_SHORT[t]||TAB_LABEL[t])}</span>
-      </button>`).join('')}
-    ${overflow.length ? `
-      <button class="navitem ${overflowActive?'active':''}" id="moreNavBtn">
-        <span class="ico">⋯</span><span class="lbl">More</span>
-      </button>` : ''}
-  </div>`;
-}
-
-function renderMorePanel(overflow){
-  return `<h3>More</h3>
-  <div class="more-grid">
-    ${overflow.map(t=>`
-      <div class="more-item" data-more-tab="${t}">
-        <span class="ico">${TAB_ICON[t]||'▫️'}</span><span class="lbl">${esc(TAB_LABEL[t])}</span>
-      </div>`).join('')}
-  </div>`;
-}
-
-function renderProfilePanel(role){
-  const u = S.currentUser;
-  return `
-  <div class="id-card">
-    <div class="id-card-header">
-      <div class="id-card-company">M A PRODUCTS INDIA</div>
-      <div class="id-card-title">EMPLOYEE ID CARD</div>
-    </div>
-    <div class="id-card-body">
-      <div class="id-card-photo-wrap">
-        ${u.photo
-          ? `<img src="${esc(u.photo)}" class="id-card-photo" />`
-          : `<span class="id-card-photo id-card-photo-fallback">${esc((u.name||'?').charAt(0).toUpperCase())}</span>`}
-      </div>
-      <div class="id-card-name">${esc(u.name)}</div>
-      <span class="id-card-role-pill">${esc(u.post || role.label)}</span>
-      <div class="id-card-rows">
-        <div class="id-card-row"><span class="id-card-label">Designation</span><span class="id-card-value">${esc(role.label)}${u.post?` · ${esc(u.post)}`:''}</span></div>
-        <div class="id-card-row"><span class="id-card-label">Username</span><span class="id-card-value mono">${esc(u.username)}</span></div>
-        <div class="id-card-row"><span class="id-card-label">Contact No.</span><span class="id-card-value">${u.phone?esc(u.phone):'—'}</span></div>
-        <div class="id-card-row"><span class="id-card-label">Address</span><span class="id-card-value">${u.address?esc(u.address):'—'}</span></div>
-      </div>
-    </div>
-  </div>
-  <button class="btn btn-danger" style="width:100%;margin-top:14px;" id="logoutBtn">Log out</button>
-  <p class="mono" style="text-align:center;margin-top:14px;opacity:0.5;">build ${APP_BUILD}</p>`;
-}
-
-function renderPulse(stockAlerts){
-  const pending = S.orders.filter(o=>o.status==='pending').length;
-  const ready = S.orders.filter(o=>o.status==='ready').length;
-  return `<div class="pulse">
-    <span>ORDERS <b>${S.orders.length}</b></span>
-    <span>NEW <b>${pending}</b></span>
-    <span>READY <b>${ready}</b></span>
-    <span>CUSTOMERS <b>${S.customers.length}</b></span>
-    <span>ALERTS <b class="${stockAlerts.total>0?'warn':''}">${stockAlerts.total}</b></span>
-  </div>`;
-}
-
-function myRoleAlertKinds(role){
-  if(role==='admin' || role==='manager') return ['raw','filled','ready'];
-  if(role==='filling') return ['filled'];
-  if(role==='packaging' || role==='sales') return ['ready'];
-  return [];
-}
-function renderNotifPanel(stockAlerts){
-  const role = S.currentUser.role;
-  const isAdmin = role==='admin';
-  const pendingOrders = isAdmin ? S.orders.filter(o=>o.status==='pending') : [];
-  const readyOrders = isAdmin ? S.orders.filter(o=>o.status==='ready') : [];
-  const reviewTasks = isAdmin ? S.orders.filter(o => o.fillingStatus==='review' || o.packagingStatus==='review') : [];
-  const alertKinds = myRoleAlertKinds(role);
-  const alertsHtml = alertKinds.map(k=>renderAlertSection(k, stockAlerts[k], true)).join('');
-  const alertCount = alertKinds.reduce((s,k)=>s+stockAlerts[k].length,0);
-  let myWork = [];
-  if(role==='filling') myWork = S.orders.filter(o=>o.status==='processing' && o.fillingStatus!=='done');
-  if(role==='packaging') myWork = S.orders.filter(o=>o.status==='processing' && o.fillingStatus==='done' && o.packagingStatus!=='done');
-  if(role==='manager') myWork = S.orders.filter(o=>o.status==='processing' && (o.fillingStatus!=='done'||o.packagingStatus!=='done'));
-  return `<h3>${isAdmin?'Pending your approval':'Your alerts'}</h3>
-    <p class="desc" style="margin-top:-8px;">${isAdmin?'Waiting on you.':'Your alerts.'}</p>
-    ${pendingOrders.length===0 && readyOrders.length===0 && reviewTasks.length===0 && alertCount===0 && myWork.length===0 ? `<div class="empty">Nothing waiting on you right now.</div>` : ''}
-    ${pendingOrders.map(o=>`
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);gap:10px;flex-wrap:wrap;">
-        <div style="font-size:13px;"><b>${esc(o.customerName)}</b> — ${o.items.map(i=>`${esc(i.name)} ${esc(i.size)} ×${i.qty}`).join(', ')} <span class="mono">(by ${esc(o.createdBy)})</span></div>
-        <div class="row-actions">
-          <button class="btn btn-sm btn-success" data-approve-order="${o.id}">Accept</button>
-          <button class="btn btn-sm btn-danger" data-reject-order="${o.id}">Reject</button>
-        </div>
-      </div>`).join('')}
-    ${readyOrders.map(o=>`
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);gap:10px;flex-wrap:wrap;">
-        <div style="font-size:13px;"><b>${esc(o.customerName)}</b> — fully stocked, ready to dispatch</div>
-        <div class="row-actions"><button class="btn btn-sm btn-success" data-process-order="${o.id}">Mark processed</button></div>
-      </div>`).join('')}
-    ${reviewTasks.map(o=>`
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);flex-wrap:wrap;gap:8px;">
-        <div style="font-size:13px;"><b>${esc(o.customerName)}</b> — ${o.fillingStatus==='review'?'Filling':'Packaging'} marked done, needs sign-off</div>
-        <div class="row-actions">
-          <button class="btn btn-sm btn-success" data-ack-task="${o.id}|${o.fillingStatus==='review'?'filling':'packaging'}">Confirm done</button>
-        </div>
-      </div>`).join('')}
-    ${!isAdmin && myWork.length ? `<div style="font-size:12.5px;margin:6px 0;"><b>${myWork.length}</b> order(s) waiting on your work — check Tasks.</div>` : ''}
-    ${alertCount? `<div style="margin-top:10px;">${alertsHtml}</div>` : ''}`;
-}
-
-function bindShell(){
-  const avatarBtn = document.getElementById('avatarBtn');
-  if(avatarBtn) avatarBtn.addEventListener('click', ()=>{ S.profileOpen=true; S.notifOpen=false; S.moreOpen=false; render(); });
-  const logoutBtn = document.getElementById('logoutBtn');
-  if(logoutBtn) logoutBtn.addEventListener('click', doLogout);
-
-  const bell = document.getElementById('bellBtn');
-  if(bell) bell.addEventListener('click', ()=>{ S.notifOpen = !S.notifOpen; S.moreOpen=false; S.profileOpen=false; render(); });
-
-  const moreBtn = document.getElementById('moreNavBtn');
-  if(moreBtn) moreBtn.addEventListener('click', ()=>{ S.moreOpen = !S.moreOpen; S.notifOpen=false; S.profileOpen=false; render(); });
-
-  document.querySelectorAll('[data-sheet-overlay]').forEach(ov=>{
-    ov.addEventListener('click', (e)=>{
-      if(e.target !== ov) return;
-      S.notifOpen=false; S.moreOpen=false; S.profileOpen=false; render();
-    });
-  });
-
-  document.querySelectorAll('.navitem[data-tab]').forEach(t=>{
-    t.addEventListener('click', ()=>{ S.view = t.dataset.tab; S.notifOpen=false; S.moreOpen=false; render(); });
-  });
-  document.querySelectorAll('[data-more-tab]').forEach(t=>{
-    t.addEventListener('click', ()=>{ S.view = t.dataset.moreTab; S.moreOpen=false; render(); });
-  });
-
-  document.querySelectorAll('[data-approve-order]').forEach(b=>b.addEventListener('click', ()=>{ setOrderStatus(b.dataset.approveOrder, 'processing'); render(); }));
-  document.querySelectorAll('[data-reject-order]').forEach(b=>b.addEventListener('click', ()=>{ setOrderStatus(b.dataset.rejectOrder, 'rejected'); render(); }));
-  document.querySelectorAll('[data-process-order]').forEach(b=>b.addEventListener('click', ()=>{ setOrderStatus(b.dataset.processOrder, 'processed'); render(); }));
-  document.querySelectorAll('[data-ack-task]').forEach(b=>b.addEventListener('click', ()=>{
-    const [id, kind] = b.dataset.ackTask.split('|');
-    ackTask(id, kind); render();
-  }));
-
-  const syncDot = document.getElementById('syncDot');
-  if(syncDot && syncing) syncDot.classList.add('syncing');
-  if(syncDot && pendingSaveCount()>0) syncDot.classList.add('pending');
-
-  bindView();
-}
-
-function orderIsFullyStocked(o){
-  return o.items.every(d => (S.readyStock[d.key]||0) >= 0);
-}
-// Orders move Processing -> Ready automatically the moment every item on
-// them is actually covered by current stock — driven purely by the normal
-// Record Packaging flow, no separate manual step needed.
-function autoAdvanceOrders(){
-  let changed = false;
-  const touchedDays = new Set();
-  S.orders.forEach(o=>{
-    if(o.status==='processing' && orderIsFullyStocked(o)){
-      o.status='ready'; changed=true; touchedDays.add(localDateKey(o.createdAt));
-    }
-  });
-  touchedDays.forEach(d=>savePartitionDay('orders', d));
-  return changed;
-}
-// Admin can jump straight to Ready before stock naturally catches up on
-// every item — whatever's still short right now gets marked Cancelled.
-// Undoable: reverses only the items THIS action cancelled, and puts the
-// order back to Processing.
-function markOrderReadyNow(orderId){
-  const o = S.orders.find(x=>x.id===orderId); if(!o) return;
-  if(!confirm('Mark this order Ready now? Any item still short in stock will be marked Cancelled.')) return;
-  o.items.forEach(it=>{
-    if(it.cancelled) return;
-    const stockNow = S.readyStock[it.key]||0;
-    if(stockNow < 0){ it.cancelled = true; it.autoCancelledByReady = true; }
-  });
-  o.status = 'ready';
-  savePartitionForItem('orders', o);
-  render();
-  showToast('Order marked Ready — short items cancelled (undoable)');
-}
-function undoMarkOrderReady(orderId){
-  const o = S.orders.find(x=>x.id===orderId); if(!o) return;
-  o.items.forEach(it=>{
-    if(it.autoCancelledByReady){ it.cancelled = false; delete it.autoCancelledByReady; }
-  });
-  o.status = 'processing';
-  savePartitionForItem('orders', o);
+  if(stockChanged){ safeSet('app:readyStock', S.readyStock); syncStockTasksFromAlerts(); }
   render();
   showToast('Undone — back to Processing');
 }
@@ -2428,7 +1992,7 @@ function setOrderStatus(id, status){
     safeSet('app:readyStock', S.readyStock);
   }
   if(status==='rejected' && o.stockDeducted){
-    o.items.forEach(d=>{ S.readyStock[d.key] = (S.readyStock[d.key]||0) + d.qty; });
+    o.items.forEach(d=>{ if(!d.cancelled) S.readyStock[d.key] = (S.readyStock[d.key]||0) + d.qty; });
     o.stockDeducted = false;
     safeSet('app:readyStock', S.readyStock);
   }
@@ -3249,7 +2813,10 @@ function bindOrderRowActions(closeAfter){
     if(!confirm('Delete this order?')) return;
     const o = S.orders.find(x=>x.id===b.dataset.delOrder);
     if(o && o.stockDeducted){
-      o.items.forEach(d=>{ S.readyStock[d.key]=(S.readyStock[d.key]||0)+d.qty; });
+      o.items.forEach(d=>{
+        if(d.cancelled) return; // already credited back separately (e.g. by Mark Ready) — crediting again would double-count
+        S.readyStock[d.key]=(S.readyStock[d.key]||0)+d.qty;
+      });
       safeSet('app:readyStock', S.readyStock);
       syncStockTasksFromAlerts();
     }
@@ -3331,7 +2898,9 @@ function openOrderModal(existingOrder){
         if(existingOrder.stockDeducted){
           // Already accepted — it holds reserved stock, so editing quantities
           // has to release the old amount and reserve the new amount.
-          existingOrder.items.forEach(d=>{ S.readyStock[d.key] = (S.readyStock[d.key]||0) + d.qty; });
+          // Cancelled items were already credited back separately (e.g. by
+          // Mark Ready) — skip them here too, or they'd be double-credited.
+          existingOrder.items.forEach(d=>{ if(!d.cancelled) S.readyStock[d.key] = (S.readyStock[d.key]||0) + d.qty; });
           orderDraft.forEach(d=>{
             S.readyStock[d.key] = (S.readyStock[d.key]||0) - d.qty;
             if(S.readyStock[d.key] < 0) shortItems.push(`${d.name} ${d.size}`);
