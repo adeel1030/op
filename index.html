@@ -441,7 +441,7 @@
 /* ============================= PRODUCT CATALOG ============================= */
 /* ============================= BRANDING ============================= */
 const COMPANY_LOGO = "icon-512.png";
-const APP_BUILD = "2026-08-13-loadretry-fix1";
+const APP_BUILD = "2026-08-13-bulkedit-select1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -4118,8 +4118,8 @@ function openBulkStockModal(kind){
     ${items.map(it=>`
       <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border);">
         <div style="flex:1;min-width:0;font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(it.label)}</div>
-        <input type="number" ${kind==='raw'?'step="0.01"':''} data-bulk-qty="${esc(it.id)}" value="${it.val}" style="width:82px;padding:7px 8px;border:1.5px solid var(--border);border-radius:8px;font-size:12.5px;" />
-        <input type="number" min="0" ${kind==='raw'?'step="0.01"':''} data-bulk-low="${esc(it.id)}" value="${it.low}" style="width:74px;padding:7px 8px;border:1.5px solid var(--border);border-radius:8px;font-size:12.5px;" />
+        <input type="number" ${kind==='raw'?'step="0.01"':''} data-bulk-qty="${esc(it.id)}" value="${it.val}" onfocus="this.select()" style="width:82px;padding:7px 8px;border:1.5px solid var(--border);border-radius:8px;font-size:12.5px;" />
+        <input type="number" min="0" ${kind==='raw'?'step="0.01"':''} data-bulk-low="${esc(it.id)}" value="${it.low}" onfocus="this.select()" style="width:74px;padding:7px 8px;border:1.5px solid var(--border);border-radius:8px;font-size:12.5px;" />
       </div>`).join('')}
     </div>
     <div class="modal-actions">
