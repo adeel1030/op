@@ -246,6 +246,9 @@
   }
   .bell .badge-pulse-new{animation:bellBadgePulse .4s cubic-bezier(.3,1.5,.5,1);}
   @keyframes bellBadgePulse{0%{transform:scale(0);}60%{transform:scale(1.25);}100%{transform:scale(1);}}
+  .bell-sm{width:30px;height:30px;font-size:13px;}
+  .bell-urgent{border-color:rgba(255,255,255,0.5);}
+  .bell-urgent .badge{background:var(--danger);color:#fff;}
 
   .pulse{
     background:var(--ink);color:#D8DEEC;font-family:var(--font-mono);font-size:11px;
@@ -442,7 +445,7 @@
 /* ============================= PRODUCT CATALOG ============================= */
 /* ============================= BRANDING ============================= */
 const COMPANY_LOGO = "icon-512.png";
-const APP_BUILD = "2026-08-13-3tier-scrollfix1";
+const APP_BUILD = "2026-08-13-demandfix-packview1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -624,8 +627,8 @@ function rebuildCatalogFlat(){
     ml: sizeToMl(it.size),
     caseSize: (it.caseSize!=null && it.caseSize!=='') ? it.caseSize : getCaseSize(it.name, it.size),
     pktSize: getPktSize(it.name, it.size),
-  }));
-  RAW_CATEGORIES = [...new Set(CATALOG_FLAT.map(it=>it.rawCat))];
+  })).sort((a,b)=> a.name.localeCompare(b.name) || a.size.localeCompare(b.size));
+  RAW_CATEGORIES = [...new Set(CATALOG_FLAT.map(it=>it.rawCat))].sort((a,b)=>a.localeCompare(b));
 }
 function findItem(key){ return CATALOG_FLAT.find(i=>i.key===key); }
 function fmtMl(ml){
@@ -696,7 +699,7 @@ const S = {
   rawMaterial:{}, filledStock:{}, readyStock:{}, expenses:[], activityLog:[], stockTasks:[], dominoPrints:[],
   lowStock:{raw:{}, filled:{}, ready:{}}, watchStock:{raw:{}, filled:{}, ready:{}}, rolePermissions:{}, customRoles:[], catalogItems:[], transports:[],
   _partitionKeysSeen:{orders:new Set(), activityLog:new Set(), attendance:new Set(), expenses:new Set(), dominoPrints:new Set(), loginLog:new Set()},
-  currentUser:null, view:'home', stockView:'raw', notifOpen:false, moreOpen:false, profileOpen:false, toast:null,
+  currentUser:null, view:'home', stockView:'raw', notifOpen:false, moreOpen:false, profileOpen:false, alertPanelOpen:null, toast:null,
   postLoginPhase:null, pendingUser:null, postLoginLoadingStep:0,
   search:{}, // per-view search text
 };
@@ -1225,7 +1228,7 @@ function finalizeLogin(u){
   S.postLoginPhase = null; S.pendingUser = null;
   render();
 }
-function doLogout(){ S.currentUser = null; S.notifOpen=false; S.moreOpen=false; S.profileOpen=false; persistSession(null); render(); }
+function doLogout(){ S.currentUser = null; S.notifOpen=false; S.moreOpen=false; S.profileOpen=false; S.alertPanelOpen=null; persistSession(null); render(); }
 
 /* ============================= STOCK ALERTS (cascading) =============================
    If ready stock is short: check filled stock can cover it -> if not, check raw oil
@@ -1295,9 +1298,12 @@ function filterSortInventory(list, searchKey, valueFn, labelFn){
   let out = list.filter(it => !q || labelFn(it).toLowerCase().includes(q));
   out = out.slice().sort((a,b)=>{
     const va = valueFn(a), vb = valueFn(b);
-    const aNz = va!==0, bNz = vb!==0;
-    if(aNz!==bNz) return aNz ? -1 : 1;
-    return Math.abs(vb)-Math.abs(va);
+    const tierOf = v => v<0 ? 0 : v>0 ? 1 : 2; // 0: short (negative), 1: in stock, 2: empty
+    const ta = tierOf(va), tb = tierOf(vb);
+    if(ta!==tb) return ta-tb;
+    if(ta===0) return va-vb;      // most short first (-50 before -10)
+    if(ta===1) return vb-va;      // most stock first
+    return labelFn(a).localeCompare(labelFn(b)); // empty items: alphabetical
   });
   return out;
 }
@@ -1766,22 +1772,38 @@ function myRoleAlerts(stockAlerts){
   if(role==='sales') return stockAlerts.ready;
   return [];
 }
+// Splits this role's relevant stock alerts into the 3 severity tiers,
+// grouped by kind (raw/filled/ready) for rendering. Recommended is only
+// meaningful to surface when there's nothing more pressing for this role.
+function myAlertTiers(stockAlerts){
+  const role = S.currentUser.role;
+  const kinds = myRoleAlertKinds(role);
+  const urgentByKind = {}, lowByKind = {}, recByKind = {};
+  kinds.forEach(k=>{
+    urgentByKind[k] = stockAlerts[k].filter(a=>a.level==='critical');
+    lowByKind[k] = stockAlerts[k].filter(a=>a.level==='low');
+    recByKind[k] = stockAlerts.recommended[k] || [];
+  });
+  const urgentCount = kinds.reduce((s,k)=>s+urgentByKind[k].length,0);
+  const lowCount = kinds.reduce((s,k)=>s+lowByKind[k].length,0);
+  const recCount = kinds.reduce((s,k)=>s+recByKind[k].length,0);
+  return { kinds, urgentByKind, lowByKind, recByKind, urgentCount, lowCount, recCount, showRecommended: recCount>0 && (urgentCount+lowCount)===0 };
+}
 function myNotifCount(stockAlerts){
   const role = S.currentUser.role;
   const pendingOrders = S.orders.filter(o=>o.status==='pending').length;
   const reviewTasks = S.orders.filter(o => o.fillingStatus==='review' || o.packagingStatus==='review').length;
-  const myAlerts = myRoleAlerts(stockAlerts).length;
-  if(role==='admin') return pendingOrders+reviewTasks+myAlerts;
-  if(role==='manager') return myAlerts + S.orders.filter(o=>o.status==='processing' && (o.fillingStatus!=='done'||o.packagingStatus!=='done')).length;
-  if(role==='filling') return myAlerts + S.orders.filter(o=>o.status==='processing' && o.fillingStatus!=='done').length;
-  if(role==='packaging') return myAlerts + S.orders.filter(o=>o.status==='processing' && o.fillingStatus==='done' && o.packagingStatus!=='done').length;
-  if(role==='sales') return myAlerts;
+  if(role==='admin') return pendingOrders+reviewTasks;
+  if(role==='manager') return S.orders.filter(o=>o.status==='processing' && (o.fillingStatus!=='done'||o.packagingStatus!=='done')).length;
+  if(role==='filling') return S.orders.filter(o=>o.status==='processing' && o.fillingStatus!=='done').length;
+  if(role==='packaging') return S.orders.filter(o=>o.status==='processing' && o.fillingStatus==='done' && o.packagingStatus!=='done').length;
   return 0;
 }
 function renderShell(){
   const role = ROLES[S.currentUser.role];
   const stockAlerts = getStockAlerts();
   const notifCount = myNotifCount(stockAlerts);
+  const tiers = myAlertTiers(stockAlerts);
   const { primary, overflow } = navSplit(role.tabs);
   const overflowActive = overflow.includes(S.view);
 
@@ -1795,6 +1817,9 @@ function renderShell(){
         </div>
       </div>
       <div class="topbar-right">
+        ${tiers.urgentCount>0?`<button class="bell bell-sm bell-urgent" id="urgentBellBtn" title="Urgent stock">🚨<span class="badge badge-pulse-new">${tiers.urgentCount}</span></button>`:''}
+        ${tiers.lowCount>0?`<button class="bell bell-sm bell-low" id="lowBellBtn" title="Low stock">⚠️<span class="badge badge-pulse-new">${tiers.lowCount}</span></button>`:''}
+        ${tiers.showRecommended?`<button class="bell bell-sm bell-rec" id="recBellBtn" title="Recommended">💡<span class="badge badge-pulse-new">${tiers.recCount}</span></button>`:''}
         <button class="bell" id="bellBtn" title="Notifications">🔔${notifCount>0?`<span class="badge badge-pulse-new">${notifCount}</span>`:''}</button>
         <button class="avatar-btn" id="avatarBtn" title="${esc(S.currentUser.name)}">${S.currentUser.photo?`<img src="${esc(S.currentUser.photo)}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;" />`:esc((S.currentUser.name||'?').trim().charAt(0).toUpperCase())}</button>
       </div>
@@ -1804,6 +1829,7 @@ function renderShell(){
     </div>
     ${renderBottomNav(primary, overflow, overflowActive)}
     ${S.notifOpen ? renderSheet(renderNotifPanel(stockAlerts), 'closeNotif') : ''}
+    ${S.alertPanelOpen ? renderSheet(renderAlertTierPanel(S.alertPanelOpen, tiers), 'closeAlertPanel') : ''}
     ${S.moreOpen ? renderSheet(renderMorePanel(overflow), 'closeMore') : ''}
     ${S.profileOpen ? renderSheet(renderProfilePanel(role), 'closeProfile') : ''}
     ${S.toast ? `<div class="app-toast" style="position:absolute;bottom:calc(var(--navbar-h) + var(--sab) + 14px);left:50%;background:${S.toast.isErr?'var(--danger)':'var(--ink)'};color:#fff;padding:9px 16px;border-radius:30px;font-size:12.5px;z-index:200;max-width:88%;text-align:center;">${esc(S.toast.msg)}</div>` : ''}
@@ -1883,42 +1909,28 @@ function myRoleAlertKinds(role){
   if(role==='packaging' || role==='sales') return ['ready'];
   return [];
 }
+function renderAlertTierPanel(tier, tiers){
+  const titleMap = { urgent:'🚨 Urgent — Short Stock', low:'⚠️ Low Stock', recommended:'💡 Recommended' };
+  const descMap = { urgent:'Needs attention right now.', low:'Getting low — plan ahead before it runs out.', recommended:"Nothing urgent right now — but these are worth getting ahead of." };
+  const byKind = tier==='urgent' ? tiers.urgentByKind : tier==='low' ? tiers.lowByKind : tiers.recByKind;
+  const kinds = tiers.kinds.filter(k=>byKind[k] && byKind[k].length);
+  return `<h3>${titleMap[tier]}</h3>
+    <p class="desc" style="margin-top:-8px;">${descMap[tier]}</p>
+    ${kinds.length===0?`<div class="empty">Nothing here right now.</div>`:kinds.map(k=>renderAlertSection(k, byKind[k], true)).join('')}`;
+}
 function renderNotifPanel(stockAlerts){
   const role = S.currentUser.role;
   const isAdmin = role==='admin';
   const pendingOrders = isAdmin ? S.orders.filter(o=>o.status==='pending') : [];
   const readyOrders = isAdmin ? S.orders.filter(o=>o.status==='ready') : [];
   const reviewTasks = isAdmin ? S.orders.filter(o => o.fillingStatus==='review' || o.packagingStatus==='review') : [];
-  const alertKinds = myRoleAlertKinds(role);
-  const urgentByKind = {}, lowByKind = {}, recByKind = {};
-  alertKinds.forEach(k=>{
-    urgentByKind[k] = stockAlerts[k].filter(a=>a.level==='critical');
-    lowByKind[k] = stockAlerts[k].filter(a=>a.level==='low');
-    recByKind[k] = stockAlerts.recommended[k] || [];
-  });
-  const urgentCount = alertKinds.reduce((s,k)=>s+urgentByKind[k].length,0);
-  const lowCount = alertKinds.reduce((s,k)=>s+lowByKind[k].length,0);
-  const recCount = alertKinds.reduce((s,k)=>s+recByKind[k].length,0);
-  const hasUrgentOrLow = (urgentCount+lowCount) > 0;
-  const severityBlock = (title, icon, byKind)=>{
-    const kinds = alertKinds.filter(k=>byKind[k] && byKind[k].length);
-    if(!kinds.length) return '';
-    return `<div style="margin-bottom:6px;">
-      <div style="font-weight:800;font-size:12px;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px;">${icon} ${title}</div>
-      ${kinds.map(k=>renderAlertSection(k, byKind[k], true)).join('')}
-    </div>`;
-  };
-  const alertsHtml = severityBlock('Urgent', '🔴', urgentByKind)
-    + severityBlock('Low Stock', '🟡', lowByKind)
-    + (!hasUrgentOrLow ? severityBlock('Recommended', '📋', recByKind) : ''); // only surfaced here when there's nothing more pressing
-  const alertCount = urgentCount + lowCount + (!hasUrgentOrLow ? recCount : 0);
   let myWork = [];
   if(role==='filling') myWork = S.orders.filter(o=>o.status==='processing' && o.fillingStatus!=='done');
   if(role==='packaging') myWork = S.orders.filter(o=>o.status==='processing' && o.fillingStatus==='done' && o.packagingStatus!=='done');
   if(role==='manager') myWork = S.orders.filter(o=>o.status==='processing' && (o.fillingStatus!=='done'||o.packagingStatus!=='done'));
   return `<h3>${isAdmin?'Pending your approval':'Your alerts'}</h3>
     <p class="desc" style="margin-top:-8px;">${isAdmin?'Waiting on you.':'Your alerts.'}</p>
-    ${pendingOrders.length===0 && readyOrders.length===0 && reviewTasks.length===0 && alertCount===0 && myWork.length===0 ? `<div class="empty">Nothing waiting on you right now.</div>` : ''}
+    ${pendingOrders.length===0 && readyOrders.length===0 && reviewTasks.length===0 && myWork.length===0 ? `<div class="empty">Nothing waiting on you right now.</div>` : ''}
     ${pendingOrders.map(o=>`
       <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);gap:10px;flex-wrap:wrap;">
         <div style="font-size:13px;"><b>${esc(o.customerName)}</b> — ${o.items.map(i=>`${esc(i.name)} ${esc(i.size)} ×${i.qty}`).join(', ')} <span class="mono">(by ${esc(o.createdBy)})</span></div>
@@ -1939,31 +1951,36 @@ function renderNotifPanel(stockAlerts){
           <button class="btn btn-sm btn-success" data-ack-task="${o.id}|${o.fillingStatus==='review'?'filling':'packaging'}">Confirm done</button>
         </div>
       </div>`).join('')}
-    ${!isAdmin && myWork.length ? `<div style="font-size:12.5px;margin:6px 0;"><b>${myWork.length}</b> order(s) waiting on your work — check Tasks.</div>` : ''}
-    ${alertCount? `<div style="margin-top:10px;">${alertsHtml}</div>` : ''}`;
+    ${!isAdmin && myWork.length ? `<div style="font-size:12.5px;margin:6px 0;"><b>${myWork.length}</b> order(s) waiting on your work — check Tasks.</div>` : ''}`;
 }
 
 function bindShell(){
   const avatarBtn = document.getElementById('avatarBtn');
-  if(avatarBtn) avatarBtn.addEventListener('click', ()=>{ S.profileOpen=true; S.notifOpen=false; S.moreOpen=false; render(); });
+  if(avatarBtn) avatarBtn.addEventListener('click', ()=>{ S.profileOpen=true; S.notifOpen=false; S.moreOpen=false; S.alertPanelOpen=null; render(); });
   const logoutBtn = document.getElementById('logoutBtn');
   if(logoutBtn) logoutBtn.addEventListener('click', doLogout);
 
   const bell = document.getElementById('bellBtn');
-  if(bell) bell.addEventListener('click', ()=>{ S.notifOpen = !S.notifOpen; S.moreOpen=false; S.profileOpen=false; render(); });
+  if(bell) bell.addEventListener('click', ()=>{ S.notifOpen = !S.notifOpen; S.moreOpen=false; S.profileOpen=false; S.alertPanelOpen=null; render(); });
+  const urgentBell = document.getElementById('urgentBellBtn');
+  if(urgentBell) urgentBell.addEventListener('click', ()=>{ S.alertPanelOpen = S.alertPanelOpen==='urgent'?null:'urgent'; S.notifOpen=false; S.moreOpen=false; S.profileOpen=false; render(); });
+  const lowBell = document.getElementById('lowBellBtn');
+  if(lowBell) lowBell.addEventListener('click', ()=>{ S.alertPanelOpen = S.alertPanelOpen==='low'?null:'low'; S.notifOpen=false; S.moreOpen=false; S.profileOpen=false; render(); });
+  const recBell = document.getElementById('recBellBtn');
+  if(recBell) recBell.addEventListener('click', ()=>{ S.alertPanelOpen = S.alertPanelOpen==='recommended'?null:'recommended'; S.notifOpen=false; S.moreOpen=false; S.profileOpen=false; render(); });
 
   const moreBtn = document.getElementById('moreNavBtn');
-  if(moreBtn) moreBtn.addEventListener('click', ()=>{ S.moreOpen = !S.moreOpen; S.notifOpen=false; S.profileOpen=false; render(); });
+  if(moreBtn) moreBtn.addEventListener('click', ()=>{ S.moreOpen = !S.moreOpen; S.notifOpen=false; S.profileOpen=false; S.alertPanelOpen=null; render(); });
 
   document.querySelectorAll('[data-sheet-overlay]').forEach(ov=>{
     ov.addEventListener('click', (e)=>{
       if(e.target !== ov) return;
-      S.notifOpen=false; S.moreOpen=false; S.profileOpen=false; render();
+      S.notifOpen=false; S.moreOpen=false; S.profileOpen=false; S.alertPanelOpen=null; render();
     });
   });
 
   document.querySelectorAll('.navitem[data-tab]').forEach(t=>{
-    t.addEventListener('click', ()=>{ S.view = t.dataset.tab; S.notifOpen=false; S.moreOpen=false; render(); });
+    t.addEventListener('click', ()=>{ S.view = t.dataset.tab; S.notifOpen=false; S.moreOpen=false; S.alertPanelOpen=null; render(); });
   });
   document.querySelectorAll('[data-more-tab]').forEach(t=>{
     t.addEventListener('click', ()=>{ S.view = t.dataset.moreTab; S.moreOpen=false; render(); });
@@ -1981,6 +1998,7 @@ function bindShell(){
   if(syncDot && syncing) syncDot.classList.add('syncing');
   if(syncDot && pendingSaveCount()>0) syncDot.classList.add('pending');
 
+  if(S.notifOpen || S.alertPanelOpen) bindAlertTiles();
   bindView();
 }
 
@@ -3745,14 +3763,17 @@ function renderTasks(){
     // Unified worker view: order demand + relevant stock alerts, merged into
     // one "what needs doing" list. No separate cards to check.
     const demand = {};
+    const alertsNow = getStockAlerts();
+    const alertListNow = role==='filling' ? alertsNow.filled : alertsNow.ready;
+    const stillNeeded = new Set(alertListNow.map(a=>a.id));
     orderRelevant.forEach(o=>o.items.forEach(i=>{
+      if(i.cancelled) return; // cancelled items need no work
+      if(!stillNeeded.has(i.key)) return; // stock already covers this item's aggregate need — nothing pending
       if(!demand[i.key]) demand[i.key] = {qty:0, fromOrder:false, fromAlert:false, alertText:''};
       demand[i.key].qty += i.qty;
       demand[i.key].fromOrder = true;
     }));
     const myStockTasks = S.stockTasks.filter(t=>t.status==='open' && t.targetRole===role);
-    const alertsNow = getStockAlerts();
-    const alertListNow = role==='filling' ? alertsNow.filled : alertsNow.ready;
     myStockTasks.forEach(t=>{
       if(!demand[t.itemId]) demand[t.itemId] = {qty:0, fromOrder:false, fromAlert:false, alertText:'', tier:null};
       demand[t.itemId].fromAlert = true;
@@ -3785,6 +3806,21 @@ function renderTasks(){
       ${orderRelevant.length? `<p class="desc" style="margin:10px 0 0;">${orderRelevant.length} order(s) waiting — tap once done.</p>
       <div class="row-actions" style="margin-top:6px;">${orderRelevant.map(o=>`<button class="btn btn-sm btn-accent" data-mark-${role==='filling'?'filling':'packaging'}="${o.id}">${esc(orderDisplayLabel(o))} done</button>`).join('')}</div>` : ''}
     </div>`;
+    if(role==='packaging' && orderRelevant.length){
+      orderTasksBlock += `
+      <div class="card">
+        <h2>Orders in Processing</h2>
+        <p class="desc">City + preferred transport for each order currently being worked on.</p>
+        <table><thead><tr><th>City</th><th>Transport</th><th>Items</th></tr></thead><tbody>
+        ${orderRelevant.map(o=>{
+          const cust = liveCustomerFor(o);
+          const city = (cust && cust.city) || o.customerCity || '—';
+          const transport = (cust && cust.transport) || o.transportName || '—';
+          return `<tr><td><b>📍 ${esc(city)}</b></td><td>🚚 ${esc(transport)}</td><td>${o.items.map(i=>`${esc(i.name)} ${esc(i.size)} ×${i.qty}`).join('<br/>')}</td></tr>`;
+        }).join('')}
+        </tbody></table>
+      </div>`;
+    }
   } else if(orderRelevant.length){
     orderTasksBlock = `
     <div class="card">
