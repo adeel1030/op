@@ -445,7 +445,7 @@
 /* ============================= PRODUCT CATALOG ============================= */
 /* ============================= BRANDING ============================= */
 const COMPANY_LOGO = "icon-512.png";
-const APP_BUILD = "2026-08-13-loginlayoutfix1";
+const APP_BUILD = "2026-08-13-tilepermissions1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -2590,14 +2590,15 @@ function renderHomeGeneric(role){
     extraCard = `<div class="stat-card-v2" data-more-tab="tasks"><div class="row-top"><div class="icon-badge blue">🧴</div><span class="chev">›</span></div><div class="n">${need}</div><div class="title">Needs Filling</div><div class="sub">Orders waiting</div></div>`;
   } else if(role==='packaging'){
     const need = S.orders.filter(o=>o.status==='processing' && o.fillingStatus==='done' && o.packagingStatus!=='done').length;
-    extraCard = `<div class="stat-card-v2" data-stat="processing"><div class="row-top"><div class="icon-badge orange">🔧</div><span class="chev">›</span></div><div class="n">${processing}</div><div class="title">Processing</div><div class="sub">Orders in progress</div></div>
+    extraCard = `${canViewTile(role,'tile_processing')?`<div class="stat-card-v2" data-stat="processing"><div class="row-top"><div class="icon-badge orange">🔧</div><span class="chev">›</span></div><div class="n">${processing}</div><div class="title">Processing</div><div class="sub">Orders in progress</div></div>`:''}
     <div class="stat-card-v2" data-more-tab="tasks"><div class="row-top"><div class="icon-badge orange">📦</div><span class="chev">›</span></div><div class="n">${need}</div><div class="title">Needs Packing</div><div class="sub">Orders waiting</div></div>`;
   } else if(role==='sales'){
     const mine = S.orders.filter(o=>o.createdByUsername===S.currentUser.username).length;
     extraCard = `<div class="stat-card-v2" data-more-tab="orders"><div class="row-top"><div class="icon-badge purple">🧾</div><span class="chev">›</span></div><div class="n">${mine}</div><div class="title">Your Orders</div><div class="sub">Placed by you</div></div>`;
   } else if(role==='manager'){
     const bal = expenseBalanceFor(S.currentUser.username);
-    extraCard = `<div class="stat-card-v2" data-more-tab="expenses"><div class="row-top"><div class="icon-badge purple">💰</div><span class="chev">›</span></div><div class="n">₹${bal.toLocaleString('en-IN')}</div><div class="title">Expense Balance</div><div class="sub">Track your expenses</div></div>`;
+    extraCard = `${canViewTile(role,'tile_processing')?`<div class="stat-card-v2" data-stat="processing"><div class="row-top"><div class="icon-badge orange">🔧</div><span class="chev">›</span></div><div class="n">${processing}</div><div class="title">Processing</div><div class="sub">Orders in progress</div></div>`:''}
+    <div class="stat-card-v2" data-more-tab="expenses"><div class="row-top"><div class="icon-badge purple">💰</div><span class="chev">›</span></div><div class="n">₹${bal.toLocaleString('en-IN')}</div><div class="title">Expense Balance</div><div class="sub">Track your expenses</div></div>`;
   }
   const myEntries = getMyEntries(S.currentUser.username).slice(0,6);
   const todayLabel = new Date().toLocaleDateString(undefined,{day:'2-digit', month:'short', year:'numeric'});
@@ -2610,8 +2611,8 @@ function renderHomeGeneric(role){
   </div>
   ${quickActionIcons(role)}
   <div class="stat-grid-v2">
-    <div class="stat-card-v2" data-stat="pending"><div class="row-top"><div class="icon-badge green">🛍️</div><span class="chev">›</span></div><div class="n">${pending}</div><div class="title">New Orders</div><div class="sub">Received today</div></div>
-    <div class="stat-card-v2" data-stat="ready"><div class="row-top"><div class="icon-badge blue">🚚</div><span class="chev">›</span></div><div class="n">${ready}</div><div class="title">Ready to Dispatch</div><div class="sub">Ready to ship</div></div>
+    ${canViewTile(role,'tile_pending')?`<div class="stat-card-v2" data-stat="pending"><div class="row-top"><div class="icon-badge green">🛍️</div><span class="chev">›</span></div><div class="n">${pending}</div><div class="title">New Orders</div><div class="sub">Received today</div></div>`:''}
+    ${canViewTile(role,'tile_ready')?`<div class="stat-card-v2" data-stat="ready"><div class="row-top"><div class="icon-badge blue">🚚</div><span class="chev">›</span></div><div class="n">${ready}</div><div class="title">Ready to Dispatch</div><div class="sub">Ready to ship</div></div>`:''}
     ${extraCard}
   </div>
   ${myAlerts.length ? `<div class="card"><h2>Alerts for you</h2><p class="desc">Relevant to your work.</p>${alertBanner(myAlerts)}</div>` : ''}
@@ -3421,6 +3422,20 @@ const CHECKLIST_MODULES = [
   {key:'domino', label:'Domino Printing'}, {key:'tasks', label:'Tasks'}, {key:'expenses', label:'Expenses'},
   {key:'checkin', label:'Attendance (mark)'}, {key:'log', label:'Data Log'},
 ];
+// Controls which Home-page summary tiles a team sees (separate from tab
+// access above — a team can be allowed to view Orders but still have some
+// of these tiles hidden from their Home screen, or vice versa).
+const TILE_MODULES = [
+  {key:'tile_pending', label:'Home tile: New Orders'},
+  {key:'tile_processing', label:'Home tile: Processing'},
+  {key:'tile_ready', label:'Home tile: Ready to Dispatch'},
+];
+function canViewTile(role, tileKey){
+  if(role==='admin') return true;
+  const perm = S.rolePermissions[role];
+  if(perm && Object.prototype.hasOwnProperty.call(perm, tileKey)) return !!perm[tileKey];
+  return true; // default: shown, until admin customizes this team
+}
 
 /* ---- Step 1: team list, with "+ Add new team" ---- */
 function openPermissionManager(){
@@ -3506,6 +3521,7 @@ function defaultChecklistPerm(role){
   const obj = {};
   tabs.forEach(t=>{ if(t!=='stock') obj[t] = true; });
   if(tabs.includes('stock')){ obj.stock_raw = true; obj.stock_filled = true; obj.stock_ready = true; }
+  TILE_MODULES.forEach(m=>{ obj[m.key] = true; });
   return obj;
 }
 function openTeamPermissionDialog(role){
@@ -3517,6 +3533,12 @@ function openTeamPermissionDialog(role){
     <div style="font-size:10px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.03em;font-weight:700;margin-bottom:6px;">Can view</div>
     <div class="more-grid" style="grid-template-columns:repeat(2,1fr);margin-bottom:14px;">
     ${CHECKLIST_MODULES.map(m=>`<label style="display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:9px 10px;font-size:12.5px;cursor:pointer;">
+      <input type="checkbox" data-teamperm-view="${m.key}" ${perm[m.key]?'checked':''} style="width:16px;height:16px;flex:0 0 auto;" /> ${esc(m.label)}
+    </label>`).join('')}
+    </div>
+    <div style="font-size:10px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.03em;font-weight:700;margin-bottom:6px;">Home page tiles</div>
+    <div class="more-grid" style="grid-template-columns:repeat(2,1fr);margin-bottom:14px;">
+    ${TILE_MODULES.map(m=>`<label style="display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:9px 10px;font-size:12.5px;cursor:pointer;">
       <input type="checkbox" data-teamperm-view="${m.key}" ${perm[m.key]?'checked':''} style="width:16px;height:16px;flex:0 0 auto;" /> ${esc(m.label)}
     </label>`).join('')}
     </div>
@@ -3533,7 +3555,7 @@ function openTeamPermissionDialog(role){
   `);
   document.getElementById('backToTeamsBtn').addEventListener('click', ()=>{ closeModal(); openPermissionManager(); });
   document.getElementById('reviewPermsBtn').addEventListener('click', ()=>{
-    const viewChecked = CHECKLIST_MODULES.filter(m=>document.querySelector(`[data-teamperm-view="${m.key}"]`).checked);
+    const viewChecked = [...CHECKLIST_MODULES, ...TILE_MODULES].filter(m=>document.querySelector(`[data-teamperm-view="${m.key}"]`).checked);
     const entryChecked = ENTRY_MODULES.filter(m=>document.querySelector(`[data-teamperm-entry="${m.key}"]`).checked);
     closeModal();
     openPermissionConfirm(role, viewChecked, entryChecked);
@@ -3563,6 +3585,7 @@ function openPermissionConfirm(role, viewChecked, entryChecked){
   document.getElementById('applyPermsBtn').addEventListener('click', ()=>{
     const next = { home:true };
     CHECKLIST_MODULES.forEach(m=>{ next[m.key] = viewChecked.some(v=>v.key===m.key); });
+    TILE_MODULES.forEach(m=>{ next[m.key] = viewChecked.some(v=>v.key===m.key); });
     ENTRY_MODULES.forEach(m=>{ next[m.key] = entryChecked.some(v=>v.key===m.key); });
     S.rolePermissions[role] = next;
     applyRolePermissionsToROLES();
