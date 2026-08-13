@@ -138,7 +138,7 @@
 
   /* ---------- Login ---------- */
   .login-wrap{
-    height:100%;display:flex;align-items:center;justify-content:center;overflow-y:auto;
+    height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow-y:auto;
     background:
       radial-gradient(circle at 15% 15%, rgba(201,162,39,0.22), transparent 42%),
       radial-gradient(circle at 85% 85%, rgba(255,255,255,0.08), transparent 40%),
@@ -445,7 +445,7 @@
 /* ============================= PRODUCT CATALOG ============================= */
 /* ============================= BRANDING ============================= */
 const COMPANY_LOGO = "icon-512.png";
-const APP_BUILD = "2026-08-13-loginver-proctile1";
+const APP_BUILD = "2026-08-13-loginlayoutfix1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -564,6 +564,19 @@ function getCaseSize(name, size){
   return DEFAULT_CASE_SIZE[norm] || null;
 }
 function itemKey(name,size){ return name+'__'+size; }
+// One-time cleanup: any catalog item saved before case-size resolution was
+// persisted (or added by hand) might still have caseSize:null in the
+// backend, forcing order-form.html to independently guess a fallback value.
+// Resolving and saving it here keeps the backend the single source of
+// truth, so both apps always show the exact same number.
+function backfillCatalogCaseSizes(){
+  if(!S.currentUser || S.currentUser.role!=='admin') return;
+  const needsFix = S.catalogItems.filter(it=>it.caseSize==null);
+  if(!needsFix.length) return;
+  needsFix.forEach(it=>{ it.caseSize = getCaseSize(it.name, it.size); });
+  rebuildCatalogFlat();
+  safeSet('app:catalogItems', S.catalogItems);
+}
 // Transport names typed anywhere get remembered so the dropdown grows on its own.
 function rememberTransport(name){
   name = (name||'').trim();
@@ -1115,6 +1128,7 @@ async function loadAll(){
         safeSet('app:catalogItems', S.catalogItems); // first run ever — seed the backend so the order form can read it too
       }
       restoreSession();
+      backfillCatalogCaseSizes(); // resolve any legacy items missing a saved case size
       S.loadFailed = false;
       lastErr = null;
       break; // success
@@ -1227,6 +1241,7 @@ function finalizeLogin(u){
   savePartitionForItem('loginLog', S.loginLog[S.loginLog.length-1]);
   S.postLoginPhase = null; S.pendingUser = null;
   render();
+  backfillCatalogCaseSizes();
 }
 function doLogout(){ S.currentUser = null; S.notifOpen=false; S.moreOpen=false; S.profileOpen=false; S.alertPanelOpen=null; persistSession(null); render(); }
 
@@ -2386,13 +2401,18 @@ function openCatalogItemModal(existingItem){
     const caseVal = document.getElementById('ciCase').value.trim();
     if(!name || !size || !cat || !rawCat){ showAlert('Fill in all required fields.'); return; }
     const newKey = itemKey(name, size);
+    // Always persist a RESOLVED case size (falling back to the standard
+    // table here if left blank) — so the backend is the single source of
+    // truth and order-form.html never has to independently guess/compute
+    // this itself. That's what keeps the two apps byte-for-byte in sync.
+    const resolvedCaseSize = caseVal ? parseInt(caseVal) : getCaseSize(name, size);
 
     if(existingItem){
       const oldKey = existingItem.key;
       if(newKey!==oldKey && S.catalogItems.some(it=>it.key===newKey)){ showAlert('Another item already has this exact name + size.'); return; }
       const entry = S.catalogItems.find(it=>it.key===oldKey);
       entry.name = name; entry.size = size; entry.mrp = mrp; entry.cat = cat; entry.rawCat = rawCat;
-      entry.caseSize = caseVal ? parseInt(caseVal) : null;
+      entry.caseSize = resolvedCaseSize;
       entry.key = newKey;
       if(newKey!==oldKey){
         // Move any current filled/ready stock, low-stock alerts, and open
@@ -2416,7 +2436,7 @@ function openCatalogItemModal(existingItem){
       closeModal(); render(); showToast('Item updated');
     } else {
       if(S.catalogItems.some(it=>it.key===newKey)){ showAlert('An item with this exact name + size already exists.'); return; }
-      S.catalogItems.push({ key:newKey, name, size, mrp, cat, rawCat, caseSize: caseVal ? parseInt(caseVal) : null });
+      S.catalogItems.push({ key:newKey, name, size, mrp, cat, rawCat, caseSize: resolvedCaseSize });
       rebuildCatalogFlat();
       safeSet('app:catalogItems', S.catalogItems);
       closeModal(); render(); showToast('Item added — visible everywhere now');
