@@ -296,6 +296,7 @@
   .alert-tile-grid.stacked{grid-template-columns:1fr;}
   .alert-tile{border-radius:13px;padding:11px 12px;border:1.5px solid #E8938B;background:#FCE2DF;}
   .alert-tile.mild{border-color:#E8B84B;background:#FCEBC3;}
+  .alert-tile.recommended{border-color:#8FB4E8;background:#E4EEFB;}
   .alert-tile .at-label{font-weight:800;font-size:13px;margin-bottom:2px;color:var(--ink);}
   .alert-tile .at-detail{font-size:11.5px;color:var(--ink-soft);margin-bottom:8px;}
 
@@ -441,7 +442,7 @@
 /* ============================= PRODUCT CATALOG ============================= */
 /* ============================= BRANDING ============================= */
 const COMPANY_LOGO = "icon-512.png";
-const APP_BUILD = "2026-08-13-bulkedit-select1";
+const APP_BUILD = "2026-08-13-3tier-scrollfix1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -693,7 +694,7 @@ const S = {
   loadFailed:false,
   users:[], orders:[], customers:[], attendance:[], tasks:[], loginLog:[],
   rawMaterial:{}, filledStock:{}, readyStock:{}, expenses:[], activityLog:[], stockTasks:[], dominoPrints:[],
-  lowStock:{raw:{}, filled:{}, ready:{}}, rolePermissions:{}, customRoles:[], catalogItems:[], transports:[],
+  lowStock:{raw:{}, filled:{}, ready:{}}, watchStock:{raw:{}, filled:{}, ready:{}}, rolePermissions:{}, customRoles:[], catalogItems:[], transports:[],
   _partitionKeysSeen:{orders:new Set(), activityLog:new Set(), attendance:new Set(), expenses:new Set(), dominoPrints:new Set(), loginLog:new Set()},
   currentUser:null, view:'home', stockView:'raw', notifOpen:false, moreOpen:false, profileOpen:false, toast:null,
   postLoginPhase:null, pendingUser:null, postLoginLoadingStep:0,
@@ -1078,6 +1079,7 @@ function applyServerData(data){
   S.expenses = mergePartitionedEntity(data, 'expenses').sort((a,b)=>a.at-b.at);
   S.activityLog = mergePartitionedEntity(data, 'activityLog').sort((a,b)=>a.at-b.at);
   S.lowStock = data.lowStock || {raw:{}, filled:{}, ready:{}};
+  S.watchStock = data.watchStock || {raw:{}, filled:{}, ready:{}};
   S.stockTasks = data.stockTasks || [];
   S.dominoPrints = mergePartitionedEntity(data, 'dominoPrints').sort((a,b)=>a.at-b.at);
   S.loginLog = mergePartitionedEntity(data, 'loginLog').sort((a,b)=>a.at-b.at);
@@ -1264,7 +1266,27 @@ function getStockAlerts(){
   const dedupe = (list)=>{ const seen=new Map(); list.forEach(a=>{ const ex=seen.get(a.id); if(!ex || (ex.level!=='critical'&&a.level==='critical')) seen.set(a.id,a); }); return [...seen.values()]; };
   const filled = dedupe([...filledDirect, ...filledCascade]);
   const rawAll = dedupe([...raw, ...rawCascade]);
-  return {raw:rawAll, filled, ready, total: rawAll.length+filled.length+ready.length};
+  // Recommended (preemptive heads-up) — only for items that aren't already
+  // flagged critical/low, based on a separate, higher "watch" threshold the
+  // admin can set. This is a softer, forward-looking suggestion, not an alert.
+  const recRaw = [];
+  RAW_CATEGORIES.forEach(cat=>{
+    if(rawAll.some(a=>a.id===cat)) return;
+    const v = S.rawMaterial[cat]||0; const th = S.watchStock.raw[cat];
+    if(th && v>=0 && v<=th) recRaw.push({id:cat, label:cat, text:`${fmtMl(v)} (recommend purchasing soon)`, team:'Owner / Manager — plan ahead', level:'recommended'});
+  });
+  const recFilled = [], recReady = [];
+  CATALOG_FLAT.forEach(it=>{
+    if(!filled.some(a=>a.id===it.key)){
+      const vf = S.filledStock[it.key]||0; const thf = S.watchStock.filled[it.key];
+      if(thf && vf>=0 && vf<=thf) recFilled.push({id:it.key, label:`${it.name} ${it.size}`, text:`${vf} pc (recommend filling soon)`, needQty:Math.max(thf-vf,1), team:'Filling team — plan ahead', level:'recommended'});
+    }
+    if(!ready.some(a=>a.id===it.key)){
+      const vr = S.readyStock[it.key]||0; const thr = S.watchStock.ready[it.key];
+      if(thr && vr>=0 && vr<=thr) recReady.push({id:it.key, label:`${it.name} ${it.size}`, text:`${vr} pc (recommend packing soon)`, needQty:Math.max(thr-vr,1), team:'Packaging team — plan ahead', level:'recommended'});
+    }
+  });
+  return {raw:rawAll, filled, ready, recommended:{raw:recRaw, filled:recFilled, ready:recReady}, total: rawAll.length+filled.length+ready.length};
 }
 
 /* Search + "non-zero on top" sort helper for inventory lists */
@@ -1318,10 +1340,15 @@ function completeStockTasksForItem(kind, key){
 // longer short, so the task the team was working on is removed automatically.
 function reconcileStockTasks(){
   const alerts = getStockAlerts();
-  const stillAlerting = (kind, id)=> (kind==='filled'?alerts.filled:alerts.ready).some(a=>a.id===id);
+  const stillAlerting = (t)=>{
+    const list = t.tier==='recommended'
+      ? (t.kind==='filled' ? alerts.recommended.filled : alerts.recommended.ready)
+      : (t.kind==='filled' ? alerts.filled : alerts.ready);
+    return list.some(a=>a.id===t.itemId);
+  };
   let changed = false;
   S.stockTasks.forEach(t=>{
-    if(t.status==='open' && !stillAlerting(t.kind, t.itemId)){ t.status='done'; changed=true; }
+    if(t.status==='open' && !stillAlerting(t)){ t.status='done'; changed=true; }
   });
   if(changed) safeSet('app:stockTasks', S.stockTasks);
   return changed;
@@ -1335,17 +1362,21 @@ function syncStockTasksFromAlerts(){
   // to avoid every role's routine actions spawning tasks on a technicality.
   if(S.currentUser && ['admin','manager'].includes(S.currentUser.role)){
     const alerts = getStockAlerts();
-    const ensure = (kind, list)=>{
+    const ensure = (kind, list, tier)=>{
       list.forEach(a=>{
-        const already = S.stockTasks.some(t=>t.status==='open' && t.kind===kind && t.itemId===a.id);
+        const already = S.stockTasks.some(t=>t.status==='open' && t.kind===kind && t.itemId===a.id && (t.tier||null)===(tier||null));
         if(!already){
-          S.stockTasks.push({id:uid(), kind, itemId:a.id, label:a.label, qtyText:a.text||'', targetRole: kind==='filled'?'filling':'packaging', createdBy:'Auto', createdAt:Date.now(), status:'open'});
+          S.stockTasks.push({id:uid(), kind, itemId:a.id, label:a.label, qtyText:a.text||'', targetRole: kind==='filled'?'filling':'packaging', createdBy:'Auto', createdAt:Date.now(), status:'open', ...(tier?{tier}:{})});
           changed = true;
         }
       });
     };
     ensure('filled', alerts.filled);
     ensure('ready', alerts.ready);
+    // Recommended (preemptive) tasks are always created too — they're just
+    // kept out of the bell when there's more pressing work (see renderNotifPanel).
+    ensure('filled', alerts.recommended.filled, 'recommended');
+    ensure('ready', alerts.recommended.ready, 'recommended');
   }
   if(reconcileStockTasks()) changed = true;
   if(changed) safeSet('app:stockTasks', S.stockTasks);
@@ -1376,10 +1407,12 @@ function renderAlertTiles(alerts, kind, stacked){
     ${alerts.map(a=>{
       const sendable = kind==='filled' || kind==='ready';
       const alreadySent = sendable && S.stockTasks.some(t=>t.status==='open' && t.kind===kind && t.itemId===a.id);
-      return `<div class="alert-tile ${a.level==='low'?'mild':''}">
+      const badgeCls = a.level==='recommended' ? 'processing' : a.level==='low' ? 'pending' : 'rejected';
+      const badgeText = a.level==='recommended' ? 'Recommended' : a.level==='low' ? 'Low' : 'Short';
+      return `<div class="alert-tile ${a.level==='low'?'mild':''}${a.level==='recommended'?' recommended':''}">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;margin-bottom:2px;">
           <span class="mono" style="text-transform:uppercase;letter-spacing:0.03em;font-size:9.5px;">${esc(STOCK_KIND_LABEL[kind])}</span>
-          <span class="badge badge-${a.level==='low'?'pending':'rejected'}">${a.level==='low'?'Low':'Short'}</span>
+          <span class="badge badge-${badgeCls}">${badgeText}</span>
         </div>
         <div class="at-label">${esc(a.label)}</div>
         <div class="at-detail"><b>${esc(a.text)}</b></div>
@@ -1602,7 +1635,10 @@ function render(){
   root.innerHTML = newHtml;
   bindShell();
   const newContent = root.querySelector('.content');
-  if(newContent) newContent.scrollTop = savedScrollTop;
+  if(newContent){
+    newContent.style.scrollBehavior = 'auto'; // land instantly — don't let the smooth-scroll CSS animate this correction
+    newContent.scrollTop = savedScrollTop;
+  }
   lastRenderedView = S.view;
 }
 
@@ -1854,8 +1890,28 @@ function renderNotifPanel(stockAlerts){
   const readyOrders = isAdmin ? S.orders.filter(o=>o.status==='ready') : [];
   const reviewTasks = isAdmin ? S.orders.filter(o => o.fillingStatus==='review' || o.packagingStatus==='review') : [];
   const alertKinds = myRoleAlertKinds(role);
-  const alertsHtml = alertKinds.map(k=>renderAlertSection(k, stockAlerts[k], true)).join('');
-  const alertCount = alertKinds.reduce((s,k)=>s+stockAlerts[k].length,0);
+  const urgentByKind = {}, lowByKind = {}, recByKind = {};
+  alertKinds.forEach(k=>{
+    urgentByKind[k] = stockAlerts[k].filter(a=>a.level==='critical');
+    lowByKind[k] = stockAlerts[k].filter(a=>a.level==='low');
+    recByKind[k] = stockAlerts.recommended[k] || [];
+  });
+  const urgentCount = alertKinds.reduce((s,k)=>s+urgentByKind[k].length,0);
+  const lowCount = alertKinds.reduce((s,k)=>s+lowByKind[k].length,0);
+  const recCount = alertKinds.reduce((s,k)=>s+recByKind[k].length,0);
+  const hasUrgentOrLow = (urgentCount+lowCount) > 0;
+  const severityBlock = (title, icon, byKind)=>{
+    const kinds = alertKinds.filter(k=>byKind[k] && byKind[k].length);
+    if(!kinds.length) return '';
+    return `<div style="margin-bottom:6px;">
+      <div style="font-weight:800;font-size:12px;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px;">${icon} ${title}</div>
+      ${kinds.map(k=>renderAlertSection(k, byKind[k], true)).join('')}
+    </div>`;
+  };
+  const alertsHtml = severityBlock('Urgent', '🔴', urgentByKind)
+    + severityBlock('Low Stock', '🟡', lowByKind)
+    + (!hasUrgentOrLow ? severityBlock('Recommended', '📋', recByKind) : ''); // only surfaced here when there's nothing more pressing
+  const alertCount = urgentCount + lowCount + (!hasUrgentOrLow ? recCount : 0);
   let myWork = [];
   if(role==='filling') myWork = S.orders.filter(o=>o.status==='processing' && o.fillingStatus!=='done');
   if(role==='packaging') myWork = S.orders.filter(o=>o.status==='processing' && o.fillingStatus==='done' && o.packagingStatus!=='done');
@@ -3698,13 +3754,19 @@ function renderTasks(){
     const alertsNow = getStockAlerts();
     const alertListNow = role==='filling' ? alertsNow.filled : alertsNow.ready;
     myStockTasks.forEach(t=>{
-      if(!demand[t.itemId]) demand[t.itemId] = {qty:0, fromOrder:false, fromAlert:false, alertText:''};
+      if(!demand[t.itemId]) demand[t.itemId] = {qty:0, fromOrder:false, fromAlert:false, alertText:'', tier:null};
       demand[t.itemId].fromAlert = true;
       demand[t.itemId].alertText = t.qtyText || '';
+      demand[t.itemId].tier = t.tier || null;
       const am = alertListNow.find(a=>a.id===t.itemId);
       if(am && am.needQty) demand[t.itemId].suggestedQty = am.needQty;
     });
-    const rows = Object.entries(demand);
+    const rows = Object.entries(demand).sort((a,b)=>{
+      // Recommended-only items (no real order/urgent demand) sink to the bottom.
+      const aRec = (a[1].tier==='recommended' && !a[1].fromOrder) ? 1 : 0;
+      const bRec = (b[1].tier==='recommended' && !b[1].fromOrder) ? 1 : 0;
+      return aRec - bRec;
+    });
     orderTasksBlock = `
     <div class="card">
       <h2>${role==='filling'?'What needs to be filled':'What needs to be packed'}</h2>
@@ -3713,7 +3775,8 @@ function renderTasks(){
       <table><thead><tr><th>Item</th><th>Qty / reason</th><th></th></tr></thead><tbody>
       ${rows.map(([key,d])=>{
         const it=findItem(key);
-        const tags = `${d.fromOrder?'<span class="badge badge-pending">Order</span> ':''}${d.fromAlert?'<span class="badge badge-rejected">Stock alert</span>':''}`;
+        const alertBadge = d.tier==='recommended' ? '<span class="badge badge-processing">Recommended</span>' : '<span class="badge badge-rejected">Stock alert</span>';
+        const tags = `${d.fromOrder?'<span class="badge badge-pending">Order</span> ':''}${d.fromAlert?alertBadge:''}`;
         const qtyText = d.qty>0 ? `<b>${d.qty} pc</b>` : (d.alertText||'');
         const suggestedQty = d.qty>0 ? d.qty : (d.suggestedQty||0);
         return `<tr><td>${esc(it?it.name:key)} <span class="mono">${esc(it?it.size:'')}</span><div style="margin-top:3px;">${tags}</div></td><td class="mono">${qtyText}</td><td>${role==='filling'?`<button class="btn btn-sm btn-accent" data-quick-fill="${key}|${suggestedQty}">Record</button>`:`<button class="btn btn-sm btn-accent" data-quick-pack="${key}|${suggestedQty}">Record</button>`}</td></tr>`;
@@ -4163,11 +4226,14 @@ function openLowAlertModal(kind, id, label, unit){
   const isRaw = kind==='raw';
   const rawVal = (S.lowStock[kind]||{})[id] || 0;
   const current = isRaw ? (rawVal ? +(rawVal/1000).toFixed(2) : '') : (rawVal || '');
+  const watchRawVal = (S.watchStock[kind]||{})[id] || 0;
+  const watchCurrent = isRaw ? (watchRawVal ? +(watchRawVal/1000).toFixed(2) : '') : (watchRawVal || '');
   const displayUnit = isRaw ? 'L' : unit;
   showModal(`
     <h3>Low-stock alert — ${esc(label)}</h3>
     <p class="desc" style="margin-top:-6px;">Alert when stock drops this low (0 = off).</p>
     <div class="field"><label>Alert at (${displayUnit})</label><input id="lowAlertVal" type="number" min="0" ${isRaw?'step="0.01"':''} value="${current}" /></div>
+    <div class="field"><label>Recommended / watch level (${displayUnit}) — optional</label><input id="watchAlertVal" type="number" min="0" ${isRaw?'step="0.01"':''} value="${watchCurrent}" placeholder="triggers a heads-up before the alert level" /></div>
     <div class="modal-actions">
       <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
       <button type="button" class="btn btn-primary" id="lowAlertSave">Save</button>
@@ -4177,8 +4243,13 @@ function openLowAlertModal(kind, id, label, unit){
     const raw = parseFloat(document.getElementById('lowAlertVal').value)||0;
     const val = isRaw ? raw*1000 : raw; // Liters -> mL for raw material
     if(val>0) S.lowStock[kind][id] = val; else delete S.lowStock[kind][id];
+    const watchRaw = parseFloat(document.getElementById('watchAlertVal').value)||0;
+    const watchVal = isRaw ? watchRaw*1000 : watchRaw;
+    if(watchVal>0) S.watchStock[kind][id] = watchVal; else delete S.watchStock[kind][id];
     safeSet('app:lowStock', S.lowStock);
-    closeModal(); render(); showToast('Low-stock alert saved');
+    safeSet('app:watchStock', S.watchStock);
+    syncStockTasksFromAlerts();
+    closeModal(); render(); showToast('Alert levels saved');
   });
 }
 
