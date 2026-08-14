@@ -457,7 +457,7 @@
 /* ============================= PRODUCT CATALOG ============================= */
 /* ============================= BRANDING ============================= */
 const COMPANY_LOGO = "icon-512.png";
-const APP_BUILD = "2026-08-14-uifix2";
+const APP_BUILD = "2026-08-14-batchallcat1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -4814,16 +4814,15 @@ function batchNumberFor(cat, ts){
   return String(Math.max(num,0)).padStart(digits,'0');
 }
 function openBatchModal(){
-  const readyItems = CATALOG_FLAT.filter(it => (S.readyStock[it.key]||0) > 0);
   // Batch numbers are per PRODUCT (category), shared across all its sizes —
-  // so the picker should list each product name once, not once per size.
-  const readyCats = [...new Map(readyItems.map(it=>[it.cat, it])).values()].sort((a,b)=>a.cat.localeCompare(b.cat));
+  // so the picker lists each product name once, not once per size.
+  const allCats = [...new Map(CATALOG_FLAT.map(it=>[it.cat, it])).values()].sort((a,b)=>a.cat.localeCompare(b.cat));
   showModal(`
     <h3>🏷️ Batch Number</h3>
-    <p class="desc" style="margin-top:-6px;">Only items currently in Ready stock are listed. Every size of the same product shares one batch number.</p>
+    <p class="desc" style="margin-top:-6px;">Every size of the same product shares one batch number.</p>
     <div class="field"><label>Item</label>
       <select id="batchItemSel">
-        ${readyCats.length===0?'<option value="">No items in ready stock</option>':readyCats.map(it=>`<option value="${esc(it.cat)}">${esc(it.name)}</option>`).join('')}
+        ${allCats.length===0?'<option value="">No items in catalog</option>':allCats.map(it=>`<option value="${esc(it.cat)}">${esc(it.name)}</option>`).join('')}
       </select>
     </div>
     <div id="batchResultBox" style="margin:14px 0;"></div>
