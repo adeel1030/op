@@ -250,9 +250,11 @@
   /* Red notification-dot badge — for use on any tile/icon (not just the
      bell), clearly distinct from the general gray/status .badge class. */
   .notif-dot{
-    position:absolute;top:-4px;right:-4px;background:#D8483B!important;color:#fff!important;
-    font-size:10.5px;font-weight:800;border-radius:20px;padding:1.5px 6px;min-width:17px;text-align:center;
-    z-index:30;box-shadow:0 0 0 2px #fff;line-height:1.5;
+    position:absolute;top:-5px;right:-5px;background:#D8483B!important;color:#fff!important;
+    font-size:10px;font-weight:800;border-radius:10px;text-align:center;
+    min-width:19px;height:19px;line-height:19px;padding:0 4px;box-sizing:border-box;
+    -webkit-text-size-adjust:100%;text-size-adjust:100%;
+    z-index:30;box-shadow:0 0 0 2px #fff;
   }
   .notif-dot.pulse{animation:bellBadgePulse .4s cubic-bezier(.3,1.5,.5,1);}
   .bell-sm{width:30px;height:30px;font-size:13px;}
@@ -455,7 +457,7 @@
 /* ============================= PRODUCT CATALOG ============================= */
 /* ============================= BRANDING ============================= */
 const COMPANY_LOGO = "icon-512.png";
-const APP_BUILD = "2026-08-14-dotcolorfix1";
+const APP_BUILD = "2026-08-14-dotsize-fix1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -4040,7 +4042,7 @@ function quickActionIcons(role){
   if(role==='admin' || role==='manager' || role==='packaging') icons.push({key:'domino', ico:'🖨️', color:'purple', lbl:'Domino', sub:'Log printing'});
   const unread = unreadMessageCount();
   icons.push({key:'messages', ico:'💬', color:'blue', lbl:'Messages', sub:'Announcements & chat', badge: unread>0 ? unread : null});
-  const tileHtml = i=>`<div class="qa-tile" data-quick-action="${i.key}"><div class="icon-badge ${i.color}" style="position:relative;overflow:visible;">${i.badge?`<span class="notif-dot pulse">${i.badge}</span>`:''}${i.ico}</div><div class="title">${esc(i.lbl)}</div><div class="sub">${esc(i.sub)}</div></div>`;
+  const tileHtml = i=>`<div class="qa-tile" data-quick-action="${i.key}"><div class="icon-badge ${i.color}" style="position:relative;overflow:visible;"><span style="position:relative;z-index:1;">${i.ico}</span>${i.badge?`<span class="notif-dot pulse">${i.badge}</span>`:''}</div><div class="title">${esc(i.lbl)}</div><div class="sub">${esc(i.sub)}</div></div>`;
   // More than 5 doesn't comfortably fit one row — split evenly across two
   // rows (ceil on top, floor on bottom: 6=3+3, 7=4+3, 8=4+4) instead of
   // letting the row overflow or squeeze icons down further.
