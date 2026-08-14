@@ -122,12 +122,12 @@
   .qa-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px;}
   .qa-head h2{margin:0;padding-left:10px;border-left:3px solid var(--gold);}
   .qa-head span{font-size:11px;color:var(--ink-soft);}
-  .qa-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
-  .qa-tile{background:rgba(255,255,255,0.55);border:1px solid rgba(255,255,255,0.7);border-radius:14px;padding:12px 5px;text-align:center;cursor:pointer;transition:transform .08s ease;}
+  .qa-grid{display:flex;flex-wrap:nowrap;justify-content:center;align-items:flex-start;gap:10px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:2px 2px 4px;}
+  .qa-tile{flex:0 1 auto;min-width:60px;max-width:78px;background:rgba(255,255,255,0.55);border:1px solid rgba(255,255,255,0.7);border-radius:14px;padding:10px 4px;text-align:center;cursor:pointer;transition:transform .08s ease;}
   .qa-tile:active{transform:scale(0.94);}
-  .qa-tile .icon-badge{margin:0 auto 8px;background:rgba(255,255,255,0.85);}
-  .qa-tile .title{font-size:11px;font-weight:800;color:var(--ink);}
-  .qa-tile .sub{font-size:8.5px;color:var(--ink-soft);margin-top:2px;line-height:1.2;}
+  .qa-tile .icon-badge{margin:0 auto 6px;background:rgba(255,255,255,0.85);width:38px;height:38px;font-size:18px;}
+  .qa-tile .title{font-size:10.5px;font-weight:800;color:var(--ink);}
+  .qa-tile .sub{display:none;}
 
   .promo-banner{background:linear-gradient(120deg, #0E1F14, var(--primary-dark));border-radius:16px;padding:16px;display:flex;align-items:center;gap:12px;color:#fff;margin-bottom:12px;box-shadow:0 8px 20px -10px rgba(18,74,46,0.5);}
   .promo-banner .pico{font-size:30px;flex:0 0 auto;}
@@ -246,6 +246,14 @@
   }
   .bell .badge-pulse-new{animation:bellBadgePulse .4s cubic-bezier(.3,1.5,.5,1);}
   @keyframes bellBadgePulse{0%{transform:scale(0);}60%{transform:scale(1.25);}100%{transform:scale(1);}}
+  /* Red notification-dot badge — for use on any tile/icon (not just the
+     bell), clearly distinct from the general gray/status .badge class. */
+  .notif-dot{
+    position:absolute;top:-4px;right:-4px;background:var(--danger);color:#fff;
+    font-size:10.5px;font-weight:800;border-radius:20px;padding:1.5px 6px;min-width:17px;text-align:center;
+    z-index:30;box-shadow:0 0 0 2px #fff;line-height:1.5;
+  }
+  .notif-dot.pulse{animation:bellBadgePulse .4s cubic-bezier(.3,1.5,.5,1);}
   .bell-sm{width:30px;height:30px;font-size:13px;}
   .bell-urgent{border-color:rgba(255,255,255,0.5);}
   .bell-urgent .badge{background:var(--danger);color:#fff;}
@@ -276,6 +284,7 @@
   tr:last-child td{border-bottom:none;}
   .mono{font-family:var(--font-mono);font-size:12px;color:var(--ink-soft);}
   .stockneg{color:var(--danger)!important;font-weight:800;}
+  .stocklow{color:#C9720E!important;font-weight:800;}
   .table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -16px;padding:0 16px;}
 
   /* ---------- Search bar ---------- */
@@ -445,7 +454,7 @@
 /* ============================= PRODUCT CATALOG ============================= */
 /* ============================= BRANDING ============================= */
 const COMPANY_LOGO = "icon-512.png";
-const APP_BUILD = "2026-08-14-filledinfo1";
+const APP_BUILD = "2026-08-14-qagrid1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -1683,9 +1692,15 @@ function alertBanner(list){
   if(!list.length) return '';
   const crit = list.filter(a=>a.level!=='low');
   const low = list.filter(a=>a.level==='low');
+  const entryHtml = (a, isCrit)=>`
+    <div style="padding:8px 0;border-top:1px solid ${isCrit?'rgba(216,72,59,0.18)':'rgba(201,114,14,0.2)'};">
+      <div style="font-size:14px;font-weight:800;margin-bottom:2px;">${esc(a.label)}</div>
+      <div style="font-size:12.5px;">${isCrit?`<span class="stockneg">${esc(a.text)}</span>`:esc(a.text)}</div>
+      <div style="font-size:11px;opacity:0.75;margin-top:1px;">${esc(a.team)}</div>
+    </div>`;
   let out = '';
-  if(crit.length) out += `<div class="alert-banner"><b>⚠ ${crit.length} item(s) short</b>${crit.map(a=>`${esc(a.label)}: <span class="stockneg">${a.text}</span> — ${esc(a.team)}<br/>`).join('')}</div>`;
-  if(low.length) out += `<div class="alert-banner warn-mild"><b>🔔 ${low.length} item(s) running low</b>${low.map(a=>`${esc(a.label)}: ${esc(a.text)} — ${esc(a.team)}<br/>`).join('')}</div>`;
+  if(crit.length) out += `<div class="alert-banner"><b>⚠ ${crit.length} item(s) short</b>${crit.map(a=>entryHtml(a,true)).join('')}</div>`;
+  if(low.length) out += `<div class="alert-banner warn-mild"><b>🔔 ${low.length} item(s) running low</b>${low.map(a=>entryHtml(a,false)).join('')}</div>`;
   return out;
 }
 
@@ -4024,7 +4039,7 @@ function quickActionIcons(role){
   return `<div class="card card-tinted">
     <div class="qa-head"><h2>Quick Actions</h2><span>Manage operations</span></div>
     <div class="qa-grid">
-      ${icons.map(i=>`<div class="qa-tile" style="position:relative;" data-quick-action="${i.key}">${i.badge?`<span class="badge badge-pulse-new" style="position:absolute;top:4px;right:4px;">${i.badge}</span>`:''}<div class="icon-badge ${i.color}">${i.ico}</div><div class="title">${esc(i.lbl)}</div><div class="sub">${esc(i.sub)}</div></div>`).join('')}
+      ${icons.map(i=>`<div class="qa-tile" style="position:relative;" data-quick-action="${i.key}">${i.badge?`<span class="notif-dot pulse">${i.badge}</span>`:''}<div class="icon-badge ${i.color}">${i.ico}</div><div class="title">${esc(i.lbl)}</div><div class="sub">${esc(i.sub)}</div></div>`).join('')}
     </div>
   </div>`;
 }
@@ -4034,7 +4049,10 @@ function openMessagesModal(){
     <div class="modal-actions"><button type="button" class="btn btn-outline" id="cancelModal">Close</button></div>`);
   bindMessagesModal();
   const closeBtn = document.getElementById('cancelModal');
-  if(closeBtn) closeBtn.addEventListener('click', ()=>render()); // refreshes the Home tile's unread badge immediately
+  if(closeBtn) closeBtn.addEventListener('click', ()=>{
+    if(S.chatView==='announcements') markAllAnnouncementsRead();
+    render(); // refreshes the Home tile's unread badge immediately
+  });
 }
 function renderMessagesModalContent(){
   const tabs = `<div class="row-actions" style="margin-bottom:12px;">
@@ -4049,15 +4067,19 @@ function renderMessagesModalContent(){
 }
 function renderAnnouncementsTab(){
   const isAdmin = S.currentUser.role==='admin';
+  const myUsername = S.currentUser.username;
   const announcements = S.chatMessages.filter(m=>m.type==='announcement').sort((a,b)=>b.at-a.at);
   return `
     ${isAdmin?`<div class="field"><textarea id="newAnnouncementText" placeholder="Write an announcement for everyone…" rows="2" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);font-family:inherit;font-size:13px;resize:vertical;"></textarea></div>
     <button type="button" class="btn btn-primary btn-sm" id="postAnnouncementBtn" style="margin-bottom:14px;">📢 Post Announcement</button>`:''}
-    ${announcements.length===0?`<div class="empty">No announcements yet.</div>`:announcements.map(m=>`
-      <div style="background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:8px;">
+    ${announcements.length===0?`<div class="empty">No announcements yet.</div>`:announcements.map(m=>{
+      const unread = !(m.readBy||[]).includes(myUsername);
+      return `<div style="position:relative;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:8px;">
+        ${unread?`<span class="notif-dot pulse" style="top:-6px;right:-6px;">●</span>`:''}
         <div style="font-size:11px;color:var(--ink-soft);margin-bottom:3px;"><b>${esc(m.fromName)}</b> · ${fmtDate(m.at)} · ${fmtTime(m.at)}</div>
         <div style="font-size:13.5px;white-space:pre-wrap;">${esc(m.text)}</div>
-      </div>`).join('')}
+      </div>`;
+    }).join('')}
   `;
 }
 function renderChatsListTab(){
@@ -4087,12 +4109,12 @@ function renderChatsListTab(){
       <button type="button" class="btn btn-primary btn-sm" id="startChatBtn">Start conversation</button>`}
     </div>
     ${threadList.length===0?`<div class="empty">No conversations yet.</div>`:threadList.map(t=>`
-      <div class="row-actions" style="justify-content:space-between;align-items:flex-start;padding:10px 12px;border:1px solid var(--border);border-radius:12px;margin-bottom:8px;cursor:pointer;" data-open-thread="${esc(t.username)}">
+      <div class="row-actions" style="position:relative;justify-content:space-between;align-items:flex-start;padding:10px 12px;border:1px solid var(--border);border-radius:12px;margin-bottom:8px;cursor:pointer;" data-open-thread="${esc(t.username)}">
+        ${t.unread>0?`<span class="notif-dot pulse" style="top:-6px;right:-6px;">${t.unread}</span>`:''}
         <div style="min-width:0;">
           <div style="font-weight:700;font-size:13px;">${esc(t.name)}</div>
           <div style="font-size:11.5px;color:var(--ink-soft);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${t.last.fromUsername===myUsername?'You: ':''}${esc(t.last.text)}</div>
         </div>
-        ${t.unread>0?`<span class="badge badge-pulse-new">${t.unread}</span>`:''}
       </div>`).join('')}
   `;
 }
@@ -4115,8 +4137,17 @@ function renderThreadView(otherUsername){
     </div>
   `;
 }
+function markAllAnnouncementsRead(){
+  S.chatMessages.forEach(m=>{
+    if(m.type==='announcement' && !(m.readBy||[]).includes(S.currentUser.username)){
+      m.readBy = m.readBy || []; m.readBy.push(S.currentUser.username);
+      savePartitionForItem('chatMessages', m);
+    }
+  });
+}
 function bindMessagesModal(){
   document.querySelectorAll('[data-chat-tab]').forEach(b=>b.addEventListener('click', ()=>{
+    if(S.chatView==='announcements') markAllAnnouncementsRead(); // leaving the tab — they've seen the dots by now
     S.chatView = b.dataset.chatTab; S.chatActiveThread = null; refreshMessagesModal();
   }));
   const postBtn = document.getElementById('postAnnouncementBtn');
@@ -4436,7 +4467,7 @@ function renderRawMaterial(){
     ${alertBanner(alerts)}
     ${searchBarHtml('raw','Search category…')}
     <table><thead><tr><th>Category</th><th>In stock</th>${isAdmin?'<th></th>':''}</tr></thead><tbody>
-    ${filterSortInventory(RAW_CATEGORIES,'raw',c=>S.rawMaterial[c]||0,c=>c).map(cat=>{const v=S.rawMaterial[cat]||0; return `<tr><td>${esc(cat)}</td><td class="mono ${v<0?'stockneg':''}">${fmtMl(v)}</td>${isAdmin?`<td class="row-actions"><button class="btn btn-sm btn-outline" data-adjust-raw="${esc(cat)}">Adjust</button><button class="btn btn-sm btn-outline" data-lowalert-raw="${esc(cat)}">Low alert</button></td>`:''}</tr>`;}).join('')}
+    ${filterSortInventory(RAW_CATEGORIES,'raw',c=>S.rawMaterial[c]||0,c=>c).map(cat=>{const v=S.rawMaterial[cat]||0; const th=S.lowStock.raw[cat]; const cls = v<0?'stockneg':(th && v<=th?'stocklow':''); return `<tr><td>${esc(cat)}</td><td class="mono ${cls}">${fmtMl(v)}</td>${isAdmin?`<td class="row-actions"><button class="btn btn-sm btn-outline" data-adjust-raw="${esc(cat)}">Adjust</button><button class="btn btn-sm btn-outline" data-lowalert-raw="${esc(cat)}">Low alert</button></td>`:''}</tr>`;}).join('')}
     </tbody></table>
   </div>`;
 }
@@ -4535,7 +4566,7 @@ function renderFilled(){
     ${alertBanner(alerts)}
     ${searchBarHtml('filled','Search item…')}
     <table><thead><tr><th>Item</th><th>Size</th><th>In stock</th>${isAdmin?'<th></th>':''}</tr></thead><tbody>
-    ${filterSortInventory(CATALOG_FLAT,'filled',it=>S.filledStock[it.key]||0,it=>it.name+' '+it.size).map(it=>{const v=S.filledStock[it.key]||0; return `<tr><td>${esc(it.name)}</td><td class="mono">${esc(it.size)}</td><td class="mono ${v<0?'stockneg':''}">${v} pc</td>${isAdmin?`<td class="row-actions"><button class="btn btn-sm btn-outline" data-adjust-filled="${it.key}">Adjust</button><button class="btn btn-sm btn-outline" data-lowalert-filled="${it.key}">Low alert</button></td>`:''}</tr>`;}).join('')}
+    ${filterSortInventory(CATALOG_FLAT,'filled',it=>S.filledStock[it.key]||0,it=>it.name+' '+it.size).map(it=>{const v=S.filledStock[it.key]||0; const th=S.lowStock.filled[it.key]; const cls = v<0?'stockneg':(th && v<=th?'stocklow':''); return `<tr><td>${esc(it.name)}</td><td class="mono">${esc(it.size)}</td><td class="mono ${cls}">${v} pc</td>${isAdmin?`<td class="row-actions"><button class="btn btn-sm btn-outline" data-adjust-filled="${it.key}">Adjust</button><button class="btn btn-sm btn-outline" data-lowalert-filled="${it.key}">Low alert</button></td>`:''}</tr>`;}).join('')}
     </tbody></table>
   </div>`;
 }
@@ -4621,7 +4652,7 @@ function renderReady(){
     ${alertBanner(alerts)}
     ${searchBarHtml('ready','Search item…')}
     <table><thead><tr><th>Item</th><th>Size</th><th>MRP</th><th>In stock</th>${isAdmin?'<th></th>':''}</tr></thead><tbody>
-    ${filterSortInventory(CATALOG_FLAT,'ready',it=>S.readyStock[it.key]||0,it=>it.name+' '+it.size).map(it=>{const v=S.readyStock[it.key]||0; return `<tr><td>${esc(it.name)}</td><td class="mono">${esc(it.size)}</td><td class="mono">₹${it.mrp}</td><td class="mono ${v<0?'stockneg':''}">${fmtReadyDisplay(v,it.caseSize,it.pktSize)}</td>${isAdmin?`<td class="row-actions"><button class="btn btn-sm btn-outline" data-adjust-ready="${it.key}">Adjust</button><button class="btn btn-sm btn-outline" data-lowalert-ready="${it.key}">Low alert</button></td>`:''}</tr>`;}).join('')}
+    ${filterSortInventory(CATALOG_FLAT,'ready',it=>S.readyStock[it.key]||0,it=>it.name+' '+it.size).map(it=>{const v=S.readyStock[it.key]||0; const th=S.lowStock.ready[it.key]; const cls = v<0?'stockneg':(th && v<=th?'stocklow':''); return `<tr><td>${esc(it.name)}</td><td class="mono">${esc(it.size)}</td><td class="mono">₹${it.mrp}</td><td class="mono ${cls}">${fmtReadyDisplay(v,it.caseSize,it.pktSize)}</td>${isAdmin?`<td class="row-actions"><button class="btn btn-sm btn-outline" data-adjust-ready="${it.key}">Adjust</button><button class="btn btn-sm btn-outline" data-lowalert-ready="${it.key}">Low alert</button></td>`:''}</tr>`;}).join('')}
     </tbody></table>
   </div>`;
 }
