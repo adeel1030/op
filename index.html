@@ -78,6 +78,52 @@
     .device::before{display:none;}
     .device-screen{border-radius:0;}
   }
+  /* ---------- Desktop / wide-screen layout ----------
+     Below 900px, nothing here applies — the phone-frame mockup and bottom
+     nav bar render exactly as before. At 900px+, the fake phone bezel goes
+     away and the same markup reflows into a real desktop layout: a left
+     sidebar (same buttons, same click handlers — only CSS direction and
+     position change) and a properly wide content area, instead of a tiny
+     412px phone simulation floating in the middle of a big screen. */
+  @media (min-width:900px){
+    .device-wrap{padding:0;align-items:stretch;background:var(--bg);}
+    .device{width:100%;height:100vh;height:100dvh;border-radius:0;padding:0;box-shadow:none;}
+    .device::before{display:none;}
+    .device-screen{border-radius:0;}
+    #root{
+      display:grid;
+      grid-template-columns:224px 1fr;
+      grid-template-rows:auto 1fr;
+      grid-template-areas:"nav topbar" "nav content";
+      height:100%;
+    }
+    .topbar{grid-area:topbar;}
+    .content{
+      grid-area:content;
+      padding:22px 28px 32px;
+      max-width:1040px;
+      margin:0 auto;
+      width:100%;
+    }
+    .navbar{
+      grid-area:nav;
+      position:static;
+      flex-direction:column;
+      align-items:stretch;
+      justify-content:flex-start;
+      width:100%;height:100%;
+      padding:18px 10px;
+      gap:3px;
+      overflow-x:visible;overflow-y:auto;
+      box-shadow:2px 0 14px -6px rgba(0,0,0,0.18);
+    }
+    .navitem{
+      flex-direction:row;justify-content:flex-start;
+      width:100%;min-width:0;padding:11px 14px;gap:12px;
+    }
+    .navitem .lbl{font-size:13px;max-width:none;overflow:visible;}
+    .app-toast{bottom:24px!important;}
+  }
 
   /* ---------- Rich home page: icon badges, overview strip, stat cards v2, quick actions, promo banner ---------- */
   .icon-badge{width:42px;height:42px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:20px;flex:0 0 auto;}
@@ -459,7 +505,7 @@
 /* ============================= PRODUCT CATALOG ============================= */
 /* ============================= BRANDING ============================= */
 const COMPANY_LOGO = "icon-512.png";
-const APP_BUILD = "2026-08-14-tilecolors1";
+const APP_BUILD = "2026-08-14-responsive1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
