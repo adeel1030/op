@@ -455,7 +455,7 @@
 /* ============================= PRODUCT CATALOG ============================= */
 /* ============================= BRANDING ============================= */
 const COMPANY_LOGO = "icon-512.png";
-const APP_BUILD = "2026-08-14-qa-final1";
+const APP_BUILD = "2026-08-14-tabdots1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -3988,15 +3988,18 @@ function canChatWith(myRole, otherRole){
   if(otherRole==='sales') return myRole==='admin' || myRole==='manager';
   return true;
 }
-function unreadMessageCount(){
+function unreadAnnouncementCount(){
   if(!S.currentUser) return 0;
   const username = S.currentUser.username;
-  let count = 0;
-  S.chatMessages.forEach(m=>{
-    if(m.type==='announcement' && !(m.readBy||[]).includes(username)) count++;
-    if(m.type==='personal' && m.toUsername===username && !m.read) count++;
-  });
-  return count;
+  return S.chatMessages.filter(m=>m.type==='announcement' && !(m.readBy||[]).includes(username)).length;
+}
+function unreadChatCount(){
+  if(!S.currentUser) return 0;
+  const username = S.currentUser.username;
+  return S.chatMessages.filter(m=>m.type==='personal' && m.toUsername===username && !m.read).length;
+}
+function unreadMessageCount(){
+  return unreadAnnouncementCount() + unreadChatCount();
 }
 function sendAnnouncement(text){
   text = (text||'').trim();
@@ -4067,8 +4070,8 @@ function openMessagesModal(){
 }
 function renderMessagesModalContent(){
   const tabs = `<div class="row-actions" style="margin-bottom:12px;">
-    <button type="button" class="btn btn-sm ${S.chatView==='announcements'?'btn-primary':'btn-outline'}" data-chat-tab="announcements">📢 Announcements</button>
-    <button type="button" class="btn btn-sm ${S.chatView==='chats'?'btn-primary':'btn-outline'}" data-chat-tab="chats">💬 Chats</button>
+    <button type="button" class="btn btn-sm ${S.chatView==='announcements'?'btn-primary':'btn-outline'}" style="position:relative;overflow:visible;" data-chat-tab="announcements">📢 Announcements${unreadAnnouncementCount()>0?`<span class="notif-dot pulse" style="top:-8px;right:-8px;">${unreadAnnouncementCount()}</span>`:''}</button>
+    <button type="button" class="btn btn-sm ${S.chatView==='chats'?'btn-primary':'btn-outline'}" style="position:relative;overflow:visible;" data-chat-tab="chats">💬 Chats${unreadChatCount()>0?`<span class="notif-dot pulse" style="top:-8px;right:-8px;">${unreadChatCount()}</span>`:''}</button>
   </div>`;
   let body;
   if(S.chatView==='announcements') body = renderAnnouncementsTab();
