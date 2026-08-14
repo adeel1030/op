@@ -122,11 +122,12 @@
   .qa-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px;}
   .qa-head h2{margin:0;padding-left:10px;border-left:3px solid var(--gold);}
   .qa-head span{font-size:11px;color:var(--ink-soft);}
-  .qa-grid{display:flex;flex-wrap:nowrap;justify-content:space-between;align-items:flex-start;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:2px 2px 4px;}
-  .qa-tile{flex:0 1 auto;min-width:68px;max-width:92px;background:rgba(255,255,255,0.55);border:1px solid rgba(255,255,255,0.7);border-radius:14px;padding:12px 5px;text-align:center;cursor:pointer;transition:transform .08s ease;}
+  .qa-grid{display:flex;flex-wrap:nowrap;justify-content:space-evenly;align-items:flex-start;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:2px 2px 4px;}
+  .qa-grid+.qa-grid{margin-top:10px;}
+  .qa-tile{flex:0 1 auto;min-width:60px;max-width:78px;background:rgba(255,255,255,0.55);border:1px solid rgba(255,255,255,0.7);border-radius:14px;padding:10px 4px;text-align:center;cursor:pointer;transition:transform .08s ease;}
   .qa-tile:active{transform:scale(0.94);}
-  .qa-tile .icon-badge{margin:0 auto 7px;background:rgba(255,255,255,0.85);width:46px;height:46px;font-size:22px;}
-  .qa-tile .title{font-size:11.5px;font-weight:800;color:var(--ink);}
+  .qa-tile .icon-badge{margin:0 auto 6px;background:rgba(255,255,255,0.85);width:38px;height:38px;font-size:18px;}
+  .qa-tile .title{font-size:10.5px;font-weight:800;color:var(--ink);}
   .qa-tile .sub{display:none;}
 
   .promo-banner{background:linear-gradient(120deg, #0E1F14, var(--primary-dark));border-radius:16px;padding:16px;display:flex;align-items:center;gap:12px;color:#fff;margin-bottom:12px;box-shadow:0 8px 20px -10px rgba(18,74,46,0.5);}
@@ -454,7 +455,7 @@
 /* ============================= PRODUCT CATALOG ============================= */
 /* ============================= BRANDING ============================= */
 const COMPANY_LOGO = "icon-512.png";
-const APP_BUILD = "2026-08-14-qajustify1";
+const APP_BUILD = "2026-08-14-qa-final1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -4036,11 +4037,21 @@ function quickActionIcons(role){
   if(role==='admin' || role==='manager' || role==='packaging') icons.push({key:'domino', ico:'🖨️', color:'purple', lbl:'Domino', sub:'Log printing'});
   const unread = unreadMessageCount();
   icons.push({key:'messages', ico:'💬', color:'blue', lbl:'Messages', sub:'Announcements & chat', badge: unread>0 ? unread : null});
+  const tileHtml = i=>`<div class="qa-tile" style="position:relative;" data-quick-action="${i.key}">${i.badge?`<span class="notif-dot pulse">${i.badge}</span>`:''}<div class="icon-badge ${i.color}">${i.ico}</div><div class="title">${esc(i.lbl)}</div><div class="sub">${esc(i.sub)}</div></div>`;
+  // More than 5 doesn't comfortably fit one row — split evenly across two
+  // rows (ceil on top, floor on bottom: 6=3+3, 7=4+3, 8=4+4) instead of
+  // letting the row overflow or squeeze icons down further.
+  let rowsHtml;
+  if(icons.length > 5){
+    const topCount = Math.ceil(icons.length/2);
+    rowsHtml = `<div class="qa-grid">${icons.slice(0,topCount).map(tileHtml).join('')}</div>
+    <div class="qa-grid">${icons.slice(topCount).map(tileHtml).join('')}</div>`;
+  } else {
+    rowsHtml = `<div class="qa-grid">${icons.map(tileHtml).join('')}</div>`;
+  }
   return `<div class="card card-tinted">
     <div class="qa-head"><h2>Quick Actions</h2><span>Manage operations</span></div>
-    <div class="qa-grid">
-      ${icons.map(i=>`<div class="qa-tile" style="position:relative;" data-quick-action="${i.key}">${i.badge?`<span class="notif-dot pulse">${i.badge}</span>`:''}<div class="icon-badge ${i.color}">${i.ico}</div><div class="title">${esc(i.lbl)}</div><div class="sub">${esc(i.sub)}</div></div>`).join('')}
-    </div>
+    ${rowsHtml}
   </div>`;
 }
 /* ============================= MESSAGES (announcements + personal chat) ============================= */
