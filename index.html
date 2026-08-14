@@ -445,7 +445,7 @@
 /* ============================= PRODUCT CATALOG ============================= */
 /* ============================= BRANDING ============================= */
 const COMPANY_LOGO = "icon-512.png";
-const APP_BUILD = "2026-08-14-security-fix1";
+const APP_BUILD = "2026-08-14-chat1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -709,10 +709,11 @@ const S = {
   loaded:false,
   loadFailed:false,
   users:[], orders:[], customers:[], attendance:[], tasks:[], loginLog:[],
-  rawMaterial:{}, filledStock:{}, readyStock:{}, expenses:[], activityLog:[], stockTasks:[], dominoPrints:[],
+  rawMaterial:{}, filledStock:{}, readyStock:{}, expenses:[], activityLog:[], stockTasks:[], dominoPrints:[], chatMessages:[],
   lowStock:{raw:{}, filled:{}, ready:{}}, watchStock:{raw:{}, filled:{}, ready:{}}, rolePermissions:{}, customRoles:[], catalogItems:[], transports:[], dailyRecordMarks:{}, dailyWorkDate:null,
-  _partitionKeysSeen:{orders:new Set(), activityLog:new Set(), attendance:new Set(), expenses:new Set(), dominoPrints:new Set(), loginLog:new Set()},
+  _partitionKeysSeen:{orders:new Set(), activityLog:new Set(), attendance:new Set(), expenses:new Set(), dominoPrints:new Set(), loginLog:new Set(), chatMessages:new Set()},
   currentUser:null, view:'home', stockView:'raw', notifOpen:false, moreOpen:false, profileOpen:false, alertPanelOpen:null, toast:null,
+  chatModalOpen:false, chatView:'announcements', chatActiveThread:null,
   postLoginPhase:null, pendingUser:null, postLoginLoadingStep:0,
   search:{}, // per-view search text
 };
@@ -1074,7 +1075,7 @@ function safeSet(oldKey, value){
 // backend as one row PER CALENDAR DAY ("orders_2026-08-10") instead of one
 // giant cell. This keeps every row comfortably under Sheets' ~50,000
 // character per-cell limit no matter how much history accumulates.
-const PARTITIONED_TS_FIELD = { orders:'createdAt', activityLog:'at', attendance:'timestamp', expenses:'at', dominoPrints:'at', loginLog:'at' };
+const PARTITIONED_TS_FIELD = { orders:'createdAt', activityLog:'at', attendance:'timestamp', expenses:'at', dominoPrints:'at', loginLog:'at', chatMessages:'at' };
 const PARTITIONED_ENTITIES = Object.keys(PARTITIONED_TS_FIELD);
 function mergePartitionedEntity(rawData, entity){
   const merged = [];
@@ -1136,6 +1137,7 @@ function applyServerData(data){
   S.stockTasks = data.stockTasks || [];
   S.dominoPrints = mergePartitionedEntity(data, 'dominoPrints').sort((a,b)=>a.at-b.at);
   S.loginLog = mergePartitionedEntity(data, 'loginLog').sort((a,b)=>a.at-b.at);
+  S.chatMessages = mergePartitionedEntity(data, 'chatMessages').filter(m=>m.at >= Date.now()-7*24*60*60*1000).sort((a,b)=>a.at-b.at);
   trackPartitionKeys(data);
   S.customRoles = data.customRoles || [];
   S.rolePermissions = data.rolePermissions || {};
@@ -1145,6 +1147,18 @@ function applyServerData(data){
   rebuildCatalogFlat();
   S.transports = data.transports || [];
   S.dailyRecordMarks = data.dailyRecordMarks || {};
+  cleanupOldChatDays();
+}
+// Chat messages are only meant to live 7 days — reconcile the backend to
+// match (admin-only, mirrors how "Reset all data" already deletes
+// partition-day keys). Runs after every full data load.
+function cleanupOldChatDays(){
+  if(!S.currentUser || S.currentUser.role!=='admin') return;
+  const seen = S._partitionKeysSeen.chatMessages;
+  if(!seen || !seen.size) return;
+  const cutoff = localDateKey(Date.now() - 7*24*60*60*1000);
+  const stale = [...seen].filter(dk=>dk < cutoff).map(dk=>'chatMessages_'+dk);
+  if(stale.length) apiDeleteKeys(stale).catch(()=>{});
 }
 
 async function loadAll(){
@@ -3027,7 +3041,6 @@ function renderOrderTile(o){
     }).join('<br/>')}</div>
     ${o.transportName?`<div class="ot-meta"><b>🚚 ${esc(o.transportName)}</b>${o.totalCases?` · ${o.totalCases} cases`:''}${o.dispatchedAt?` · ${fmtDate(o.dispatchedAt)}`:''}</div>`:''}
     <div class="ot-meta">${o.orderNumber?`#${esc(o.orderNumber)} · `:''}by ${esc(o.createdBy)} · ${fmtTime(o.createdAt)}${isAdmin && (o.orderLat||o.orderLng) ? ` · <a href="https://www.google.com/maps?q=${o.orderLat},${o.orderLng}" target="_blank" rel="noopener" style="color:var(--primary);">📍 Order location</a>` : ''}</div>
-    ${isAdmin && (o.orderLat||o.orderLng) ? `<div class="ot-meta"><a href="https://www.google.com/maps?q=${o.orderLat},${o.orderLng}" target="_blank" rel="noopener" style="color:var(--primary);">📍 Order location</a></div>` : ''}
     <div class="row-actions">
       <button class="btn btn-sm btn-outline" data-track-link="${o.id}">🔗 Track link</button>
       ${isAdmin?`
@@ -3766,7 +3779,7 @@ function resetAllDataExceptUsers(){
   });
   S.orders = []; S.customers = []; S.attendance = []; S.tasks = []; S.loginLog = [];
   S.rawMaterial = {}; S.filledStock = {}; S.readyStock = {};
-  S.expenses = []; S.activityLog = []; S.stockTasks = []; S.dominoPrints = [];
+  S.expenses = []; S.activityLog = []; S.stockTasks = []; S.dominoPrints = []; S.chatMessages = [];
   S.lowStock = {raw:{}, filled:{}, ready:{}};
   PARTITIONED_ENTITIES.forEach(entity=>{ S._partitionKeysSeen[entity] = new Set(); });
   offlineQueue = {}; persistOfflineQueue(); updateSyncStatusUI(); // don't let a stale queued save push old data back after reset
@@ -3927,20 +3940,201 @@ function getMyEntries(username){
   S.dominoPrints.forEach(x=>{ if(x.byUsername===username) items.push({label:'Domino printing', detail:`${x.impressions.toLocaleString('en-IN')} impressions`, at:x.at, tag:'domino'}); });
   return items.sort((a,b)=>b.at-a.at).slice(0,10);
 }
+// Sales can only message admin/manager, and only admin/manager can message
+// sales — everyone else (filling, packaging, manager, admin) can message
+// each other freely.
+function canChatWith(myRole, otherRole){
+  if(myRole==='sales') return otherRole==='admin' || otherRole==='manager';
+  if(otherRole==='sales') return myRole==='admin' || myRole==='manager';
+  return true;
+}
+function unreadMessageCount(){
+  if(!S.currentUser) return 0;
+  const username = S.currentUser.username;
+  let count = 0;
+  S.chatMessages.forEach(m=>{
+    if(m.type==='announcement' && !(m.readBy||[]).includes(username)) count++;
+    if(m.type==='personal' && m.toUsername===username && !m.read) count++;
+  });
+  return count;
+}
+function sendAnnouncement(text){
+  text = (text||'').trim();
+  if(!text || S.currentUser.role!=='admin') return;
+  const msg = { id:uid(), type:'announcement', fromUsername:S.currentUser.username, fromName:S.currentUser.name, text, at:Date.now(), readBy:[S.currentUser.username] };
+  S.chatMessages.push(msg);
+  savePartitionForItem('chatMessages', msg);
+}
+function sendPersonalMessage(toUsername, text){
+  text = (text||'').trim();
+  if(!text) return;
+  const toUser = S.users.find(u=>u.username===toUsername);
+  if(!toUser || !canChatWith(S.currentUser.role, toUser.role)) return;
+  const msg = { id:uid(), type:'personal', fromUsername:S.currentUser.username, fromName:S.currentUser.name, toUsername, toName:toUser.name, text, at:Date.now(), read:false };
+  S.chatMessages.push(msg);
+  savePartitionForItem('chatMessages', msg);
+}
+function markAnnouncementRead(id){
+  const m = S.chatMessages.find(x=>x.id===id && x.type==='announcement');
+  if(m && !(m.readBy||[]).includes(S.currentUser.username)){
+    m.readBy = m.readBy || []; m.readBy.push(S.currentUser.username);
+    savePartitionForItem('chatMessages', m);
+  }
+}
+function markThreadRead(otherUsername){
+  S.chatMessages.forEach(m=>{
+    if(m.type==='personal' && m.toUsername===S.currentUser.username && m.fromUsername===otherUsername && !m.read){
+      m.read = true;
+      savePartitionForItem('chatMessages', m);
+    }
+  });
+}
 function quickActionIcons(role){
   const icons = [];
   if(canDoEntry(role, 'entry_purchase')) icons.push({key:'purchase', ico:'🛢️', color:'green', lbl:'Purchase', sub:'Buy raw material'});
   if(canDoEntry(role, 'entry_filling')) icons.push({key:'filling', ico:'🧴', color:'blue', lbl:'Filling', sub:'Fill products'});
   if(canDoEntry(role, 'entry_packing')) icons.push({key:'packing', ico:'📦', color:'orange', lbl:'Packing', sub:'Pack products'});
   if(role==='admin' || role==='manager' || role==='packaging') icons.push({key:'domino', ico:'🖨️', color:'purple', lbl:'Domino', sub:'Log printing'});
-  if(!icons.length) return '';
+  const unread = unreadMessageCount();
+  icons.push({key:'messages', ico:'💬', color:'blue', lbl:'Messages', sub:'Announcements & chat', badge: unread>0 ? unread : null});
   return `<div class="card card-tinted">
     <div class="qa-head"><h2>Quick Actions</h2><span>Manage operations</span></div>
     <div class="qa-grid">
-      ${icons.map(i=>`<div class="qa-tile" data-quick-action="${i.key}"><div class="icon-badge ${i.color}">${i.ico}</div><div class="title">${esc(i.lbl)}</div><div class="sub">${esc(i.sub)}</div></div>`).join('')}
+      ${icons.map(i=>`<div class="qa-tile" style="position:relative;" data-quick-action="${i.key}">${i.badge?`<span class="badge badge-pulse-new" style="position:absolute;top:4px;right:4px;">${i.badge}</span>`:''}<div class="icon-badge ${i.color}">${i.ico}</div><div class="title">${esc(i.lbl)}</div><div class="sub">${esc(i.sub)}</div></div>`).join('')}
     </div>
   </div>`;
 }
+/* ============================= MESSAGES (announcements + personal chat) ============================= */
+function openMessagesModal(){
+  showModal(`<div id="messagesModalBody">${renderMessagesModalContent()}</div>
+    <div class="modal-actions"><button type="button" class="btn btn-outline" id="cancelModal">Close</button></div>`);
+  bindMessagesModal();
+  const closeBtn = document.getElementById('cancelModal');
+  if(closeBtn) closeBtn.addEventListener('click', ()=>render()); // refreshes the Home tile's unread badge immediately
+}
+function renderMessagesModalContent(){
+  const tabs = `<div class="row-actions" style="margin-bottom:12px;">
+    <button type="button" class="btn btn-sm ${S.chatView==='announcements'?'btn-primary':'btn-outline'}" data-chat-tab="announcements">📢 Announcements</button>
+    <button type="button" class="btn btn-sm ${S.chatView==='chats'?'btn-primary':'btn-outline'}" data-chat-tab="chats">💬 Chats</button>
+  </div>`;
+  let body;
+  if(S.chatView==='announcements') body = renderAnnouncementsTab();
+  else if(S.chatActiveThread) body = renderThreadView(S.chatActiveThread);
+  else body = renderChatsListTab();
+  return `<h3>Messages</h3>${tabs}${body}`;
+}
+function renderAnnouncementsTab(){
+  const isAdmin = S.currentUser.role==='admin';
+  const announcements = S.chatMessages.filter(m=>m.type==='announcement').sort((a,b)=>b.at-a.at);
+  return `
+    ${isAdmin?`<div class="field"><textarea id="newAnnouncementText" placeholder="Write an announcement for everyone…" rows="2" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);font-family:inherit;font-size:13px;resize:vertical;"></textarea></div>
+    <button type="button" class="btn btn-primary btn-sm" id="postAnnouncementBtn" style="margin-bottom:14px;">📢 Post Announcement</button>`:''}
+    ${announcements.length===0?`<div class="empty">No announcements yet.</div>`:announcements.map(m=>`
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:8px;">
+        <div style="font-size:11px;color:var(--ink-soft);margin-bottom:3px;"><b>${esc(m.fromName)}</b> · ${fmtDate(m.at)} · ${fmtTime(m.at)}</div>
+        <div style="font-size:13.5px;white-space:pre-wrap;">${esc(m.text)}</div>
+      </div>`).join('')}
+  `;
+}
+function renderChatsListTab(){
+  const myUsername = S.currentUser.username;
+  const myRole = S.currentUser.role;
+  const threads = {};
+  S.chatMessages.filter(m=>m.type==='personal').forEach(m=>{
+    const otherUsername = m.fromUsername===myUsername ? m.toUsername : (m.toUsername===myUsername ? m.fromUsername : null);
+    if(!otherUsername) return;
+    (threads[otherUsername] = threads[otherUsername] || []).push(m);
+  });
+  const threadList = Object.keys(threads).map(username=>{
+    const msgs = threads[username].sort((a,b)=>b.at-a.at);
+    const last = msgs[0];
+    const other = S.users.find(u=>u.username===username);
+    const unread = msgs.filter(m=>m.toUsername===myUsername && !m.read).length;
+    return { username, name: other?other.name:(last.fromUsername===username?last.fromName:last.toName), last, unread };
+  }).sort((a,b)=>b.last.at-a.last.at);
+  const eligibleUsers = S.users.filter(u=>u.username!==myUsername && canChatWith(myRole, u.role));
+  return `
+    <button type="button" class="btn btn-outline btn-sm" id="newChatBtn" style="margin-bottom:10px;">+ New message</button>
+    <div id="newChatPicker" style="display:none;margin-bottom:14px;background:var(--bg);border-radius:12px;padding:10px;">
+      ${eligibleUsers.length===0?`<div class="desc" style="margin:0;">No one available to message.</div>`:`
+      <div class="field" style="margin-bottom:8px;"><label>Send to</label>
+        <select id="chatRecipientSel">${eligibleUsers.map(u=>`<option value="${esc(u.username)}">${esc(u.name)} (${esc(ROLES[u.role]?ROLES[u.role].label:u.role)})</option>`).join('')}</select>
+      </div>
+      <button type="button" class="btn btn-primary btn-sm" id="startChatBtn">Start conversation</button>`}
+    </div>
+    ${threadList.length===0?`<div class="empty">No conversations yet.</div>`:threadList.map(t=>`
+      <div class="row-actions" style="justify-content:space-between;align-items:flex-start;padding:10px 12px;border:1px solid var(--border);border-radius:12px;margin-bottom:8px;cursor:pointer;" data-open-thread="${esc(t.username)}">
+        <div style="min-width:0;">
+          <div style="font-weight:700;font-size:13px;">${esc(t.name)}</div>
+          <div style="font-size:11.5px;color:var(--ink-soft);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${t.last.fromUsername===myUsername?'You: ':''}${esc(t.last.text)}</div>
+        </div>
+        ${t.unread>0?`<span class="badge badge-pulse-new">${t.unread}</span>`:''}
+      </div>`).join('')}
+  `;
+}
+function renderThreadView(otherUsername){
+  const other = S.users.find(u=>u.username===otherUsername);
+  const myUsername = S.currentUser.username;
+  const msgs = S.chatMessages.filter(m=>m.type==='personal' && ((m.fromUsername===myUsername && m.toUsername===otherUsername) || (m.fromUsername===otherUsername && m.toUsername===myUsername))).sort((a,b)=>a.at-b.at);
+  return `
+    <button type="button" class="btn btn-sm btn-outline" id="backToThreadsBtn" style="margin-bottom:10px;">‹ Back</button>
+    <div style="font-weight:800;margin-bottom:8px;">${esc(other?other.name:otherUsername)}</div>
+    <div style="max-height:280px;overflow-y:auto;margin-bottom:10px;">
+      ${msgs.length===0?`<div class="empty">Say hello 👋</div>`:msgs.map(m=>`<div style="text-align:${m.fromUsername===myUsername?'right':'left'};margin-bottom:6px;">
+        <span style="display:inline-block;background:${m.fromUsername===myUsername?'var(--primary)':'var(--bg)'};color:${m.fromUsername===myUsername?'#fff':'var(--ink)'};padding:7px 11px;border-radius:12px;font-size:13px;max-width:80%;white-space:pre-wrap;text-align:left;">${esc(m.text)}</span>
+        <div style="font-size:9.5px;color:var(--ink-soft);margin-top:2px;">${fmtTime(m.at)}</div>
+      </div>`).join('')}
+    </div>
+    <div class="row-actions">
+      <input id="threadReplyInput" placeholder="Type a message…" style="flex:1;padding:9px 12px;border-radius:20px;border:1.5px solid var(--border);" />
+      <button type="button" class="btn btn-primary btn-sm" id="sendThreadReplyBtn">Send</button>
+    </div>
+  `;
+}
+function bindMessagesModal(){
+  document.querySelectorAll('[data-chat-tab]').forEach(b=>b.addEventListener('click', ()=>{
+    S.chatView = b.dataset.chatTab; S.chatActiveThread = null; refreshMessagesModal();
+  }));
+  const postBtn = document.getElementById('postAnnouncementBtn');
+  if(postBtn) postBtn.addEventListener('click', ()=>{
+    const ta = document.getElementById('newAnnouncementText');
+    if(!ta || !ta.value.trim()) return;
+    sendAnnouncement(ta.value);
+    refreshMessagesModal();
+    showToast('Announcement posted');
+  });
+  document.querySelectorAll('[data-open-thread]').forEach(el=>el.addEventListener('click', ()=>{
+    S.chatActiveThread = el.dataset.openThread;
+    markThreadRead(S.chatActiveThread);
+    refreshMessagesModal();
+  }));
+  const newChatBtn = document.getElementById('newChatBtn');
+  if(newChatBtn) newChatBtn.addEventListener('click', ()=>{
+    const picker = document.getElementById('newChatPicker');
+    if(picker) picker.style.display = picker.style.display==='none' ? 'block' : 'none';
+  });
+  const startChatBtn = document.getElementById('startChatBtn');
+  if(startChatBtn) startChatBtn.addEventListener('click', ()=>{
+    const sel = document.getElementById('chatRecipientSel');
+    if(sel && sel.value){ S.chatActiveThread = sel.value; refreshMessagesModal(); }
+  });
+  const backBtn = document.getElementById('backToThreadsBtn');
+  if(backBtn) backBtn.addEventListener('click', ()=>{ S.chatActiveThread = null; refreshMessagesModal(); });
+  const sendReplyBtn = document.getElementById('sendThreadReplyBtn');
+  if(sendReplyBtn) sendReplyBtn.addEventListener('click', ()=>{
+    const input = document.getElementById('threadReplyInput');
+    if(!input || !input.value.trim()) return;
+    sendPersonalMessage(S.chatActiveThread, input.value);
+    input.value = '';
+    refreshMessagesModal();
+  });
+}
+function refreshMessagesModal(){
+  const body = document.getElementById('messagesModalBody');
+  if(body) body.innerHTML = renderMessagesModalContent();
+  bindMessagesModal();
+}
+
 function bindQuickActionIcons(){
   document.querySelectorAll('[data-quick-action]').forEach(el=>el.addEventListener('click', ()=>{
     const k = el.dataset.quickAction;
@@ -3948,6 +4142,7 @@ function bindQuickActionIcons(){
     if(k==='filling') openFillingModal(null);
     if(k==='packing') openPackagingModal(null);
     if(k==='domino') openDominoModal();
+    if(k==='messages') openMessagesModal();
   }));
 }
 // An order's fillingStatus/packagingStatus flags are whole-ORDER, but an
