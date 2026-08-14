@@ -445,7 +445,7 @@
 /* ============================= PRODUCT CATALOG ============================= */
 /* ============================= BRANDING ============================= */
 const COMPANY_LOGO = "icon-512.png";
-const APP_BUILD = "2026-08-14-chat1";
+const APP_BUILD = "2026-08-14-filledinfo1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -1328,6 +1328,7 @@ function getStockAlerts(){
   const ready = [];
   const filledCascade = [];
   const rawCascade = [];
+  const recRaw = [], recFilled = [], recReady = [];
   Object.entries(S.readyStock).filter(([k,v])=>v<0).forEach(([k,v])=>{
     const it = findItem(k); if(!it) return;
     const shortfall = -v; // pieces short in ready
@@ -1352,7 +1353,18 @@ function getStockAlerts(){
     const vf = S.filledStock[it.key]||0; const thf = S.lowStock.filled[it.key];
     if(thf && vf>=0 && vf<=thf) filledDirect.push({id:it.key, label:`${it.name} ${it.size}`, text:`${vf} pc — low (alert at ${thf} pc)`, needQty:Math.max(thf-vf,1), team:'Filling team — running low', level:'low'});
     const vr = S.readyStock[it.key]||0; const thr = S.lowStock.ready[it.key];
-    if(thr && vr>=0 && vr<=thr) ready.push({id:it.key, label:`${it.name} ${it.size}`, text:`${vr} pc — low (alert at ${thr} pc)`, needQty:Math.max(thr-vr,1), team:'Packaging team — running low', level:'low'});
+    if(thr && vr>=0 && vr<=thr){
+      const needQty = Math.max(thr-vr,1);
+      ready.push({id:it.key, label:`${it.name} ${it.size}`, text:`${vr} pc — low (alert at ${thr} pc)`, needQty, team:'Packaging team — running low', level:'low'});
+      // A low (not yet critical) ready shortage still needs enough FILLED
+      // stock to actually pack from — if there isn't enough, give filling
+      // team a heads-up too, just at "recommended" (not urgent) severity,
+      // matching the softer severity of the ready-side alert itself.
+      const filledAvail = S.filledStock[it.key]||0;
+      if(filledAvail < needQty && !filledDirect.some(a=>a.id===it.key)){
+        recFilled.push({id:it.key, label:`${it.name} ${it.size}`, text:`${filledAvail} pc (recommend filling — packaging is running low)`, needQty:needQty-Math.max(filledAvail,0), team:'Filling team — plan ahead', level:'recommended'});
+      }
+    }
   });
   // merge direct + cascaded, de-duped by id (keep most severe)
   const dedupe = (list)=>{ const seen=new Map(); list.forEach(a=>{ const ex=seen.get(a.id); if(!ex || (ex.level!=='critical'&&a.level==='critical')) seen.set(a.id,a); }); return [...seen.values()]; };
@@ -1361,17 +1373,15 @@ function getStockAlerts(){
   // Recommended (preemptive heads-up) — only for items that aren't already
   // flagged critical/low, based on a separate, higher "watch" threshold the
   // admin can set. This is a softer, forward-looking suggestion, not an alert.
-  const recRaw = [];
   RAW_CATEGORIES.forEach(cat=>{
     if(rawAll.some(a=>a.id===cat)) return;
     const v = S.rawMaterial[cat]||0; const th = S.watchStock.raw[cat];
     if(th && v>=0 && v<=th) recRaw.push({id:cat, label:cat, text:`${fmtMl(v)} (recommend purchasing soon)`, team:'Owner / Manager — plan ahead', level:'recommended'});
   });
-  const recFilled = [], recReady = [];
   CATALOG_FLAT.forEach(it=>{
     if(!filled.some(a=>a.id===it.key)){
       const vf = S.filledStock[it.key]||0; const thf = S.watchStock.filled[it.key];
-      if(thf && vf>=0 && vf<=thf) recFilled.push({id:it.key, label:`${it.name} ${it.size}`, text:`${vf} pc (recommend filling soon)`, needQty:Math.max(thf-vf,1), team:'Filling team — plan ahead', level:'recommended'});
+      if(thf && vf>=0 && vf<=thf && !recFilled.some(a=>a.id===it.key)) recFilled.push({id:it.key, label:`${it.name} ${it.size}`, text:`${vf} pc (recommend filling soon)`, needQty:Math.max(thf-vf,1), team:'Filling team — plan ahead', level:'recommended'});
     }
     if(!ready.some(a=>a.id===it.key)){
       const vr = S.readyStock[it.key]||0; const thr = S.watchStock.ready[it.key];
@@ -1514,6 +1524,19 @@ function assignAllStockTasks(kind){
   render();
 }
 const STOCK_KIND_LABEL = { raw:'Raw material', filled:'Filled stock', ready:'Ready stock' };
+// Shown on every Ready-stock alert tile: how much FILLED stock exists to
+// actually pack this item from, so admin sees the full picture in one
+// place instead of checking a separate Filled-stock tile.
+function renderFilledAvailabilityLine(a){
+  const filledAvail = S.filledStock[a.id]||0;
+  const needQty = a.needQty || 0;
+  const enough = filledAvail >= needQty;
+  const color = enough ? 'var(--success)' : 'var(--danger)';
+  const text = enough
+    ? `✔ Filled: ${filledAvail} pc available`
+    : `⚠ Filled: ${filledAvail} pc available — not enough (need ${needQty})`;
+  return `<div class="at-detail" style="color:${color};font-weight:600;">${text}</div>`;
+}
 function renderAlertTiles(alerts, kind, stacked){
   // kind: 'raw' | 'filled' | 'ready' — filled (->filling team) & ready (->packaging team) auto-create tasks already.
   if(!alerts.length) return '';
@@ -1531,6 +1554,7 @@ function renderAlertTiles(alerts, kind, stacked){
         </div>
         <div class="at-label">${esc(a.label)}</div>
         <div class="at-detail"><b>${esc(a.text)}</b></div>
+        ${kind==='ready' ? renderFilledAvailabilityLine(a) : ''}
         ${sendable?`<div class="at-detail" style="display:flex;align-items:center;gap:5px;">${alreadySent?`<span style="color:var(--success);font-weight:700;">✅ Assigned to ${targetRole==='filling'?'filling':'packaging'} team</span>`:`→ ${targetRole==='filling'?'Filling':'Packaging'} task`}</div>`:`<div class="at-detail">Owner purchases this</div>`}
       </div>`;
     }).join('')}
