@@ -457,7 +457,7 @@
 /* ============================= PRODUCT CATALOG ============================= */
 /* ============================= BRANDING ============================= */
 const COMPANY_LOGO = "icon-512.png";
-const APP_BUILD = "2026-08-14-dotsize-fix1";
+const APP_BUILD = "2026-08-14-homesegregate1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -2825,7 +2825,7 @@ function renderHomeGeneric(role){
   </div>
   ${quickActionIcons(role)}
   <div class="stat-grid-v2">
-    ${canViewTile(role,'tile_pending')?`<div class="stat-card-v2" data-stat="pending"><div class="row-top"><div class="icon-badge green">🛍️</div><span class="chev">›</span></div><div class="n">${pending}</div><div class="title">New Orders</div><div class="sub">Received today</div></div>`:''}
+    ${canViewTile(role,'tile_pending')?`<div class="stat-card-v2" data-stat="pending"><div class="row-top"><div class="icon-badge green">🛍️</div><span class="chev">›</span></div><div class="n">${pending}</div><div class="title">New Orders</div><div class="sub">Pending orders</div></div>`:''}
     ${canViewTile(role,'tile_ready')?`<div class="stat-card-v2" data-stat="ready"><div class="row-top"><div class="icon-badge blue">🚚</div><span class="chev">›</span></div><div class="n">${ready}</div><div class="title">Ready to Dispatch</div><div class="sub">Ready to ship</div></div>`:''}
     ${extraCard}
   </div>
@@ -2865,7 +2865,7 @@ function renderHomeAdmin(){
   <div class="stat-grid-v2">
     <div class="stat-card-v2" data-stat="pending">
       <div class="row-top"><div class="icon-badge green">🛍️</div><span class="chev">›</span></div>
-      <div class="n">${pending}</div><div class="title">New Orders</div><div class="sub">Orders received today</div>
+      <div class="n">${pending}</div><div class="title">New Orders</div><div class="sub">Pending orders</div>
     </div>
     <div class="stat-card-v2" data-stat="processing">
       <div class="row-top"><div class="icon-badge orange">⏳</div><span class="chev">›</span></div>
@@ -2888,8 +2888,8 @@ function renderHomeAdmin(){
   ${alerts.total ? `<div class="card"><h2>Stock alerts</h2><p class="desc">Auto-sent to the relevant team.</p>${renderAlertSection('raw',alerts.raw)}${renderAlertSection('filled',alerts.filled)}${renderAlertSection('ready',alerts.ready)}</div>` : ''}
   <div class="card">
     <h2>Recent orders</h2>
-    <p class="desc">Latest activity.</p>
-    ${renderOrderTilesGrouped(S.orders.slice().sort((a,b)=>b.createdAt-a.createdAt).slice(0,6))}
+    <p class="desc">New, processing, and ready — grouped by stage.</p>
+    ${renderHomeRecentOrders()}
   </div>
   ${isAdmin ? `<div class="card">
     <h2>Data export</h2>
@@ -3096,6 +3096,21 @@ function renderOrderTile(o){
     </div>
   </div>`;
 }
+// Home page's quick view — only orders still "in motion" (excludes
+// Processed, which has its own dedicated button on the Orders tab),
+// segregated by stage so admin sees each bucket clearly instead of one
+// mixed date-sorted list.
+function renderHomeRecentOrders(){
+  const relevant = S.orders.filter(o=>o.status!=='processed');
+  const byStage = (status)=> relevant.filter(o=>o.status===status).sort((a,b)=>b.createdAt-a.createdAt).slice(0,5);
+  const pending = byStage('pending'), processing = byStage('processing'), ready = byStage('ready');
+  const section = (title, icon, list)=> list.length ? `<div style="margin-bottom:14px;">
+    <div style="font-weight:800;font-size:11.5px;text-transform:uppercase;letter-spacing:0.03em;margin-bottom:8px;color:var(--ink-soft);">${icon} ${esc(title)} (${list.length})</div>
+    ${list.map(renderOrderTile).join('')}
+  </div>` : '';
+  const html = section('New', '🛍️', pending) + section('Processing', '🔧', processing) + section('Ready to dispatch', '🚚', ready);
+  return html || `<div class="empty"><div class="big">📦</div>No active orders right now.</div>`;
+}
 function renderOrderTilesGrouped(list){
   if(list.length===0) return `<div class="empty"><div class="big">📦</div>No orders yet.</div>`;
   const sections = groupByDate(list, o=>o.createdAt);
@@ -3104,11 +3119,19 @@ function renderOrderTilesGrouped(list){
 
 function renderOrders(){
   const canCreate = canDoEntry(S.currentUser.role, 'entry_order');
+  const processingCount = S.orders.filter(o=>o.status==='processing').length;
+  const readyCount = S.orders.filter(o=>o.status==='ready').length;
+  const processedCount = S.orders.filter(o=>o.status==='processed').length;
   return `
   <div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
       <div><h2>Orders</h2><p class="desc">${S.currentUser.role==='admin'?'Accept, edit, or move through stages.':'Your team\'s orders.'}</p></div>
       ${canCreate?`<div class="row-actions"><button class="btn btn-outline btn-sm" id="chatOrderBtn">💬 Quick order</button><button class="btn btn-primary btn-sm" id="newOrderBtn">+ New order</button></div>`:''}
+    </div>
+    <div class="row-actions" style="margin-top:10px;flex-wrap:wrap;gap:8px;">
+      <span class="badge badge-processing" style="font-size:11.5px;padding:5px 10px;">🔧 Processing: ${processingCount}</span>
+      <span class="badge badge-approved" style="font-size:11.5px;padding:5px 10px;">🚚 Ready: ${readyCount}</span>
+      <button type="button" class="btn btn-sm btn-outline" data-stat="processed" style="padding:4px 10px;font-size:11.5px;">✅ Processed: ${processedCount}</button>
     </div>
     ${renderOrderTilesGrouped(S.orders.slice().sort((a,b)=>b.createdAt-a.createdAt))}
   </div>`;
@@ -3118,6 +3141,7 @@ function bindOrders(){
   if(chatBtn) chatBtn.addEventListener('click', openChatOrderModal);
   const btn = document.getElementById('newOrderBtn');
   if(btn) btn.addEventListener('click', ()=>openOrderModal(null));
+  document.querySelectorAll('[data-stat]').forEach(t=>t.addEventListener('click', ()=>openStatModal(t.dataset.stat)));
   bindOrderRowActions();
 }
 function openStatModal(key){
@@ -3150,12 +3174,24 @@ function bindOrderRowActions(closeAfter){
   document.querySelectorAll('[data-track-link]').forEach(b=>b.addEventListener('click', async ()=>{
     const o = S.orders.find(x=>x.id===b.dataset.trackLink); if(!o) return;
     const link = trackingLinkFor(o);
+    const liveCust = liveCustomerFor(o);
+    const partyName = (liveCust && liveCust.name) || o.customerName || 'there';
+    const message = `Hello 👋 ${partyName}
+
+Your order has been received and recorded! ✅
+
+📦 Track your order anytime here:
+${link}
+
+Thanking You,
+Regards
+*M A Products INDIA*`;
     try{
-      await navigator.clipboard.writeText(link);
-      showToast('Tracking link copied — share it with the party');
+      await navigator.clipboard.writeText(message);
+      showToast('Tracking message copied — share it with the party');
     }catch(e){
       // Clipboard API unavailable/blocked — fall back to a prompt so it can still be copied manually.
-      prompt('Copy this tracking link:', link);
+      prompt('Copy this message:', message);
     }
   }));
   document.querySelectorAll('[data-approve-order]').forEach(b=>b.addEventListener('click', ()=>{ setOrderStatus(b.dataset.approveOrder,'processing'); if(closeAfter) closeModal(); render(); }));
