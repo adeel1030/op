@@ -298,6 +298,8 @@
 
   /* ---------- Order tiles ---------- */
   .order-tile{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:13px 14px;margin-bottom:10px;box-shadow:0 1px 2px rgba(14,36,71,0.03);}
+  .order-tile.tile-ready{background:#E6F5EE;border-color:#B8E3CC;}
+  .order-tile.tile-processing{background:#FEF6DC;border-color:#F0DDA0;}
   .order-tile .ot-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px;}
   .order-tile .ot-name{font-weight:800;font-size:15px;}
   .order-tile .ot-items{font-size:13px;color:var(--ink-soft);line-height:1.65;margin-bottom:8px;}
@@ -457,7 +459,7 @@
 /* ============================= PRODUCT CATALOG ============================= */
 /* ============================= BRANDING ============================= */
 const COMPANY_LOGO = "icon-512.png";
-const APP_BUILD = "2026-08-14-retailsale1";
+const APP_BUILD = "2026-08-14-tilecolors1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -3069,7 +3071,8 @@ function orderDisplayLabel(o){
 }
 function renderOrderTile(o){
   const isAdmin = S.currentUser.role==='admin';
-  return `<div class="order-tile">
+  const tileCls = o.status==='ready' ? ' tile-ready' : o.status==='processing' ? ' tile-processing' : '';
+  return `<div class="order-tile${tileCls}">
     <div class="ot-top"><span class="ot-name">${esc(orderDisplayLabel(o))}${o.source==='website'?' <span class="mono" style="font-weight:400;">🌐 Website</span>':''}</span><span class="badge badge-${o.status}">${esc(ORDER_STAGE_LABEL[o.status]||o.status)}</span></div>
     <div class="ot-items">${o.items.map((i,idx)=>{
       const it = findItem(i.key);
