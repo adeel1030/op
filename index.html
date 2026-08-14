@@ -457,7 +457,7 @@
 /* ============================= PRODUCT CATALOG ============================= */
 /* ============================= BRANDING ============================= */
 const COMPANY_LOGO = "icon-512.png";
-const APP_BUILD = "2026-08-14-homesegregate1";
+const APP_BUILD = "2026-08-14-retailsale1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -721,9 +721,9 @@ const S = {
   loaded:false,
   loadFailed:false,
   users:[], orders:[], customers:[], attendance:[], tasks:[], loginLog:[],
-  rawMaterial:{}, filledStock:{}, readyStock:{}, expenses:[], activityLog:[], stockTasks:[], dominoPrints:[], chatMessages:[],
+  rawMaterial:{}, filledStock:{}, readyStock:{}, expenses:[], activityLog:[], stockTasks:[], dominoPrints:[], chatMessages:[], retailSales:[],
   lowStock:{raw:{}, filled:{}, ready:{}}, watchStock:{raw:{}, filled:{}, ready:{}}, rolePermissions:{}, customRoles:[], catalogItems:[], transports:[], dailyRecordMarks:{}, dailyWorkDate:null,
-  _partitionKeysSeen:{orders:new Set(), activityLog:new Set(), attendance:new Set(), expenses:new Set(), dominoPrints:new Set(), loginLog:new Set(), chatMessages:new Set()},
+  _partitionKeysSeen:{orders:new Set(), activityLog:new Set(), attendance:new Set(), expenses:new Set(), dominoPrints:new Set(), loginLog:new Set(), chatMessages:new Set(), retailSales:new Set()},
   currentUser:null, view:'home', stockView:'raw', notifOpen:false, moreOpen:false, profileOpen:false, alertPanelOpen:null, toast:null,
   chatModalOpen:false, chatView:'announcements', chatActiveThread:null,
   postLoginPhase:null, pendingUser:null, postLoginLoadingStep:0,
@@ -1087,7 +1087,7 @@ function safeSet(oldKey, value){
 // backend as one row PER CALENDAR DAY ("orders_2026-08-10") instead of one
 // giant cell. This keeps every row comfortably under Sheets' ~50,000
 // character per-cell limit no matter how much history accumulates.
-const PARTITIONED_TS_FIELD = { orders:'createdAt', activityLog:'at', attendance:'timestamp', expenses:'at', dominoPrints:'at', loginLog:'at', chatMessages:'at' };
+const PARTITIONED_TS_FIELD = { orders:'createdAt', activityLog:'at', attendance:'timestamp', expenses:'at', dominoPrints:'at', loginLog:'at', chatMessages:'at', retailSales:'at' };
 const PARTITIONED_ENTITIES = Object.keys(PARTITIONED_TS_FIELD);
 function mergePartitionedEntity(rawData, entity){
   const merged = [];
@@ -1150,6 +1150,7 @@ function applyServerData(data){
   S.dominoPrints = mergePartitionedEntity(data, 'dominoPrints').sort((a,b)=>a.at-b.at);
   S.loginLog = mergePartitionedEntity(data, 'loginLog').sort((a,b)=>a.at-b.at);
   S.chatMessages = mergePartitionedEntity(data, 'chatMessages').filter(m=>m.at >= Date.now()-7*24*60*60*1000).sort((a,b)=>a.at-b.at);
+  S.retailSales = mergePartitionedEntity(data, 'retailSales').sort((a,b)=>a.at-b.at);
   trackPartitionKeys(data);
   S.customRoles = data.customRoles || [];
   S.rolePermissions = data.rolePermissions || {};
@@ -2030,7 +2031,6 @@ function renderProfilePanel(role){
       </div>
     </div>
   </div>
-  ${u.role==='admin' ? `<button class="btn btn-outline" style="width:100%;margin-top:14px;" id="downloadBackupBtn">⬇️ Download backup now</button>` : ''}
   <button class="btn btn-danger" style="width:100%;margin-top:14px;" id="logoutBtn">Log out</button>
   <p class="mono" style="text-align:center;margin-top:14px;opacity:0.5;">build ${APP_BUILD}</p>`;
 }
@@ -2103,8 +2103,6 @@ function bindShell(){
   if(avatarBtn) avatarBtn.addEventListener('click', ()=>{ S.profileOpen=true; S.notifOpen=false; S.moreOpen=false; S.alertPanelOpen=null; render(); });
   const logoutBtn = document.getElementById('logoutBtn');
   if(logoutBtn) logoutBtn.addEventListener('click', doLogout);
-  const downloadBackupBtn = document.getElementById('downloadBackupBtn');
-  if(downloadBackupBtn) downloadBackupBtn.addEventListener('click', downloadBackupNow);
 
   const bell = document.getElementById('bellBtn');
   if(bell) bell.addEventListener('click', ()=>{ S.notifOpen = !S.notifOpen; S.moreOpen=false; S.profileOpen=false; S.alertPanelOpen=null; render(); });
@@ -2327,8 +2325,10 @@ function renderDailyWork(){
   const packagingEntries = S.activityLog.filter(e=>e.kind==='packaging' && localDateKey(e.at)===date).sort((a,b)=>a.at-b.at);
   const expenseEntries = S.expenses.filter(e=>localDateKey(e.at)===date).sort((a,b)=>a.at-b.at);
   const totalExpense = expenseEntries.filter(e=>e.type!=='settlement').reduce((s,e)=>s+(e.amount||0),0);
+  const retailEntries = S.retailSales.filter(e=>localDateKey(e.at)===date).sort((a,b)=>a.at-b.at);
+  const totalRetail = retailEntries.filter(e=>e.type==='sale').reduce((s,e)=>s+(e.amount||0),0);
 
-  const allEntries = [...fillingEntries, ...packagingEntries, ...expenseEntries];
+  const allEntries = [...fillingEntries, ...packagingEntries, ...expenseEntries, ...retailEntries];
   const bookedCount = allEntries.filter(e=>e.booked).length;
   const totalCount = allEntries.length;
 
@@ -2375,10 +2375,18 @@ function renderDailyWork(){
     <table><thead><tr><th>To</th><th>Description</th><th>Amount</th><th>Entered by</th><th>Time</th><th></th></tr></thead><tbody>
     ${expenseEntries.map(e=>`<tr${e.booked?' style="opacity:0.55;"':''}><td><b>${esc(e.byName)}</b></td><td>${esc(e.description||e.category||'—')}</td><td class="mono">${e.type==='settlement'?'− ':''}₹${(e.amount||0).toLocaleString('en-IN')}</td><td>${esc(e.enteredByName||e.byName)}</td><td class="mono">${fmtTime(e.at)}</td><td>${bookCell(e,'expenses')}</td></tr>`).join('')}
     </tbody></table>`}
+  </div>
+
+  <div class="card">
+    <h2>💵 Retail Sale &amp; Samples — ${retailEntries.length} entr${retailEntries.length===1?'y':'ies'}${totalRetail?` · ₹${totalRetail.toLocaleString('en-IN')}`:''}</h2>
+    ${retailEntries.length===0?`<div class="empty">No retail sales or samples this day.</div>`:`
+    <table><thead><tr><th>Item</th><th>Qty</th><th>Type</th><th>Amount</th><th>By</th><th>Time</th><th></th></tr></thead><tbody>
+    ${retailEntries.map(e=>`<tr${e.booked?' style="opacity:0.55;"':''}><td>${esc(e.itemLabel)}</td><td class="mono">${e.qty} pc</td><td>${e.type==='sale'?'<span class="badge badge-approved">Sale</span>':'<span class="badge badge-pending">Sample</span>'}</td><td class="mono">${e.type==='sale'?'₹'+(e.amount||0).toLocaleString('en-IN'):'—'}</td><td>${esc(e.by)}</td><td class="mono">${fmtTime(e.at)}</td><td>${bookCell(e,'retailSales')}</td></tr>`).join('')}
+    </tbody></table>`}
   </div>`;
 }
 function toggleEntryBooked(source, id){
-  const list = source==='expenses' ? S.expenses : S.activityLog;
+  const list = source==='expenses' ? S.expenses : source==='retailSales' ? S.retailSales : S.activityLog;
   const e = list.find(x=>x.id===id); if(!e) return;
   e.booked = !e.booked;
   savePartitionForItem(source, e);
@@ -2397,6 +2405,7 @@ function bindDailyWork(){
     const date = S.dailyWorkDate || localDateKey(Date.now());
     S.activityLog.filter(e=>(e.kind==='filling'||e.kind==='packaging') && localDateKey(e.at)===date && !e.booked).forEach(e=>{ e.booked = true; savePartitionForItem('activityLog', e); });
     S.expenses.filter(e=>localDateKey(e.at)===date && !e.booked).forEach(e=>{ e.booked = true; savePartitionForItem('expenses', e); });
+    S.retailSales.filter(e=>localDateKey(e.at)===date && !e.booked).forEach(e=>{ e.booked = true; savePartitionForItem('retailSales', e); });
     render();
     showToast('All entries booked ✅');
   });
@@ -2888,8 +2897,8 @@ function renderHomeAdmin(){
   ${alerts.total ? `<div class="card"><h2>Stock alerts</h2><p class="desc">Auto-sent to the relevant team.</p>${renderAlertSection('raw',alerts.raw)}${renderAlertSection('filled',alerts.filled)}${renderAlertSection('ready',alerts.ready)}</div>` : ''}
   <div class="card">
     <h2>Recent orders</h2>
-    <p class="desc">New, processing, and ready — grouped by stage.</p>
-    ${renderHomeRecentOrders()}
+    <p class="desc">New, ready, and processing — grouped by stage.</p>
+    ${renderOrdersSegregated(5)}
   </div>
   ${isAdmin ? `<div class="card">
     <h2>Data export</h2>
@@ -3100,15 +3109,22 @@ function renderOrderTile(o){
 // Processed, which has its own dedicated button on the Orders tab),
 // segregated by stage so admin sees each bucket clearly instead of one
 // mixed date-sorted list.
-function renderHomeRecentOrders(){
+// Segregates active (non-Processed — that's button-only now) orders by
+// stage, in New -> Ready -> Processing order. `limit` caps each section
+// (used on Home for a compact view); pass 0/undefined to show everything
+// (used on the full Orders tab).
+function renderOrdersSegregated(limit){
   const relevant = S.orders.filter(o=>o.status!=='processed');
-  const byStage = (status)=> relevant.filter(o=>o.status===status).sort((a,b)=>b.createdAt-a.createdAt).slice(0,5);
-  const pending = byStage('pending'), processing = byStage('processing'), ready = byStage('ready');
+  const byStage = (status)=>{
+    const list = relevant.filter(o=>o.status===status).sort((a,b)=>b.createdAt-a.createdAt);
+    return limit ? list.slice(0,limit) : list;
+  };
+  const pending = byStage('pending'), ready = byStage('ready'), processing = byStage('processing');
   const section = (title, icon, list)=> list.length ? `<div style="margin-bottom:14px;">
     <div style="font-weight:800;font-size:11.5px;text-transform:uppercase;letter-spacing:0.03em;margin-bottom:8px;color:var(--ink-soft);">${icon} ${esc(title)} (${list.length})</div>
     ${list.map(renderOrderTile).join('')}
   </div>` : '';
-  const html = section('New', '🛍️', pending) + section('Processing', '🔧', processing) + section('Ready to dispatch', '🚚', ready);
+  const html = section('New', '🛍️', pending) + section('Ready to dispatch', '🚚', ready) + section('Processing', '🔧', processing);
   return html || `<div class="empty"><div class="big">📦</div>No active orders right now.</div>`;
 }
 function renderOrderTilesGrouped(list){
@@ -3117,6 +3133,25 @@ function renderOrderTilesGrouped(list){
   return sections.map(s=>dateGroupHeaderHtml(s.heading) + s.items.map(renderOrderTile).join('')).join('');
 }
 
+function renderRetailSalesCard(){
+  const canRetail = S.currentUser.role==='admin' || S.currentUser.role==='manager';
+  if(!canRetail) return '';
+  const cutoff = Date.now() - 7*24*60*60*1000;
+  const entries = S.retailSales.filter(e=>e.at>=cutoff).sort((a,b)=>b.at-a.at);
+  const totalAmount = entries.filter(e=>e.type==='sale').reduce((s,e)=>s+(e.amount||0),0);
+  return `
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+      <div><h2>Retail Sale &amp; Samples</h2><p class="desc">Last 7 days — deducted from Ready stock.</p></div>
+      <div class="row-actions"><button class="btn btn-outline btn-sm" id="retailSaleBtn">💵 Retail Sale</button><button class="btn btn-outline btn-sm" id="sampleBtn">🎁 Sample</button></div>
+    </div>
+    ${entries.length===0?`<div class="empty">No retail sales or samples in the last 7 days.</div>`:`
+    <table><thead><tr><th>Item</th><th>Qty</th><th>Type</th><th>Amount</th><th>Time</th></tr></thead><tbody>
+    ${entries.map(e=>`<tr><td>${esc(e.itemLabel)}</td><td class="mono">${e.qty} pc</td><td>${e.type==='sale'?'<span class="badge badge-approved">Sale</span>':'<span class="badge badge-pending">Sample</span>'}</td><td class="mono">${e.type==='sale'?'₹'+(e.amount||0).toLocaleString('en-IN'):'—'}</td><td class="mono">${fmtDate(e.at)} ${fmtTime(e.at)}</td></tr>`).join('')}
+    </tbody></table>
+    <p class="desc" style="margin-top:8px;">Total cash sales (7 days): <b>₹${totalAmount.toLocaleString('en-IN')}</b></p>`}
+  </div>`;
+}
 function renderOrders(){
   const canCreate = canDoEntry(S.currentUser.role, 'entry_order');
   const processingCount = S.orders.filter(o=>o.status==='processing').length;
@@ -3133,8 +3168,9 @@ function renderOrders(){
       <span class="badge badge-approved" style="font-size:11.5px;padding:5px 10px;">🚚 Ready: ${readyCount}</span>
       <button type="button" class="btn btn-sm btn-outline" data-stat="processed" style="padding:4px 10px;font-size:11.5px;">✅ Processed: ${processedCount}</button>
     </div>
-    ${renderOrderTilesGrouped(S.orders.slice().sort((a,b)=>b.createdAt-a.createdAt))}
-  </div>`;
+    ${renderOrdersSegregated(0)}
+  </div>
+  ${renderRetailSalesCard()}`;
 }
 function bindOrders(){
   const chatBtn = document.getElementById('chatOrderBtn');
@@ -3142,6 +3178,10 @@ function bindOrders(){
   const btn = document.getElementById('newOrderBtn');
   if(btn) btn.addEventListener('click', ()=>openOrderModal(null));
   document.querySelectorAll('[data-stat]').forEach(t=>t.addEventListener('click', ()=>openStatModal(t.dataset.stat)));
+  const retailBtn = document.getElementById('retailSaleBtn');
+  if(retailBtn) retailBtn.addEventListener('click', ()=>openRetailModal('sale'));
+  const sampleBtn = document.getElementById('sampleBtn');
+  if(sampleBtn) sampleBtn.addEventListener('click', ()=>openRetailModal('sample'));
   bindOrderRowActions();
 }
 function openStatModal(key){
@@ -3857,7 +3897,7 @@ function resetAllDataExceptUsers(){
   });
   S.orders = []; S.customers = []; S.attendance = []; S.tasks = []; S.loginLog = [];
   S.rawMaterial = {}; S.filledStock = {}; S.readyStock = {};
-  S.expenses = []; S.activityLog = []; S.stockTasks = []; S.dominoPrints = []; S.chatMessages = [];
+  S.expenses = []; S.activityLog = []; S.stockTasks = []; S.dominoPrints = []; S.chatMessages = []; S.retailSales = [];
   S.lowStock = {raw:{}, filled:{}, ready:{}};
   PARTITIONED_ENTITIES.forEach(entity=>{ S._partitionKeysSeen[entity] = new Set(); });
   offlineQueue = {}; persistOfflineQueue(); updateSyncStatusUI(); // don't let a stale queued save push old data back after reset
@@ -4076,6 +4116,10 @@ function quickActionIcons(role){
   if(canDoEntry(role, 'entry_filling')) icons.push({key:'filling', ico:'🧴', color:'blue', lbl:'Filling', sub:'Fill products'});
   if(canDoEntry(role, 'entry_packing')) icons.push({key:'packing', ico:'📦', color:'orange', lbl:'Packing', sub:'Pack products'});
   if(role==='admin' || role==='manager' || role==='packaging') icons.push({key:'domino', ico:'🖨️', color:'purple', lbl:'Domino', sub:'Log printing'});
+  if(role==='admin' || role==='manager'){
+    icons.push({key:'retailsale', ico:'💵', color:'green', lbl:'Retail Sale', sub:'Cash sale from ready stock'});
+    icons.push({key:'samples', ico:'🎁', color:'orange', lbl:'Samples', sub:'Give sample from ready stock'});
+  }
   const unread = unreadMessageCount();
   icons.push({key:'messages', ico:'💬', color:'blue', lbl:'Messages', sub:'Announcements & chat', badge: unread>0 ? unread : null});
   const tileHtml = i=>`<div class="qa-tile" data-quick-action="${i.key}"><div class="icon-badge ${i.color}" style="position:relative;overflow:visible;"><span style="position:relative;z-index:1;">${i.ico}</span>${i.badge?`<span class="notif-dot pulse">${i.badge}</span>`:''}</div><div class="title">${esc(i.lbl)}</div><div class="sub">${esc(i.sub)}</div></div>`;
@@ -4250,6 +4294,8 @@ function bindQuickActionIcons(){
     if(k==='packing') openPackagingModal(null);
     if(k==='domino') openDominoModal();
     if(k==='messages') openMessagesModal();
+    if(k==='retailsale') openRetailModal('sale');
+    if(k==='samples') openRetailModal('sample');
   }));
 }
 // An order's fillingStatus/packagingStatus flags are whole-ORDER, but an
@@ -4686,6 +4732,68 @@ function openPackagingModal(prefillKey, prefillQty){
     closeModal(); render();
     showToast('Packaging recorded');
   });
+}
+
+/* ============================= RETAIL SALE / SAMPLES ============================= */
+function openRetailModal(type){
+  // type: 'sale' (counter/cash sale, has an amount) | 'sample' (free, no amount)
+  const isSale = type==='sale';
+  showModal(`
+    <h3>${isSale?'💵 Retail / Cash Sale':'🎁 Give Sample'}</h3>
+    <p class="desc" style="margin-top:-6px;">${isSale?'Sold directly from ready stock — deducted immediately.':'Given free from ready stock — deducted immediately.'}</p>
+    <form id="retailForm">
+      <div class="field"><label>Item (type to search)</label>${itemPickerHtml('retailItem', null)}</div>
+      <div class="field"><label>Quantity (pieces)</label><input id="retailQty" type="number" min="1" max="${MAX_PC_ENTRY}" value="1" /></div>
+      ${isSale?`<div class="field"><label>Amount received (₹)</label><input id="retailAmount" type="number" min="0" step="0.01" value="0" /></div>`:''}
+      <div class="modal-actions">
+        <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
+        <button type="submit" class="btn btn-primary">Record</button>
+      </div>
+    </form>
+  `);
+  const itemSel = document.getElementById('retailItem');
+  // Auto-fill the amount from the item's MRP × qty when a sale item/qty is picked (still editable).
+  const autoFillAmount = ()=>{
+    if(!isSale) return;
+    const key = (resolveItemFromText(itemSel.value)||{}).key;
+    const it = findItem(key);
+    const qty = parseInt(document.getElementById('retailQty').value)||0;
+    const amountInput = document.getElementById('retailAmount');
+    if(it && qty>0 && amountInput) amountInput.value = (it.mrp*qty).toFixed(2);
+  };
+  itemSel.addEventListener('input', autoFillAmount);
+  itemSel.addEventListener('change', autoFillAmount);
+  document.getElementById('retailQty').addEventListener('input', autoFillAmount);
+  document.getElementById('retailForm').addEventListener('submit', e=>{
+    e.preventDefault();
+    const key = (resolveItemFromText(itemSel.value)||{}).key;
+    const it = findItem(key);
+    if(!it){ showAlert('Pick a valid item from the list.'); return; }
+    const qty = parseInt(document.getElementById('retailQty').value)||0;
+    if(qty<=0){ showAlert('Enter a quantity.'); return; }
+    if(qty>MAX_PC_ENTRY){ showAlert(`Max ${MAX_PC_ENTRY} pc per entry.`); return; }
+    const amount = isSale ? (parseFloat(document.getElementById('retailAmount').value)||0) : 0;
+    const readyAvail = S.readyStock[key]||0;
+    if(readyAvail < qty){
+      showAlert(`${it.name} ${it.size} — only ${readyAvail} pc in Ready stock, not enough for ${qty} pc.`);
+      return;
+    }
+    S.readyStock[key] = readyAvail - qty;
+    const entry = { id:uid(), type, key, itemLabel:`${it.name} ${it.size}`, qty, amount, by:S.currentUser.name, byUsername:S.currentUser.username, at:Date.now() };
+    S.retailSales.push(entry);
+    safeSet('app:readyStock', S.readyStock);
+    savePartitionForItem('retailSales', entry);
+    syncStockTasksFromAlerts(); // this deduction can itself create/worsen a shortage
+    closeModal(); render();
+    showToast(isSale?'Sale recorded':'Sample recorded');
+  });
+}
+function toggleRetailBooked(id){
+  const e = S.retailSales.find(x=>x.id===id); if(!e) return;
+  e.booked = !e.booked;
+  savePartitionForItem('retailSales', e);
+  render();
+  showToast(e.booked ? 'Booked ✅' : 'Unbooked');
 }
 
 /* ============================= READY STOCK ============================= */
