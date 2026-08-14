@@ -445,7 +445,7 @@
 /* ============================= PRODUCT CATALOG ============================= */
 /* ============================= BRANDING ============================= */
 const COMPANY_LOGO = "icon-512.png";
-const APP_BUILD = "2026-08-14-batchsave1";
+const APP_BUILD = "2026-08-14-security-fix1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -1436,6 +1436,26 @@ function reconcileStockTasks(){
 }
 // Automatically pushes every active filled/ready shortage into the relevant
 // team's task list — no manual "send" needed. Idempotent (skips ones already open).
+// Once every non-cancelled item on a processing order genuinely no longer
+// needs filling (or, after that, packing) — per the same cascade-aware
+// stock check the demand table uses — the order's status advances on its
+// own. This replaces the old manual "mark done" buttons: completion is now
+// a fact about the stock, not a claim someone has to remember to make.
+function autoAdvanceFillingPackaging(alerts){
+  let changed = false;
+  const touchedDays = new Set();
+  S.orders.forEach(o=>{
+    if(o.status!=='processing') return;
+    if(o.fillingStatus!=='done' && !orderNeedsRoleWork(o,'filling',alerts)){
+      o.fillingStatus='done'; changed=true; touchedDays.add(localDateKey(o.createdAt));
+    }
+    if(o.fillingStatus==='done' && o.packagingStatus!=='done' && !orderNeedsRoleWork(o,'packaging',alerts)){
+      o.packagingStatus='done'; changed=true; touchedDays.add(localDateKey(o.createdAt));
+    }
+  });
+  touchedDays.forEach(d=>savePartitionDay('orders', d));
+  return changed;
+}
 function syncStockTasksFromAlerts(){
   let changed = false;
   // Anyone's action can resolve a shortage, so reconciliation (closing tasks
@@ -1459,6 +1479,7 @@ function syncStockTasksFromAlerts(){
     ensure('filled', alerts.recommended.filled, 'recommended');
     ensure('ready', alerts.recommended.ready, 'recommended');
   }
+  if(autoAdvanceFillingPackaging(getStockAlerts())) changed = true;
   if(reconcileStockTasks()) changed = true;
   if(changed) safeSet('app:stockTasks', S.stockTasks);
   return changed;
@@ -1480,10 +1501,9 @@ function assignAllStockTasks(kind){
 }
 const STOCK_KIND_LABEL = { raw:'Raw material', filled:'Filled stock', ready:'Ready stock' };
 function renderAlertTiles(alerts, kind, stacked){
-  // kind: 'raw' | 'filled' | 'ready' — only filled (->filling team) & ready (->packaging team) are sendable.
+  // kind: 'raw' | 'filled' | 'ready' — filled (->filling team) & ready (->packaging team) auto-create tasks already.
   if(!alerts.length) return '';
   const targetRole = kind==='filled' ? 'filling' : kind==='ready' ? 'packaging' : null;
-  const taskWord = kind==='filled' ? 'filling' : 'packing';
   return `<div class="alert-tile-grid${stacked?' stacked':''}" style="margin-bottom:12px;">
     ${alerts.map(a=>{
       const sendable = kind==='filled' || kind==='ready';
@@ -1497,8 +1517,7 @@ function renderAlertTiles(alerts, kind, stacked){
         </div>
         <div class="at-label">${esc(a.label)}</div>
         <div class="at-detail"><b>${esc(a.text)}</b></div>
-        ${sendable?`<div class="at-detail" style="margin-bottom:6px;">→ ${targetRole==='filling'?'Filling':'Packaging'} task${alreadySent?' (sent)':''}</div>`:`<div class="at-detail" style="margin-bottom:6px;">Owner purchases this</div>`}
-        ${sendable?`<button class="btn btn-sm ${alreadySent?'btn-outline':'btn-primary'}" ${alreadySent?'disabled':''} data-send-task="${kind}|${esc(a.id)}|${esc(a.label)}|${esc(a.text||'')}">${alreadySent?'Task sent ✓':`Send ${taskWord} task`}</button>`:''}
+        ${sendable?`<div class="at-detail" style="display:flex;align-items:center;gap:5px;">${alreadySent?`<span style="color:var(--success);font-weight:700;">✅ Assigned to ${targetRole==='filling'?'filling':'packaging'} team</span>`:`→ ${targetRole==='filling'?'Filling':'Packaging'} task`}</div>`:`<div class="at-detail">Owner purchases this</div>`}
       </div>`;
     }).join('')}
   </div>`;
@@ -1506,24 +1525,16 @@ function renderAlertTiles(alerts, kind, stacked){
 function renderAlertSection(kind, list, stacked){
   if(!list.length) return '';
   const titleMap = {raw:'🛢️ Purchase (Raw material)', filled:'🧴 Filling', ready:'📦 Packaging'};
-  const bulk = (kind==='filled'||kind==='ready') ? `<button class="btn btn-sm btn-outline" data-bulk-assign="${kind}">Assign all as tasks</button>` : '';
   return `<div style="margin-bottom:16px;">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
       <div style="font-weight:800;font-size:13.5px;">${titleMap[kind]} <span class="mono" style="font-weight:400;">(${list.length})</span></div>
-      ${bulk}
     </div>
     ${renderAlertTiles(list, kind, stacked)}
   </div>`;
 }
 function bindAlertTiles(){
-  document.querySelectorAll('[data-send-task]').forEach(b=>b.addEventListener('click', ()=>{
-    const [kind, id, label, qtyText] = b.dataset.sendTask.split('|');
-    sendStockTask(kind, id, label, qtyText);
-    render();
-  }));
-  document.querySelectorAll('[data-bulk-assign]').forEach(b=>b.addEventListener('click', ()=>{
-    assignAllStockTasks(b.dataset.bulkAssign);
-  }));
+  // Tasks auto-create for filling/filled and packaging/ready alerts already
+  // (see syncStockTasksFromAlerts) — nothing left to manually send/assign.
 }
 
 function logActivity(entry){
@@ -1871,8 +1882,8 @@ function myNotifCount(stockAlerts){
   const reviewTasks = S.orders.filter(o => o.fillingStatus==='review' || o.packagingStatus==='review').length;
   if(role==='admin') return pendingOrders+reviewTasks;
   if(role==='manager') return S.orders.filter(o=>o.status==='processing' && (o.fillingStatus!=='done'||o.packagingStatus!=='done')).length;
-  if(role==='filling') return S.orders.filter(o=>o.status==='processing' && o.fillingStatus!=='done').length;
-  if(role==='packaging') return S.orders.filter(o=>o.status==='processing' && o.fillingStatus==='done' && o.packagingStatus!=='done').length;
+  if(role==='filling') return S.orders.filter(o=>o.status==='processing' && o.fillingStatus!=='done' && orderNeedsRoleWork(o,'filling',stockAlerts)).length;
+  if(role==='packaging') return S.orders.filter(o=>o.status==='processing' && o.fillingStatus==='done' && o.packagingStatus!=='done' && orderNeedsRoleWork(o,'packaging',stockAlerts)).length;
   return 0;
 }
 function renderShell(){
@@ -2002,8 +2013,8 @@ function renderNotifPanel(stockAlerts){
   const readyOrders = isAdmin ? S.orders.filter(o=>o.status==='ready') : [];
   const reviewTasks = isAdmin ? S.orders.filter(o => o.fillingStatus==='review' || o.packagingStatus==='review') : [];
   let myWork = [];
-  if(role==='filling') myWork = S.orders.filter(o=>o.status==='processing' && o.fillingStatus!=='done');
-  if(role==='packaging') myWork = S.orders.filter(o=>o.status==='processing' && o.fillingStatus==='done' && o.packagingStatus!=='done');
+  if(role==='filling') myWork = S.orders.filter(o=>o.status==='processing' && o.fillingStatus!=='done' && orderNeedsRoleWork(o,'filling',stockAlerts));
+  if(role==='packaging') myWork = S.orders.filter(o=>o.status==='processing' && o.fillingStatus==='done' && o.packagingStatus!=='done' && orderNeedsRoleWork(o,'packaging',stockAlerts));
   if(role==='manager') myWork = S.orders.filter(o=>o.status==='processing' && (o.fillingStatus!=='done'||o.packagingStatus!=='done'));
   return `<h3>${isAdmin?'Pending your approval':'Your alerts'}</h3>
     <p class="desc" style="margin-top:-8px;">${isAdmin?'Waiting on you.':'Your alerts.'}</p>
@@ -2733,10 +2744,10 @@ function renderHomeGeneric(role){
   const ready = S.orders.filter(o=>o.status==='ready').length;
   let extraCard = '';
   if(role==='filling'){
-    const need = S.orders.filter(o=>o.status==='processing' && o.fillingStatus!=='done').length;
+    const need = S.orders.filter(o=>o.status==='processing' && o.fillingStatus!=='done' && orderNeedsRoleWork(o,'filling',alerts)).length;
     extraCard = `<div class="stat-card-v2" data-more-tab="tasks"><div class="row-top"><div class="icon-badge blue">🧴</div><span class="chev">›</span></div><div class="n">${need}</div><div class="title">Needs Filling</div><div class="sub">Orders waiting</div></div>`;
   } else if(role==='packaging'){
-    const need = S.orders.filter(o=>o.status==='processing' && o.fillingStatus==='done' && o.packagingStatus!=='done').length;
+    const need = S.orders.filter(o=>o.status==='processing' && o.fillingStatus==='done' && o.packagingStatus!=='done' && orderNeedsRoleWork(o,'packaging',alerts)).length;
     extraCard = `${canViewTile(role,'tile_processing')?`<div class="stat-card-v2" data-stat="processing"><div class="row-top"><div class="icon-badge orange">🔧</div><span class="chev">›</span></div><div class="n">${processing}</div><div class="title">Processing</div><div class="sub">Orders in progress</div></div>`:''}
     <div class="stat-card-v2" data-more-tab="tasks"><div class="row-top"><div class="icon-badge orange">📦</div><span class="chev">›</span></div><div class="n">${need}</div><div class="title">Needs Packing</div><div class="sub">Orders waiting</div></div>`;
   } else if(role==='sales'){
@@ -3015,7 +3026,8 @@ function renderOrderTile(o){
       return `${mark} ${qtyLabel}`;
     }).join('<br/>')}</div>
     ${o.transportName?`<div class="ot-meta"><b>🚚 ${esc(o.transportName)}</b>${o.totalCases?` · ${o.totalCases} cases`:''}${o.dispatchedAt?` · ${fmtDate(o.dispatchedAt)}`:''}</div>`:''}
-    <div class="ot-meta">${o.orderNumber?`#${esc(o.orderNumber)} · `:''}by ${esc(o.createdBy)} · ${fmtTime(o.createdAt)}</div>
+    <div class="ot-meta">${o.orderNumber?`#${esc(o.orderNumber)} · `:''}by ${esc(o.createdBy)} · ${fmtTime(o.createdAt)}${isAdmin && (o.orderLat||o.orderLng) ? ` · <a href="https://www.google.com/maps?q=${o.orderLat},${o.orderLng}" target="_blank" rel="noopener" style="color:var(--primary);">📍 Order location</a>` : ''}</div>
+    ${isAdmin && (o.orderLat||o.orderLng) ? `<div class="ot-meta"><a href="https://www.google.com/maps?q=${o.orderLat},${o.orderLng}" target="_blank" rel="noopener" style="color:var(--primary);">📍 Order location</a></div>` : ''}
     <div class="row-actions">
       <button class="btn btn-sm btn-outline" data-track-link="${o.id}">🔗 Track link</button>
       ${isAdmin?`
@@ -3938,14 +3950,32 @@ function bindQuickActionIcons(){
     if(k==='domino') openDominoModal();
   }));
 }
+// An order's fillingStatus/packagingStatus flags are whole-ORDER, but an
+// order can have several items where only one is genuinely still short —
+// the rest may already be fully stocked. This checks the REAL per-item
+// need (same cascade-aware alert data the demand table already uses)
+// instead of just the crude status flag, so filling/packaging don't get
+// notified about orders that have nothing left for them to actually do.
+function orderNeedsRoleWork(o, role, stockAlerts){
+  if(role==='filling'){
+    const needIds = new Set(stockAlerts.filled.map(a=>a.id));
+    return o.items.some(i=>!i.cancelled && needIds.has(i.key));
+  }
+  if(role==='packaging'){
+    const needIds = new Set(stockAlerts.ready.map(a=>a.id));
+    return o.items.some(i=>!i.cancelled && needIds.has(i.key));
+  }
+  return true;
+}
 function renderTasks(){
   const role = S.currentUser.role;
   const isAdmin = role==='admin';
+  const stockAlertsForFilter = getStockAlerts();
 
   let orderRelevant = [];
   if(role==='manager'){ orderRelevant = S.orders.filter(o=>o.status==='processing'); }
-  else if(role==='filling'){ orderRelevant = S.orders.filter(o=>o.status==='processing' && o.fillingStatus!=='done'); }
-  else if(role==='packaging'){ orderRelevant = S.orders.filter(o=>o.status==='processing' && o.fillingStatus==='done' && o.packagingStatus!=='done'); }
+  else if(role==='filling'){ orderRelevant = S.orders.filter(o=>o.status==='processing' && o.fillingStatus!=='done' && orderNeedsRoleWork(o,'filling',stockAlertsForFilter)); }
+  else if(role==='packaging'){ orderRelevant = S.orders.filter(o=>o.status==='processing' && o.fillingStatus==='done' && o.packagingStatus!=='done' && orderNeedsRoleWork(o,'packaging',stockAlertsForFilter)); }
 
   const myGeneralTasks = S.tasks.filter(t=>t.assignedTo===S.currentUser.username || t.assignedTo==='role:'+role).sort((a,b)=>b.createdAt-a.createdAt);
   const allGeneralTasks = S.tasks.slice().sort((a,b)=>b.createdAt-a.createdAt);
@@ -3995,8 +4025,6 @@ function renderTasks(){
         return `<tr><td>${esc(it?it.name:key)} <span class="mono">${esc(it?it.size:'')}</span><div style="margin-top:3px;">${tags}</div></td><td class="mono">${qtyText}</td><td>${role==='filling'?`<button class="btn btn-sm btn-accent" data-quick-fill="${key}|${suggestedQty}">Record</button>`:`<button class="btn btn-sm btn-accent" data-quick-pack="${key}|${suggestedQty}">Record</button>`}</td></tr>`;
       }).join('')}
       </tbody></table>`}
-      ${orderRelevant.length? `<p class="desc" style="margin:10px 0 0;">${orderRelevant.length} order(s) waiting — tap once done.</p>
-      <div class="row-actions" style="margin-top:6px;">${orderRelevant.map(o=>`<button class="btn btn-sm btn-accent" data-mark-${role==='filling'?'filling':'packaging'}="${o.id}">${esc(orderDisplayLabel(o))} done</button>`).join('')}</div>` : ''}
     </div>`;
     if(role==='packaging' && orderRelevant.length){
       orderTasksBlock += `
@@ -4632,14 +4660,17 @@ function computePresenceByDate(){
   const byDate = {};
   S.attendance.forEach(a=>{
     const dk = localDateKey(a.timestamp);
-    byDate[dk] = byDate[dk] || new Set();
-    byDate[dk].add(a.username);
+    byDate[dk] = byDate[dk] || {};
+    if(!byDate[dk][a.username]) byDate[dk][a.username] = a; // first record of the day (has lat/lng)
   });
   const relevantUsers = S.users.filter(u=>u.role!=='admin');
   return Object.keys(byDate).sort().reverse().slice(0,30).map(dk=>({
     dateKey: dk,
     dateTs: dateKeyToTs(dk),
-    entries: relevantUsers.map(u=>({ name:u.name, present: byDate[dk].has(u.username) }))
+    entries: relevantUsers.map(u=>{
+      const rec = byDate[dk][u.username];
+      return { name:u.name, present: !!rec, lat: rec?rec.lat:null, lng: rec?rec.lng:null };
+    })
   }));
 }
 function renderAttendanceMap(){
@@ -4650,8 +4681,11 @@ function renderAttendanceMap(){
     <h2>Attendance</h2>
     <p class="desc">Day-wise presence — who marked attendance each day.</p>
     ${presence.length===0?`<div class="empty">No attendance marked yet.</div>`:
-      presence.map(p=>dateGroupHeaderHtml(dateHeading(p.dateTs))+`<table><thead><tr><th>Employee</th><th>Status</th></tr></thead><tbody>
-      ${p.entries.map(e=>`<tr><td>${esc(e.name)}</td><td>${e.present?'<span class="badge badge-approved">Present</span>':'<span class="mono">—</span>'}</td></tr>`).join('')}
+      presence.map(p=>dateGroupHeaderHtml(dateHeading(p.dateTs))+`<table><thead><tr><th>Employee</th><th>Status</th><th>Location</th></tr></thead><tbody>
+      ${p.entries.map(e=>{
+        const locCell = e.present ? ((e.lat||e.lng) ? `<a href="https://www.google.com/maps?q=${e.lat},${e.lng}" target="_blank" rel="noopener" class="mono" style="color:var(--primary);">📍 view</a>` : `<span class="mono">no location</span>`) : `<span class="mono">—</span>`;
+        return `<tr><td>${esc(e.name)}</td><td>${e.present?'<span class="badge badge-approved">Present</span>':'<span class="mono">—</span>'}</td><td>${locCell}</td></tr>`;
+      }).join('')}
       </tbody></table>`).join('')}
   </div>
   <div class="card">
