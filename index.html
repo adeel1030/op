@@ -459,7 +459,7 @@
 /* ============================= PRODUCT CATALOG ============================= */
 /* ============================= BRANDING ============================= */
 const COMPANY_LOGO = "icon-512.png";
-const APP_BUILD = "2026-08-14-tilecolors1";
+const APP_BUILD = "2026-08-14-logs-batch1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -723,9 +723,9 @@ const S = {
   loaded:false,
   loadFailed:false,
   users:[], orders:[], customers:[], attendance:[], tasks:[], loginLog:[],
-  rawMaterial:{}, filledStock:{}, readyStock:{}, expenses:[], activityLog:[], stockTasks:[], dominoPrints:[], chatMessages:[], retailSales:[],
-  lowStock:{raw:{}, filled:{}, ready:{}}, watchStock:{raw:{}, filled:{}, ready:{}}, rolePermissions:{}, customRoles:[], catalogItems:[], transports:[], dailyRecordMarks:{}, dailyWorkDate:null,
-  _partitionKeysSeen:{orders:new Set(), activityLog:new Set(), attendance:new Set(), expenses:new Set(), dominoPrints:new Set(), loginLog:new Set(), chatMessages:new Set(), retailSales:new Set()},
+  rawMaterial:{}, filledStock:{}, readyStock:{}, expenses:[], activityLog:[], stockTasks:[], dominoPrints:[], chatMessages:[], retailSales:[], trackingViewLogs:[], siteVisitLogs:[],
+  lowStock:{raw:{}, filled:{}, ready:{}}, watchStock:{raw:{}, filled:{}, ready:{}}, rolePermissions:{}, customRoles:[], catalogItems:[], transports:[], dailyRecordMarks:{}, dailyWorkDate:null, batchReferences:{},
+  _partitionKeysSeen:{orders:new Set(), activityLog:new Set(), attendance:new Set(), expenses:new Set(), dominoPrints:new Set(), loginLog:new Set(), chatMessages:new Set(), retailSales:new Set(), trackingViewLogs:new Set(), siteVisitLogs:new Set()},
   currentUser:null, view:'home', stockView:'raw', notifOpen:false, moreOpen:false, profileOpen:false, alertPanelOpen:null, toast:null,
   chatModalOpen:false, chatView:'announcements', chatActiveThread:null,
   postLoginPhase:null, pendingUser:null, postLoginLoadingStep:0,
@@ -1089,7 +1089,7 @@ function safeSet(oldKey, value){
 // backend as one row PER CALENDAR DAY ("orders_2026-08-10") instead of one
 // giant cell. This keeps every row comfortably under Sheets' ~50,000
 // character per-cell limit no matter how much history accumulates.
-const PARTITIONED_TS_FIELD = { orders:'createdAt', activityLog:'at', attendance:'timestamp', expenses:'at', dominoPrints:'at', loginLog:'at', chatMessages:'at', retailSales:'at' };
+const PARTITIONED_TS_FIELD = { orders:'createdAt', activityLog:'at', attendance:'timestamp', expenses:'at', dominoPrints:'at', loginLog:'at', chatMessages:'at', retailSales:'at', trackingViewLogs:'at', siteVisitLogs:'at' };
 const PARTITIONED_ENTITIES = Object.keys(PARTITIONED_TS_FIELD);
 function mergePartitionedEntity(rawData, entity){
   const merged = [];
@@ -1162,7 +1162,11 @@ function applyServerData(data){
   rebuildCatalogFlat();
   S.transports = data.transports || [];
   S.dailyRecordMarks = data.dailyRecordMarks || {};
+  S.batchReferences = data.batchReferences || {};
+  S.trackingViewLogs = mergePartitionedEntity(data, 'trackingViewLogs').filter(l=>l.at >= Date.now()-7*24*60*60*1000).sort((a,b)=>b.at-a.at);
+  S.siteVisitLogs = mergePartitionedEntity(data, 'siteVisitLogs').filter(l=>l.at >= Date.now()-7*24*60*60*1000).sort((a,b)=>b.at-a.at);
   cleanupOldChatDays();
+  cleanupOldLogDays();
 }
 // Chat messages are only meant to live 7 days — reconcile the backend to
 // match (admin-only, mirrors how "Reset all data" already deletes
@@ -1173,6 +1177,17 @@ function cleanupOldChatDays(){
   if(!seen || !seen.size) return;
   const cutoff = localDateKey(Date.now() - 7*24*60*60*1000);
   const stale = [...seen].filter(dk=>dk < cutoff).map(dk=>'chatMessages_'+dk);
+  if(stale.length) apiDeleteKeys(stale).catch(()=>{});
+}
+function cleanupOldLogDays(){
+  if(!S.currentUser || S.currentUser.role!=='admin') return;
+  const cutoff = localDateKey(Date.now() - 7*24*60*60*1000);
+  const stale = [];
+  ['trackingViewLogs','siteVisitLogs'].forEach(entity=>{
+    const seen = S._partitionKeysSeen[entity];
+    if(!seen || !seen.size) return;
+    [...seen].filter(dk=>dk < cutoff).forEach(dk=>stale.push(entity+'_'+dk));
+  });
   if(stale.length) apiDeleteKeys(stale).catch(()=>{});
 }
 
@@ -2329,8 +2344,10 @@ function renderDailyWork(){
   const totalExpense = expenseEntries.filter(e=>e.type!=='settlement').reduce((s,e)=>s+(e.amount||0),0);
   const retailEntries = S.retailSales.filter(e=>localDateKey(e.at)===date).sort((a,b)=>a.at-b.at);
   const totalRetail = retailEntries.filter(e=>e.type==='sale').reduce((s,e)=>s+(e.amount||0),0);
+  const newOrderEntries = S.orders.filter(o=>localDateKey(o.createdAt)===date).sort((a,b)=>a.createdAt-b.createdAt);
+  const totalOrderValue = newOrderEntries.reduce((s,o)=>s+orderMrpValue(o),0);
 
-  const allEntries = [...fillingEntries, ...packagingEntries, ...expenseEntries, ...retailEntries];
+  const allEntries = [...fillingEntries, ...packagingEntries, ...expenseEntries, ...retailEntries, ...newOrderEntries];
   const bookedCount = allEntries.filter(e=>e.booked).length;
   const totalCount = allEntries.length;
 
@@ -2385,10 +2402,18 @@ function renderDailyWork(){
     <table><thead><tr><th>Item</th><th>Qty</th><th>Type</th><th>Amount</th><th>By</th><th>Time</th><th></th></tr></thead><tbody>
     ${retailEntries.map(e=>`<tr${e.booked?' style="opacity:0.55;"':''}><td>${esc(e.itemLabel)}</td><td class="mono">${e.qty} pc</td><td>${e.type==='sale'?'<span class="badge badge-approved">Sale</span>':'<span class="badge badge-pending">Sample</span>'}</td><td class="mono">${e.type==='sale'?'₹'+(e.amount||0).toLocaleString('en-IN'):'—'}</td><td>${esc(e.by)}</td><td class="mono">${fmtTime(e.at)}</td><td>${bookCell(e,'retailSales')}</td></tr>`).join('')}
     </tbody></table>`}
+  </div>
+
+  <div class="card">
+    <h2>🛍️ New Orders — ${newOrderEntries.length} entr${newOrderEntries.length===1?'y':'ies'}${totalOrderValue?` · ₹${totalOrderValue.toLocaleString('en-IN')}`:''}</h2>
+    ${newOrderEntries.length===0?`<div class="empty">No orders created this day.</div>`:`
+    <table><thead><tr><th>Party</th><th>Items</th><th>MRP Value</th><th>By</th><th>Time</th><th></th></tr></thead><tbody>
+    ${newOrderEntries.map(o=>`<tr${o.booked?' style="opacity:0.55;"':''}><td>${esc(orderDisplayLabel(o))}</td><td>${o.items.filter(i=>!i.cancelled).map(i=>`${esc(i.name)} ${esc(i.size)} <span class="mono">×${i.qty}</span>`).join('<br/>')}</td><td class="mono">₹${orderMrpValue(o).toLocaleString('en-IN')}</td><td>${esc(o.createdBy)}</td><td class="mono">${fmtTime(o.createdAt)}</td><td>${bookCell(o,'orders')}</td></tr>`).join('')}
+    </tbody></table>`}
   </div>`;
 }
 function toggleEntryBooked(source, id){
-  const list = source==='expenses' ? S.expenses : source==='retailSales' ? S.retailSales : S.activityLog;
+  const list = source==='expenses' ? S.expenses : source==='retailSales' ? S.retailSales : source==='orders' ? S.orders : S.activityLog;
   const e = list.find(x=>x.id===id); if(!e) return;
   e.booked = !e.booked;
   savePartitionForItem(source, e);
@@ -2408,6 +2433,7 @@ function bindDailyWork(){
     S.activityLog.filter(e=>(e.kind==='filling'||e.kind==='packaging') && localDateKey(e.at)===date && !e.booked).forEach(e=>{ e.booked = true; savePartitionForItem('activityLog', e); });
     S.expenses.filter(e=>localDateKey(e.at)===date && !e.booked).forEach(e=>{ e.booked = true; savePartitionForItem('expenses', e); });
     S.retailSales.filter(e=>localDateKey(e.at)===date && !e.booked).forEach(e=>{ e.booked = true; savePartitionForItem('retailSales', e); });
+    S.orders.filter(o=>localDateKey(o.createdAt)===date && !o.booked).forEach(o=>{ o.booked = true; savePartitionForItem('orders', o); });
     render();
     showToast('All entries booked ✅');
   });
@@ -3069,6 +3095,13 @@ function orderDisplayLabel(o){
   if(transport) parts.push(`🚚 ${transport}`);
   return parts.join(' · ');
 }
+function orderMrpValue(o){
+  return o.items.reduce((sum,i)=>{
+    if(i.cancelled) return sum;
+    const it = findItem(i.key);
+    return sum + (it ? it.mrp*i.qty : 0);
+  }, 0);
+}
 function renderOrderTile(o){
   const isAdmin = S.currentUser.role==='admin';
   const tileCls = o.status==='ready' ? ' tile-ready' : o.status==='processing' ? ' tile-processing' : '';
@@ -3094,9 +3127,10 @@ function renderOrderTile(o){
       return `${mark} ${qtyLabel}`;
     }).join('<br/>')}</div>
     ${o.transportName?`<div class="ot-meta"><b>🚚 ${esc(o.transportName)}</b>${o.totalCases?` · ${o.totalCases} cases`:''}${o.dispatchedAt?` · ${fmtDate(o.dispatchedAt)}`:''}</div>`:''}
-    <div class="ot-meta">${o.orderNumber?`#${esc(o.orderNumber)} · `:''}by ${esc(o.createdBy)} · ${fmtTime(o.createdAt)}${isAdmin && (o.orderLat||o.orderLng) ? ` · <a href="https://www.google.com/maps?q=${o.orderLat},${o.orderLng}" target="_blank" rel="noopener" style="color:var(--primary);">📍 Order location</a>` : ''}</div>
+    <div class="ot-meta">${o.orderNumber?`#${esc(o.orderNumber)} · `:''}by ${esc(o.createdBy)} · ${fmtTime(o.createdAt)}${isAdmin && (o.orderLat||o.orderLng) ? ` · <a href="https://www.google.com/maps?q=${o.orderLat},${o.orderLng}" target="_blank" rel="noopener" style="color:var(--primary);">📍 Order location</a>` : ''}${isAdmin ? ` · <button type="button" class="mono" data-view-tracking-logs="${o.id}" style="background:none;border:none;color:var(--primary);cursor:pointer;padding:0;font-size:inherit;">📜 Logs</button>` : ''}</div>
+    ${isAdmin ? `<div class="ot-meta"><b>MRP Value: ₹${orderMrpValue(o).toLocaleString('en-IN')}</b></div>` : ''}
     <div class="row-actions">
-      <button class="btn btn-sm btn-outline" data-track-link="${o.id}">🔗 Track link</button>
+      ${(isAdmin || (S.currentUser.role==='sales' && o.createdByUsername===S.currentUser.username)) ? `<button class="btn btn-sm btn-outline" data-track-link="${o.id}">🔗 Track link</button>` : ''}
       ${isAdmin?`
       ${o.status==='pending'?`<button class="btn btn-sm btn-success" data-approve-order="${o.id}">Accept</button><button class="btn btn-sm btn-danger" data-reject-order="${o.id}">Reject</button>`:''}
       ${o.status==='processing'?`<button class="btn btn-sm btn-outline" data-mark-ready-now="${o.id}">Mark Ready</button>`:''}
@@ -3170,6 +3204,7 @@ function renderOrders(){
       <span class="badge badge-processing" style="font-size:11.5px;padding:5px 10px;">🔧 Processing: ${processingCount}</span>
       <span class="badge badge-approved" style="font-size:11.5px;padding:5px 10px;">🚚 Ready: ${readyCount}</span>
       <button type="button" class="btn btn-sm btn-outline" data-stat="processed" style="padding:4px 10px;font-size:11.5px;">✅ Processed: ${processedCount}</button>
+      ${S.currentUser.role==='admin' ? `<button type="button" class="btn btn-sm btn-outline" id="siteVisitLogsBtn" style="padding:4px 10px;font-size:11.5px;">🌐 Order Form Logs (${S.siteVisitLogs.length})</button>` : ''}
     </div>
     ${renderOrdersSegregated(0)}
   </div>
@@ -3185,6 +3220,8 @@ function bindOrders(){
   if(retailBtn) retailBtn.addEventListener('click', ()=>openRetailModal('sale'));
   const sampleBtn = document.getElementById('sampleBtn');
   if(sampleBtn) sampleBtn.addEventListener('click', ()=>openRetailModal('sample'));
+  const siteVisitBtn = document.getElementById('siteVisitLogsBtn');
+  if(siteVisitBtn) siteVisitBtn.addEventListener('click', openSiteVisitLogsModal);
   bindOrderRowActions();
 }
 function openStatModal(key){
@@ -3213,7 +3250,24 @@ function openStatModal(key){
   bindOrderRowActions(true);
   bindAlertTiles();
 }
+function renderVisitLogList(logs){
+  if(!logs.length) return `<div class="empty">No visits recorded (last 7 days).</div>`;
+  return `<table><thead><tr><th>Location</th><th>Device</th><th>Time</th></tr></thead><tbody>
+    ${logs.map(l=>`<tr><td>${esc(l.location||'Unknown')}</td><td class="mono">${esc(l.device||'Unknown')}</td><td class="mono">${fmtDate(l.at)} ${fmtTime(l.at)}</td></tr>`).join('')}
+  </tbody></table>`;
+}
+function openTrackingLogsModal(orderId){
+  const logs = S.trackingViewLogs.filter(l=>l.orderId===orderId).sort((a,b)=>b.at-a.at);
+  showModal(`<h3>📜 Tracking Link Logs</h3><p class="desc" style="margin-top:-6px;">Every time this order's tracking link was opened — last 7 days.</p>${renderVisitLogList(logs)}
+    <div class="modal-actions"><button type="button" class="btn btn-outline" id="cancelModal">Close</button></div>`);
+}
+function openSiteVisitLogsModal(){
+  const logs = S.siteVisitLogs.slice().sort((a,b)=>b.at-a.at);
+  showModal(`<h3>🌐 Order Form Logs</h3><p class="desc" style="margin-top:-6px;">Every time the order form website was opened — last 7 days.</p>${renderVisitLogList(logs)}
+    <div class="modal-actions"><button type="button" class="btn btn-outline" id="cancelModal">Close</button></div>`);
+}
 function bindOrderRowActions(closeAfter){
+  document.querySelectorAll('[data-view-tracking-logs]').forEach(b=>b.addEventListener('click', ()=>openTrackingLogsModal(b.dataset.viewTrackingLogs)));
   document.querySelectorAll('[data-track-link]').forEach(b=>b.addEventListener('click', async ()=>{
     const o = S.orders.find(x=>x.id===b.dataset.trackLink); if(!o) return;
     const link = trackingLinkFor(o);
@@ -3900,7 +3954,7 @@ function resetAllDataExceptUsers(){
   });
   S.orders = []; S.customers = []; S.attendance = []; S.tasks = []; S.loginLog = [];
   S.rawMaterial = {}; S.filledStock = {}; S.readyStock = {};
-  S.expenses = []; S.activityLog = []; S.stockTasks = []; S.dominoPrints = []; S.chatMessages = []; S.retailSales = [];
+  S.expenses = []; S.activityLog = []; S.stockTasks = []; S.dominoPrints = []; S.chatMessages = []; S.retailSales = []; S.trackingViewLogs = []; S.siteVisitLogs = [];
   S.lowStock = {raw:{}, filled:{}, ready:{}};
   PARTITIONED_ENTITIES.forEach(entity=>{ S._partitionKeysSeen[entity] = new Set(); });
   offlineQueue = {}; persistOfflineQueue(); updateSyncStatusUI(); // don't let a stale queued save push old data back after reset
@@ -4122,6 +4176,7 @@ function quickActionIcons(role){
   if(role==='admin' || role==='manager'){
     icons.push({key:'retailsale', ico:'💵', color:'green', lbl:'Retail Sale', sub:'Cash sale from ready stock'});
     icons.push({key:'samples', ico:'🎁', color:'orange', lbl:'Samples', sub:'Give sample from ready stock'});
+    icons.push({key:'batch', ico:'🏷️', color:'purple', lbl:'Batch', sub:"This month's batch number"});
   }
   const unread = unreadMessageCount();
   icons.push({key:'messages', ico:'💬', color:'blue', lbl:'Messages', sub:'Announcements & chat', badge: unread>0 ? unread : null});
@@ -4299,6 +4354,7 @@ function bindQuickActionIcons(){
     if(k==='messages') openMessagesModal();
     if(k==='retailsale') openRetailModal('sale');
     if(k==='samples') openRetailModal('sample');
+    if(k==='batch') openBatchModal();
   }));
 }
 // An order's fillingStatus/packagingStatus flags are whole-ORDER, but an
@@ -4734,6 +4790,92 @@ function openPackagingModal(prefillKey, prefillQty){
     syncStockTasksFromAlerts();
     closeModal(); render();
     showToast('Packaging recorded');
+  });
+}
+
+/* ============================= BATCH NUMBER ============================= */
+// Batch numbers are per item CATEGORY (product group) — every size of the
+// same product shares one batch number, per the business requirement.
+// The admin sets a January-2026 starting reference once per item; every
+// month after that adds 1 automatically. No lookup table is stored for
+// each month — it's derived fresh every time from (reference + months
+// elapsed since Jan 2026), so there's nothing to keep in sync.
+function monthsSinceJan2026(ts){
+  const d = new Date(ts||Date.now());
+  return (d.getFullYear()-2026)*12 + d.getMonth(); // getMonth() is 0-based -> Jan=0
+}
+function currentMonthLabel(ts){
+  const d = new Date(ts||Date.now());
+  return d.toLocaleDateString('en-US',{month:'short',year:'numeric'});
+}
+function batchNumberFor(cat, ts){
+  const ref = S.batchReferences[cat];
+  if(ref==null || ref==='') return null;
+  const num = Number(ref) + monthsSinceJan2026(ts);
+  const digits = num>=1000 ? 4 : 3; // grows past 3 digits naturally if it ever crosses 999
+  return String(Math.max(num,0)).padStart(digits,'0');
+}
+function openBatchModal(){
+  const readyItems = CATALOG_FLAT.filter(it => (S.readyStock[it.key]||0) > 0);
+  showModal(`
+    <h3>🏷️ Batch Number</h3>
+    <p class="desc" style="margin-top:-6px;">Only items currently in Ready stock are listed. Every size of the same product shares one batch number.</p>
+    <div class="field"><label>Item</label>
+      <select id="batchItemSel">
+        ${readyItems.length===0?'<option value="">No items in ready stock</option>':readyItems.map(it=>`<option value="${esc(it.cat)}">${esc(it.name)} ${esc(it.size)}</option>`).join('')}
+      </select>
+    </div>
+    <div id="batchResultBox" style="margin:14px 0;"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-outline" id="cancelModal">Close</button>
+    </div>
+  `);
+  const sel = document.getElementById('batchItemSel');
+  sel.addEventListener('change', renderBatchResult);
+  renderBatchResult();
+}
+function renderBatchResult(){
+  const sel = document.getElementById('batchItemSel');
+  const box = document.getElementById('batchResultBox');
+  if(!sel || !box) return;
+  const cat = sel.value;
+  if(!cat){ box.innerHTML=''; return; }
+  const isAdmin = S.currentUser.role==='admin';
+  const batchNo = batchNumberFor(cat);
+  if(batchNo){
+    box.innerHTML = `<div style="background:var(--bg);border-radius:12px;padding:16px;text-align:center;">
+      <div style="font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;">${esc(cat)}</div>
+      <div style="font-size:26px;font-weight:900;color:var(--primary);">${batchNo}/${currentMonthLabel()}</div>
+    </div>
+    ${isAdmin?`<button type="button" class="btn btn-outline btn-sm" id="editBatchRefBtn" style="width:100%;margin-top:10px;">✏️ Edit Jan 2026 reference (currently ${esc(String(S.batchReferences[cat]))})</button><div id="batchRefEditBox"></div>`:''}`;
+  } else {
+    box.innerHTML = `<div class="empty">No January 2026 reference set for this item yet.</div>
+    ${isAdmin?`<div class="field"><label>January 2026 reference number</label><input id="batchRefInput" type="number" min="0" placeholder="e.g. 36" /></div>
+    <button type="button" class="btn btn-primary btn-sm" id="saveBatchRefBtn" style="width:100%;">Save reference</button>`
+    :`<p class="desc">Ask an admin to set the starting reference for this item.</p>`}`;
+  }
+  const saveBtn = document.getElementById('saveBatchRefBtn');
+  if(saveBtn) saveBtn.addEventListener('click', ()=>{
+    const val = parseInt(document.getElementById('batchRefInput').value);
+    if(isNaN(val) || val<0){ showAlert('Enter a valid reference number.'); return; }
+    S.batchReferences[cat] = val;
+    safeSet('app:batchReferences', S.batchReferences);
+    showToast('Reference saved');
+    renderBatchResult();
+  });
+  const editBtn = document.getElementById('editBatchRefBtn');
+  if(editBtn) editBtn.addEventListener('click', ()=>{
+    const editBox = document.getElementById('batchRefEditBox');
+    editBox.innerHTML = `<div class="field" style="margin-top:10px;"><label>New January 2026 reference</label><input id="batchRefInput2" type="number" min="0" value="${esc(String(S.batchReferences[cat]))}" /></div>
+    <button type="button" class="btn btn-primary btn-sm" id="confirmEditBatchRefBtn" style="width:100%;margin-top:6px;">Save</button>`;
+    document.getElementById('confirmEditBatchRefBtn').addEventListener('click', ()=>{
+      const val = parseInt(document.getElementById('batchRefInput2').value);
+      if(isNaN(val) || val<0){ showAlert('Enter a valid reference number.'); return; }
+      S.batchReferences[cat] = val;
+      safeSet('app:batchReferences', S.batchReferences);
+      showToast('Reference updated');
+      renderBatchResult();
+    });
   });
 }
 
