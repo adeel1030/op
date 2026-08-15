@@ -244,6 +244,7 @@
     position:absolute;top:-3px;right:-3px;background:var(--accent);color:var(--accent-ink);
     font-size:10px;font-weight:800;border-radius:20px;padding:1.5px 5.5px;min-width:16px;text-align:center;
     z-index:30;box-shadow:0 0 0 2px var(--primary-dark);line-height:1.5;
+    -webkit-text-size-adjust:100%;text-size-adjust:100%;
   }
   .bell .badge-pulse-new{animation:bellBadgePulse .4s cubic-bezier(.3,1.5,.5,1);}
   @keyframes bellBadgePulse{0%{transform:scale(0);}60%{transform:scale(1.25);}100%{transform:scale(1);}}
@@ -253,6 +254,7 @@
     position:absolute;top:-3px;right:-3px;background:#D8483B!important;color:#fff!important;
     font-size:10px;font-weight:800;border-radius:20px;padding:1.5px 5.5px;min-width:16px;text-align:center;
     z-index:30;box-shadow:0 0 0 2px #fff;line-height:1.5;
+    -webkit-text-size-adjust:100%;text-size-adjust:100%;
   }
   .notif-dot.pulse{animation:bellBadgePulse .4s cubic-bezier(.3,1.5,.5,1);}
   .bell-sm{width:30px;height:30px;font-size:13px;}
@@ -457,7 +459,10 @@
 /* ============================= PRODUCT CATALOG ============================= */
 /* ============================= BRANDING ============================= */
 const COMPANY_LOGO = "icon-512.png";
-const APP_BUILD = "2026-08-14-batchallcat1";
+const COMPANY_NAME = "M A Products INDIA";
+const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
+const COMPANY_GSTIN = "07EHRPK1709L2ZU";
+const APP_BUILD = "2026-08-14-security2";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -1135,9 +1140,9 @@ async function apiDeleteKeys(keys){
 
 function applyServerData(data){
   S.users = data.users || [];
-  S.orders = mergePartitionedEntity(data, 'orders').sort((a,b)=>a.createdAt-b.createdAt);
+  S.orders = mergePartitionedEntity(data, 'orders').filter(o=>o.createdAt >= Date.now()-60*24*60*60*1000).sort((a,b)=>a.createdAt-b.createdAt);
   S.customers = data.customers || [];
-  S.attendance = mergePartitionedEntity(data, 'attendance').sort((a,b)=>a.timestamp-b.timestamp);
+  S.attendance = mergePartitionedEntity(data, 'attendance').filter(a=>a.timestamp >= Date.now()-60*24*60*60*1000).sort((a,b)=>a.timestamp-b.timestamp);
   S.tasks = data.tasks || [];
   S.rawMaterial = data.rawMaterial || {};
   S.filledStock = data.filledStock || {};
@@ -1165,6 +1170,7 @@ function applyServerData(data){
   S.siteVisitLogs = mergePartitionedEntity(data, 'siteVisitLogs').filter(l=>l.at >= Date.now()-7*24*60*60*1000).sort((a,b)=>b.at-a.at);
   cleanupOldChatDays();
   cleanupOldLogDays();
+  cleanupOldBusinessData();
 }
 // Chat messages are only meant to live 7 days — reconcile the backend to
 // match (admin-only, mirrors how "Reset all data" already deletes
@@ -1182,6 +1188,21 @@ function cleanupOldLogDays(){
   const cutoff = localDateKey(Date.now() - 7*24*60*60*1000);
   const stale = [];
   ['trackingViewLogs','siteVisitLogs'].forEach(entity=>{
+    const seen = S._partitionKeysSeen[entity];
+    if(!seen || !seen.size) return;
+    [...seen].filter(dk=>dk < cutoff).forEach(dk=>stale.push(entity+'_'+dk));
+  });
+  if(stale.length) apiDeleteKeys(stale).catch(()=>{});
+}
+// Orders and attendance get a longer, 60-day window (they're real business
+// records, not just logs) before being cleared from the LIVE app — the
+// weekly Drive backup already has everything, so nothing is actually lost,
+// it just moves from "in the app" to "in that backup file" after 60 days.
+function cleanupOldBusinessData(){
+  if(!S.currentUser || S.currentUser.role!=='admin') return;
+  const cutoff = localDateKey(Date.now() - 60*24*60*60*1000);
+  const stale = [];
+  ['orders','attendance'].forEach(entity=>{
     const seen = S._partitionKeysSeen[entity];
     if(!seen || !seen.size) return;
     [...seen].filter(dk=>dk < cutoff).forEach(dk=>stale.push(entity+'_'+dk));
@@ -1308,8 +1329,46 @@ function startSessionExpiryWatch(){
     }catch(e){}
   }, 60000);
 }
-function findMatchingUser(username, password){
-  return S.users.find(u => u.username.toLowerCase() === username.trim().toLowerCase() && u.password === password) || null;
+// ---- Password hashing (Web Crypto API — built into every browser) ----
+// Passwords are never stored in plaintext going forward. Existing
+// plaintext passwords transparently upgrade to a salted hash the next
+// time that user logs in — no manual migration step needed.
+async function hashPassword(password, salt){
+  const enc = new TextEncoder();
+  const data = enc.encode(salt + '::' + password);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hashBuffer)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+function randomSalt(){
+  const arr = new Uint8Array(16);
+  crypto.getRandomValues(arr);
+  return Array.from(arr).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+async function setUserPassword(user, plainPassword){
+  const salt = randomSalt();
+  user.passwordHash = await hashPassword(plainPassword, salt);
+  user.passwordSalt = salt;
+  delete user.password; // plaintext never lingers once a hash exists
+}
+async function verifyPassword(user, enteredPassword){
+  if(user.passwordHash && user.passwordSalt){
+    return (await hashPassword(enteredPassword, user.passwordSalt)) === user.passwordHash;
+  }
+  // Legacy plaintext account, not yet migrated — compare directly this once.
+  return user.password === enteredPassword;
+}
+async function findMatchingUser(username, password){
+  const u = S.users.find(x => x.username.toLowerCase() === username.trim().toLowerCase());
+  if(!u) return null;
+  const valid = await verifyPassword(u, password);
+  if(!valid) return null;
+  if(!u.passwordHash){
+    // Transparent one-time upgrade: this successful login proves they know
+    // the real password, so it's safe to hash it now and drop the plaintext.
+    await setUserPassword(u, password);
+    safeSet('app:users', S.users);
+  }
+  return u;
 }
 function finalizeLogin(u){
   S.currentUser = u;
@@ -1845,7 +1904,7 @@ function bindLogin(){
     const u = document.getElementById('loginUser').value;
     const p = document.getElementById('loginPass').value;
     if(loadAllPromise) await loadAllPromise; // data may still be loading in the background — wait for it before checking credentials
-    const matched = findMatchingUser(u, p);
+    const matched = await findMatchingUser(u, p);
     if(matched){ loginError=''; startPostLoginSequence(matched); }
     else { loginSubmitting = false; startWrongLoginSequence(); }
   });
@@ -2341,7 +2400,7 @@ function renderDailyWork(){
   const expenseEntries = S.expenses.filter(e=>localDateKey(e.at)===date).sort((a,b)=>a.at-b.at);
   const totalExpense = expenseEntries.filter(e=>e.type!=='settlement').reduce((s,e)=>s+(e.amount||0),0);
   const retailEntries = S.retailSales.filter(e=>localDateKey(e.at)===date).sort((a,b)=>a.at-b.at);
-  const totalRetail = retailEntries.filter(e=>e.type==='sale').reduce((s,e)=>s+(e.amount||0),0);
+  const totalRetail = retailEntries.filter(e=>e.type==='sale').reduce((s,e)=>s+(e.totalAmount||0),0);
   const newOrderEntries = S.orders.filter(o=>localDateKey(o.createdAt)===date).sort((a,b)=>a.createdAt-b.createdAt);
   const totalOrderValue = newOrderEntries.reduce((s,o)=>s+orderMrpValue(o),0);
 
@@ -2397,8 +2456,8 @@ function renderDailyWork(){
   <div class="card">
     <h2>💵 Retail Sale &amp; Samples — ${retailEntries.length} entr${retailEntries.length===1?'y':'ies'}${totalRetail?` · ₹${totalRetail.toLocaleString('en-IN')}`:''}</h2>
     ${retailEntries.length===0?`<div class="empty">No retail sales or samples this day.</div>`:`
-    <table><thead><tr><th>Item</th><th>Qty</th><th>Type</th><th>Amount</th><th>By</th><th>Time</th><th></th></tr></thead><tbody>
-    ${retailEntries.map(e=>`<tr${e.booked?' style="opacity:0.55;"':''}><td>${esc(e.itemLabel)}</td><td class="mono">${e.qty} pc</td><td>${e.type==='sale'?'<span class="badge badge-approved">Sale</span>':'<span class="badge badge-pending">Sample</span>'}</td><td class="mono">${e.type==='sale'?'₹'+(e.amount||0).toLocaleString('en-IN'):'—'}</td><td>${esc(e.by)}</td><td class="mono">${fmtTime(e.at)}</td><td>${bookCell(e,'retailSales')}</td></tr>`).join('')}
+    <table><thead><tr><th>Items</th><th>Type</th><th>Total</th><th>By</th><th>Time</th><th></th></tr></thead><tbody>
+    ${retailEntries.map(e=>`<tr${e.booked?' style="opacity:0.55;"':''}><td>${(e.items||[]).map(i=>`${esc(i.itemLabel)} <span class="mono">×${i.qty}</span>`).join('<br/>')}</td><td>${e.type==='sale'?'<span class="badge badge-approved">Sale</span>':'<span class="badge badge-pending">Sample</span>'}</td><td class="mono">${e.type==='sale'?'₹'+(e.totalAmount||0).toLocaleString('en-IN'):'—'}</td><td>${esc(e.by)}</td><td class="mono">${fmtTime(e.at)}</td><td>${bookCell(e,'retailSales')}</td></tr>`).join('')}
     </tbody></table>`}
   </div>
 
@@ -2997,29 +3056,71 @@ async function exportMonthPdf(year, month0){
   const inMonth = ts => ts>=monthStart && ts<monthEnd;
   const monthLabel = new Date(year, month0, 1).toLocaleDateString(undefined,{month:'long', year:'numeric'});
 
-  const marginX = 40; let y = 50; const pageH = 800; const lineH = 14;
-  const ensure = (need)=>{ if(y+need>pageH){ doc.addPage(); y = 50; } };
-  const h1 = (t)=>{ ensure(30); doc.setFontSize(16); doc.setFont(undefined,'bold'); doc.text(t, marginX, y); y+=22; doc.setFont(undefined,'normal'); };
-  const h2 = (t)=>{ ensure(22); doc.setFontSize(12); doc.setFont(undefined,'bold'); doc.text(t, marginX, y); y+=16; doc.setFont(undefined,'normal'); };
-  const h3 = (t)=>{ ensure(18); doc.setFontSize(10.5); doc.setFont(undefined,'bold'); doc.text(t, marginX+6, y); y+=14; doc.setFont(undefined,'normal'); };
-  const line = (t)=>{ ensure(lineH); doc.setFontSize(9.5); doc.text(t, marginX+12, y); y+=lineH; };
+  // Brand palette pulled from the app's own theme, so the export actually
+  // looks like it belongs to the same product instead of a plain text dump.
+  const PRIMARY = [30,107,68], PRIMARY_DARK = [18,74,46], GOLD = [201,162,39];
+  const INK = [18,32,25], INK_SOFT = [84,99,88], BORDER = [220,232,223], PAPER = [241,247,243];
 
+  const marginX = 40, pageW = 595, pageH = 800, contentW = pageW - marginX*2;
+  const footerY = pageH - 26;
+  let y = 0;
+  const ensure = (need)=>{ if(y+need>footerY-10){ doc.addPage(); y = 54; } };
+  const h1 = (t)=>{
+    ensure(30);
+    doc.setFillColor(...PRIMARY); doc.rect(marginX, y-15, contentW, 24, 'F');
+    doc.setFontSize(12); doc.setFont(undefined,'bold'); doc.setTextColor(255,255,255);
+    doc.text(t.toUpperCase(), marginX+10, y+1);
+    y += 28;
+    doc.setTextColor(...INK); doc.setFont(undefined,'normal');
+  };
+  const h2 = (t)=>{
+    ensure(20);
+    doc.setFontSize(10.5); doc.setFont(undefined,'bold'); doc.setTextColor(...PRIMARY_DARK);
+    doc.text(t, marginX, y);
+    doc.setDrawColor(...BORDER); doc.setLineWidth(0.6);
+    doc.line(marginX, y+4, pageW-marginX, y+4);
+    y += 17;
+    doc.setTextColor(...INK); doc.setFont(undefined,'normal');
+  };
+  const h3 = (t)=>{
+    ensure(16);
+    doc.setFontSize(9.5); doc.setFont(undefined,'bold'); doc.setTextColor(...INK);
+    doc.text(t, marginX+4, y);
+    y += 13;
+    doc.setFont(undefined,'normal');
+  };
+  const line = (t)=>{
+    ensure(12);
+    doc.setFontSize(9); doc.setTextColor(...INK_SOFT);
+    doc.text(t, marginX+16, y);
+    y += 12;
+    doc.setTextColor(...INK);
+  };
+  const emptyNote = (t)=>{ ensure(14); doc.setFontSize(9); doc.setFont(undefined,'italic'); doc.setTextColor(...INK_SOFT); doc.text(t, marginX+4, y); y+=16; doc.setFont(undefined,'normal'); doc.setTextColor(...INK); };
+
+  // ---- Header block: colored band, logo + company name/address/GSTIN, report title ----
+  doc.setFillColor(...PAPER); doc.rect(0, 0, pageW, 92, 'F');
+  doc.setFillColor(...GOLD); doc.rect(0, 90, pageW, 2, 'F');
   let textX = marginX;
   try{
     const logoData = await loadImageAsDataURL(COMPANY_LOGO);
-    doc.addImage(logoData, 'PNG', marginX, y-14, 34, 34);
-    textX = marginX + 44;
+    doc.addImage(logoData, 'PNG', marginX, 18, 46, 46);
+    textX = marginX + 58;
   }catch(e){ /* logo couldn't load (e.g. CORS/offline) — skip it, export continues without it */ }
-
-  doc.setFontSize(18); doc.setFont(undefined,'bold');
-  doc.text('M A Products INDIA', textX, y); y+=22;
-  doc.setFontSize(11); doc.setFont(undefined,'normal');
-  doc.text(`Order Management System — Data export: ${monthLabel}`, marginX, y); y+=26;
+  doc.setFontSize(17); doc.setFont(undefined,'bold'); doc.setTextColor(...PRIMARY_DARK);
+  doc.text(COMPANY_NAME, textX, 34);
+  doc.setFontSize(9); doc.setFont(undefined,'normal'); doc.setTextColor(...INK_SOFT);
+  doc.text(COMPANY_ADDRESS, textX, 48);
+  doc.text(`GSTIN: ${COMPANY_GSTIN}`, textX, 60);
+  doc.setFontSize(10.5); doc.setFont(undefined,'bold'); doc.setTextColor(...PRIMARY);
+  doc.text(`Monthly Report — ${monthLabel}`, textX, 78);
+  doc.setTextColor(...INK);
+  y = 116;
 
   // Orders
   h1('Orders');
   const orders = S.orders.filter(o=>inMonth(o.createdAt)).sort((a,b)=>a.createdAt-b.createdAt);
-  if(!orders.length) line('No orders this month.');
+  if(!orders.length) emptyNote('No orders this month.');
   groupByDate(orders.slice().sort((a,b)=>b.createdAt-a.createdAt), o=>o.createdAt).forEach(sec=>{
     h2(sec.heading);
     sec.items.forEach(o=>{
@@ -3027,46 +3128,71 @@ async function exportMonthPdf(year, month0){
       o.items.forEach(i=> line(`${i.name} ${i.size} × ${i.qty}`));
     });
   });
-  y += 8;
+  y += 6;
 
   // Activity log (purchases / filling / packaging)
   h1('Stock entries (purchase / filling / packaging)');
   const logs = S.activityLog.filter(e=>inMonth(e.at));
-  if(!logs.length) line('No stock entries this month.');
+  if(!logs.length) emptyNote('No stock entries this month.');
   groupByDate(logs.slice().sort((a,b)=>b.at-a.at), e=>e.at).forEach(sec=>{
     h2(sec.heading);
     sec.items.forEach(e=> line(`${activityLabel(e)} — ${activityAmount(e).replace(/<[^>]+>/g,'')} — by ${e.by} — ${fmtTime(e.at)}`));
   });
-  y += 8;
+  y += 6;
+
+  // Retail sale & samples
+  h1('Retail Sale & Samples');
+  const retail = S.retailSales.filter(x=>inMonth(x.at));
+  if(!retail.length) emptyNote('No retail sales or samples this month.');
+  groupByDate(retail.slice().sort((a,b)=>b.at-a.at), x=>x.at).forEach(sec=>{
+    h2(sec.heading);
+    sec.items.forEach(x=>{
+      const itemsText = (x.items||[]).map(i=>`${i.itemLabel} ×${i.qty}`).join(', ');
+      h3(`${x.type==='sale'?'Sale':'Sample'}${x.type==='sale'?' — ₹'+(x.totalAmount||0).toLocaleString('en-IN'):''} — by ${x.by} — ${fmtTime(x.at)}`);
+      line(itemsText);
+    });
+  });
+  y += 6;
 
   // Domino printing
   h1('Domino printing');
   const dom = S.dominoPrints.filter(x=>inMonth(x.at));
-  if(!dom.length) line('No entries this month.');
+  if(!dom.length) emptyNote('No entries this month.');
   groupByDate(dom.slice().sort((a,b)=>b.at-a.at), x=>x.at).forEach(sec=>{
     h2(sec.heading);
     sec.items.forEach(x=> line(`${x.impressions} impressions${x.note?' — '+x.note:''} — by ${x.by} — ${fmtTime(x.at)}`));
   });
-  y += 8;
+  y += 6;
 
   // Expenses & settlements
   h1('Expenses & settlements');
   const exps = S.expenses.filter(x=>inMonth(x.at));
-  if(!exps.length) line('No entries this month.');
+  if(!exps.length) emptyNote('No entries this month.');
   groupByDate(exps.slice().sort((a,b)=>b.at-a.at), x=>x.at).forEach(sec=>{
     h2(sec.heading);
     sec.items.forEach(x=> line(`${x.type==='settlement'?'Settled':'Expense'}: ₹${x.amount} — ${x.description||''} — ${x.byName} — ${fmtTime(x.at)}`));
   });
-  y += 8;
+  y += 6;
 
   // Attendance
   h1('Attendance');
   const att = S.attendance.filter(a=>inMonth(a.timestamp));
-  if(!att.length) line('No check-ins this month.');
+  if(!att.length) emptyNote('No check-ins this month.');
   groupByDate(att.slice().sort((a,b)=>b.timestamp-a.timestamp), a=>a.timestamp).forEach(sec=>{
     h2(sec.heading);
     sec.items.forEach(a=> line(`${a.name} — ${a.type} — ${fmtTime(a.timestamp)}${(a.lat||a.lng)?` — ${a.lat.toFixed(4)}, ${a.lng.toFixed(4)}`:''}`));
   });
+
+  // ---- Footer on every page: thin rule, company name, generated date, page numbers ----
+  const totalPages = doc.internal.getNumberOfPages();
+  for(let p=1; p<=totalPages; p++){
+    doc.setPage(p);
+    doc.setDrawColor(...BORDER); doc.setLineWidth(0.6);
+    doc.line(marginX, footerY-8, pageW-marginX, footerY-8);
+    doc.setFontSize(7.5); doc.setFont(undefined,'normal'); doc.setTextColor(...INK_SOFT);
+    doc.text(`${COMPANY_NAME} — Order Ops export — generated ${fmtDate(Date.now())}`, marginX, footerY);
+    doc.text(`Page ${p} of ${totalPages}`, pageW-marginX, footerY, {align:'right'});
+  }
 
   const stamp = `${year}-${String(month0+1).padStart(2,'0')}`;
   doc.save(`MA-Products-OrderOps-${stamp}.pdf`);
@@ -3173,7 +3299,7 @@ function renderRetailSalesCard(){
   if(!canRetail) return '';
   const cutoff = Date.now() - 7*24*60*60*1000;
   const entries = S.retailSales.filter(e=>e.at>=cutoff).sort((a,b)=>b.at-a.at);
-  const totalAmount = entries.filter(e=>e.type==='sale').reduce((s,e)=>s+(e.amount||0),0);
+  const totalAmount = entries.filter(e=>e.type==='sale').reduce((s,e)=>s+(e.totalAmount||0),0);
   return `
   <div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
@@ -3181,8 +3307,8 @@ function renderRetailSalesCard(){
       <div class="row-actions"><button class="btn btn-outline btn-sm" id="retailSaleBtn">💵 Retail Sale</button><button class="btn btn-outline btn-sm" id="sampleBtn">🎁 Sample</button></div>
     </div>
     ${entries.length===0?`<div class="empty">No retail sales or samples in the last 7 days.</div>`:`
-    <table><thead><tr><th>Item</th><th>Qty</th><th>Type</th><th>Amount</th><th>Time</th></tr></thead><tbody>
-    ${entries.map(e=>`<tr><td>${esc(e.itemLabel)}</td><td class="mono">${e.qty} pc</td><td>${e.type==='sale'?'<span class="badge badge-approved">Sale</span>':'<span class="badge badge-pending">Sample</span>'}</td><td class="mono">${e.type==='sale'?'₹'+(e.amount||0).toLocaleString('en-IN'):'—'}</td><td class="mono">${fmtDate(e.at)} ${fmtTime(e.at)}</td></tr>`).join('')}
+    <table><thead><tr><th>Items</th><th>Type</th><th>Total</th><th>Time</th></tr></thead><tbody>
+    ${entries.map(e=>`<tr><td>${(e.items||[]).map(i=>`${esc(i.itemLabel)} <span class="mono">×${i.qty}</span>`).join('<br/>')}</td><td>${e.type==='sale'?'<span class="badge badge-approved">Sale</span>':'<span class="badge badge-pending">Sample</span>'}</td><td class="mono">${e.type==='sale'?'₹'+(e.totalAmount||0).toLocaleString('en-IN'):'—'}</td><td class="mono">${fmtDate(e.at)} ${fmtTime(e.at)}</td></tr>`).join('')}
     </tbody></table>
     <p class="desc" style="margin-top:8px;">Total cash sales (7 days): <b>₹${totalAmount.toLocaleString('en-IN')}</b></p>`}
   </div>`;
@@ -3666,7 +3792,39 @@ function renderCustomers(){
         </div>
       `).join('')}
     </div>`}
+  </div>
+  ${isAdmin?renderTransportsCard():''}`;
+}
+function renderTransportsCard(){
+  return `
+  <div class="card">
+    <div><h2>🚚 Transporters</h2><p class="desc">Edit only fixes spelling — it updates every existing order/customer using this name too.</p></div>
+    ${S.transports.length===0?`<div class="empty">No transporters yet — they get added automatically the first time one is typed on an order.</div>`:
+    S.transports.slice().sort((a,b)=>a.localeCompare(b)).map(t=>`
+      <div class="row-actions" style="justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);">
+        <div style="font-weight:600;font-size:13px;">${esc(t)}</div>
+        <div class="row-actions">
+          <button class="btn btn-sm btn-outline" data-edit-transport="${esc(t)}">Edit</button>
+          <button class="btn btn-sm btn-danger" data-del-transport="${esc(t)}">Delete</button>
+        </div>
+      </div>`).join('')}
   </div>`;
+}
+function renameTransportEverywhere(oldName, newName){
+  // Editing a transporter is only ever meant to fix a spelling mistake, so
+  // (unlike catalog renames, which involve real inventory-key migration)
+  // this simply retro-updates every place the old spelling was recorded —
+  // customers' preferred transport and every order's transportName.
+  S.transports = S.transports.map(t=>t===oldName?newName:t);
+  safeSet('app:transports', S.transports);
+  let customersChanged = false;
+  S.customers.forEach(c=>{
+    if(c.transport===oldName){ c.transport = newName; customersChanged = true; }
+  });
+  if(customersChanged) safeSet('app:customers', S.customers);
+  S.orders.forEach(o=>{
+    if(o.transportName===oldName){ o.transportName = newName; savePartitionForItem('orders', o); }
+  });
 }
 function bindCustomers(){
   document.getElementById('newCustBtn').addEventListener('click', ()=>openCustomerModal(null));
@@ -3677,6 +3835,24 @@ function bindCustomers(){
     if(!confirm('Delete this customer?')) return;
     S.customers = S.customers.filter(c=>c.id!==b.dataset.delCust);
     safeSet('app:customers', S.customers); render();
+  }));
+  document.querySelectorAll('[data-edit-transport]').forEach(b=>b.addEventListener('click', ()=>{
+    const oldName = b.dataset.editTransport;
+    const newName = prompt('Fix the spelling for this transporter:', oldName);
+    if(newName===null) return;
+    const trimmed = newName.trim();
+    if(!trimmed || trimmed===oldName) return;
+    renameTransportEverywhere(oldName, trimmed);
+    render();
+    showToast('Transporter renamed everywhere');
+  }));
+  document.querySelectorAll('[data-del-transport]').forEach(b=>b.addEventListener('click', ()=>{
+    const name = b.dataset.delTransport;
+    if(!confirm(`Remove "${name}" from the transporter list? Existing orders keep this name — this only stops it from being suggested for new ones.`)) return;
+    S.transports = S.transports.filter(t=>t!==name);
+    safeSet('app:transports', S.transports);
+    render();
+    showToast('Transporter removed');
   }));
 }
 function openCustomerModal(existingCust){
@@ -3938,10 +4114,10 @@ function openPermissionConfirm(role, viewChecked, entryChecked){
     closeModal(); render(); showToast(`${ROLES[role].label} permissions updated`);
   });
 }
-function resetAllDataExceptUsers(){
+async function resetAllDataExceptUsers(){
   const pwd = prompt("Enter your admin password to confirm — this wipes everything except Users:");
   if(pwd===null) return;
-  if(pwd !== S.currentUser.password){ showAlert('Incorrect password.'); return; }
+  if(!(await verifyPassword(S.currentUser, pwd))){ showAlert('Incorrect password.'); return; }
   if(!confirm('This will permanently erase ALL orders, customers, stock levels, expenses, logs, tasks, attendance, login history, and domino records. Users stay. This cannot be undone. Continue?')) return;
   // Every day-partition row we've ever seen for these entities needs to be
   // deleted on the backend too, or old days would silently reappear the
@@ -4031,7 +4207,7 @@ function openUserModal(id){
       </div>
       <div class="field"><label>Full name</label><input id="uName" value="${existing?esc(existing.name):''}" required /></div>
       <div class="field"><label>Username</label><input id="uUser" value="${existing?esc(existing.username):''}" required /></div>
-      <div class="field"><label>Password</label><input id="uPass" value="${existing?esc(existing.password):''}" required /></div>
+      <div class="field"><label>Password${existing?' (leave blank to keep unchanged)':''}</label><input id="uPass" type="password" autocomplete="new-password" placeholder="${existing?'••••••••':''}" ${existing?'':'required'} /></div>
       <div class="field"><label>Role / Team (controls access — see 🔐 Permission Manager)</label>
         <select id="uRole">
           ${Object.keys(ROLES).map(r=>`<option value="${r}" ${existing&&existing.role===r?'selected':''}>${ROLES[r].label}</option>`).join('')}
@@ -4071,7 +4247,7 @@ function openUserModal(id){
     e.preventDefault();
     const name = document.getElementById('uName').value.trim();
     const username = document.getElementById('uUser').value.trim();
-    const password = document.getElementById('uPass').value;
+    const newPassword = document.getElementById('uPass').value; // blank when editing means "keep unchanged"
     const role = document.getElementById('uRole').value;
     const post = document.getElementById('uPost').value.trim();
     const phone = document.getElementById('uPhone').value.trim();
@@ -4081,8 +4257,13 @@ function openUserModal(id){
       showAlert('That username is already taken.'); return;
     }
     const newRecord = existing
-      ? Object.assign({}, existing, {name, username, password, role, post, phone, address, photo})
-      : {id:uid(), name, username, password, role, post, phone, address, photo};
+      ? Object.assign({}, existing, {name, username, role, post, phone, address, photo})
+      : {id:uid(), name, username, role, post, phone, address, photo};
+    if(newPassword){
+      await setUserPassword(newRecord, newPassword); // hashes it, never stores plaintext
+    } else if(!existing){
+      showAlert('Password is required for a new user.'); return;
+    }
     const draftUsers = existing ? S.users.map(u=>u.id===existing.id ? newRecord : u) : [...S.users, newRecord];
     // The whole team is stored together in one backend cell (~50,000 char
     // limit) — photos are what can push it over. Check before saving rather
@@ -4881,50 +5062,54 @@ function renderBatchResult(){
 
 /* ============================= RETAIL SALE / SAMPLES ============================= */
 function openRetailModal(type){
-  // type: 'sale' (counter/cash sale, has an amount) | 'sample' (free, no amount)
+  // type: 'sale' (counter/cash sale, one combined total) | 'sample' (free, no amount)
   const isSale = type==='sale';
+  const availableItems = CATALOG_FLAT.filter(it => (S.readyStock[it.key]||0) > 0).sort((a,b)=>a.cat.localeCompare(b.cat)||a.ml-b.ml);
   showModal(`
     <h3>${isSale?'💵 Retail / Cash Sale':'🎁 Give Sample'}</h3>
-    <p class="desc" style="margin-top:-6px;">${isSale?'Sold directly from ready stock — deducted immediately.':'Given free from ready stock — deducted immediately.'}</p>
+    <p class="desc" style="margin-top:-6px;">${isSale?'Sold directly from ready stock — deducted immediately.':'Given free from ready stock — deducted immediately.'} Add a quantity for each item involved.</p>
     <form id="retailForm">
-      <div class="field"><label>Item (type to search)</label>${itemPickerHtml('retailItem', null)}</div>
-      <div class="field"><label>Quantity (pieces)</label><input id="retailQty" type="number" min="1" max="${MAX_PC_ENTRY}" value="1" /></div>
-      ${isSale?`<div class="field"><label>Amount received (₹)</label><input id="retailAmount" type="number" min="0" step="0.01" value="0" /></div>`:''}
+      <div style="max-height:280px;overflow-y:auto;margin-bottom:12px;">
+        ${availableItems.length===0?`<div class="empty">No ready stock available.</div>`:availableItems.map(it=>`
+          <div class="row-actions" style="justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);">
+            <div style="font-size:12.5px;flex:1;min-width:0;">
+              <div>${esc(it.name)} <span class="mono">${esc(it.size)}</span></div>
+              <div class="mono" style="font-size:10px;color:var(--ink-soft);">${S.readyStock[it.key]} pc available</div>
+            </div>
+            <input type="number" class="retail-item-qty" data-key="${it.key}" data-avail="${S.readyStock[it.key]}" min="0" max="${S.readyStock[it.key]}" value="0" style="width:66px;flex:0 0 auto;text-align:center;" />
+          </div>`).join('')}
+      </div>
+      ${isSale?`<div class="field"><label>Total Amount Received (₹)</label><input id="retailTotalAmount" type="number" min="0" step="0.01" value="0" /></div>`:''}
       <div class="modal-actions">
         <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
         <button type="submit" class="btn btn-primary">Record</button>
       </div>
     </form>
   `);
-  const itemSel = document.getElementById('retailItem');
-  // Auto-fill the amount from the item's MRP × qty when a sale item/qty is picked (still editable).
-  const autoFillAmount = ()=>{
-    if(!isSale) return;
-    const key = (resolveItemFromText(itemSel.value)||{}).key;
-    const it = findItem(key);
-    const qty = parseInt(document.getElementById('retailQty').value)||0;
-    const amountInput = document.getElementById('retailAmount');
-    if(it && qty>0 && amountInput) amountInput.value = (it.mrp*qty).toFixed(2);
-  };
-  itemSel.addEventListener('input', autoFillAmount);
-  itemSel.addEventListener('change', autoFillAmount);
-  document.getElementById('retailQty').addEventListener('input', autoFillAmount);
   document.getElementById('retailForm').addEventListener('submit', e=>{
     e.preventDefault();
-    const key = (resolveItemFromText(itemSel.value)||{}).key;
-    const it = findItem(key);
-    if(!it){ showAlert('Pick a valid item from the list.'); return; }
-    const qty = parseInt(document.getElementById('retailQty').value)||0;
-    if(qty<=0){ showAlert('Enter a quantity.'); return; }
-    if(qty>MAX_PC_ENTRY){ showAlert(`Max ${MAX_PC_ENTRY} pc per entry.`); return; }
-    const amount = isSale ? (parseFloat(document.getElementById('retailAmount').value)||0) : 0;
-    const readyAvail = S.readyStock[key]||0;
-    if(readyAvail < qty){
-      showAlert(`${it.name} ${it.size} — only ${readyAvail} pc in Ready stock, not enough for ${qty} pc.`);
-      return;
+    const picked = [];
+    document.querySelectorAll('.retail-item-qty').forEach(inp=>{
+      const qty = parseInt(inp.value)||0;
+      if(qty>0) picked.push({ key: inp.dataset.key, qty, avail: parseInt(inp.dataset.avail)||0 });
+    });
+    if(picked.length===0){ showAlert('Enter a quantity for at least one item.'); return; }
+    for(const p of picked){
+      if(p.qty > MAX_PC_ENTRY){ showAlert(`Max ${MAX_PC_ENTRY} pc per item.`); return; }
+      const currentAvail = S.readyStock[p.key]||0; // re-check live, not just the value captured when the modal opened
+      if(currentAvail < p.qty){
+        const it = findItem(p.key);
+        showAlert(`${it?it.name+' '+it.size:p.key} — only ${currentAvail} pc in Ready stock, not enough for ${p.qty} pc.`);
+        return;
+      }
     }
-    S.readyStock[key] = readyAvail - qty;
-    const entry = { id:uid(), type, key, itemLabel:`${it.name} ${it.size}`, qty, amount, by:S.currentUser.name, byUsername:S.currentUser.username, at:Date.now() };
+    const totalAmount = isSale ? (parseFloat(document.getElementById('retailTotalAmount').value)||0) : 0;
+    picked.forEach(p=>{ S.readyStock[p.key] = (S.readyStock[p.key]||0) - p.qty; });
+    const entry = {
+      id: uid(), type,
+      items: picked.map(p=>{ const it = findItem(p.key); return { key:p.key, itemLabel: it?`${it.name} ${it.size}`:p.key, qty:p.qty }; }),
+      totalAmount, by:S.currentUser.name, byUsername:S.currentUser.username, at:Date.now()
+    };
     S.retailSales.push(entry);
     safeSet('app:readyStock', S.readyStock);
     savePartitionForItem('retailSales', entry);
