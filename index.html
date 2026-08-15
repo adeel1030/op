@@ -462,7 +462,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-14-dailywork-merge1";
+const APP_BUILD = "2026-08-15-retailfix1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -1138,6 +1138,24 @@ async function apiDeleteKeys(keys){
   return res.json();
 }
 
+// Retail Sale/Samples originally stored one item directly on the entry
+// (key/itemLabel/qty/amount) before it became multi-item (items[]/
+// totalAmount). Old entries saved under that earlier format would otherwise
+// have no `items` array at all — every place that reads .items (display,
+// edit, delete) assumes it exists, so an un-normalized old entry shows up
+// blank and silently fails to edit or delete. Converting on load fixes
+// both at once, for any entry no matter how old.
+function normalizeRetailEntry(e){
+  if(e.items) return e; // already current format
+  if(e.key){
+    e.items = [{ key:e.key, itemLabel:e.itemLabel||e.key, qty:e.qty||0 }];
+    e.totalAmount = e.amount||0;
+  } else {
+    e.items = []; // truly malformed / unrecoverable — at least won't crash anything now
+    e.totalAmount = e.totalAmount||0;
+  }
+  return e;
+}
 function applyServerData(data){
   S.users = data.users || [];
   S.orders = mergePartitionedEntity(data, 'orders').filter(o=>o.createdAt >= Date.now()-60*24*60*60*1000).sort((a,b)=>a.createdAt-b.createdAt);
@@ -1155,7 +1173,7 @@ function applyServerData(data){
   S.dominoPrints = mergePartitionedEntity(data, 'dominoPrints').sort((a,b)=>a.at-b.at);
   S.loginLog = mergePartitionedEntity(data, 'loginLog').sort((a,b)=>a.at-b.at);
   S.chatMessages = mergePartitionedEntity(data, 'chatMessages').filter(m=>m.at >= Date.now()-7*24*60*60*1000).sort((a,b)=>a.at-b.at);
-  S.retailSales = mergePartitionedEntity(data, 'retailSales').sort((a,b)=>a.at-b.at);
+  S.retailSales = mergePartitionedEntity(data, 'retailSales').map(normalizeRetailEntry).sort((a,b)=>a.at-b.at);
   trackPartitionKeys(data);
   S.customRoles = data.customRoles || [];
   S.rolePermissions = data.rolePermissions || {};
@@ -3377,7 +3395,7 @@ function renderRetailSalesCard(){
     </div>
     ${entries.length===0?`<div class="empty">No retail sales or samples in the last 7 days.</div>`:`
     <table><thead><tr><th>Items</th><th>Type</th><th>Total</th><th>Time</th><th></th></tr></thead><tbody>
-    ${entries.map(e=>`<tr><td>${(e.items||[]).map(i=>`${esc(i.itemLabel)} <span class="mono">×${i.qty}</span>`).join('<br/>')}</td><td>${e.type==='sale'?'<span class="badge badge-approved">Sale</span>':'<span class="badge badge-pending">Sample</span>'}</td><td class="mono">${e.type==='sale'?'₹'+(e.totalAmount||0).toLocaleString('en-IN'):'—'}</td><td class="mono">${fmtDate(e.at)} ${fmtTime(e.at)}</td><td><button type="button" class="btn btn-sm btn-outline" data-edit-retail="${e.id}">Edit</button></td></tr>`).join('')}
+    ${entries.map(e=>`<tr><td>${(e.items||[]).map(i=>`${esc(i.itemLabel)} <span class="mono">×${i.qty}</span>`).join('<br/>')}</td><td>${e.type==='sale'?'<span class="badge badge-approved">Sale</span>':'<span class="badge badge-pending">Sample</span>'}</td><td class="mono">${e.type==='sale'?'₹'+(e.totalAmount||0).toLocaleString('en-IN'):'—'}</td><td class="mono">${fmtDate(e.at)}</td><td><button type="button" class="btn btn-sm btn-outline" data-edit-retail="${e.id}">Edit</button></td></tr>`).join('')}
     </tbody></table>
     <p class="desc" style="margin-top:8px;">Total cash sales (7 days): <b>₹${totalAmount.toLocaleString('en-IN')}</b></p>`}
   </div>`;
@@ -3447,7 +3465,7 @@ function openStatModal(key){
 function renderVisitLogList(logs){
   if(!logs.length) return `<div class="empty">No visits recorded (last 7 days).</div>`;
   return `<table><thead><tr><th>Location</th><th>Device</th><th>Time</th></tr></thead><tbody>
-    ${logs.map(l=>`<tr><td>${esc(l.location||'Unknown')}</td><td class="mono">${esc(l.device||'Unknown')}</td><td class="mono">${fmtDate(l.at)} ${fmtTime(l.at)}</td></tr>`).join('')}
+    ${logs.map(l=>`<tr><td>${esc(l.location||'Unknown')}</td><td class="mono">${esc(l.device||'Unknown')}</td><td class="mono">${fmtDate(l.at)}</td></tr>`).join('')}
   </tbody></table>`;
 }
 function openTrackingLogsModal(orderId){
@@ -4479,7 +4497,7 @@ function renderAnnouncementsTab(){
       const unread = !(m.readBy||[]).includes(myUsername);
       return `<div style="position:relative;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:8px;">
         ${unread?`<span class="notif-dot pulse" style="top:-6px;right:-6px;">●</span>`:''}
-        <div style="font-size:11px;color:var(--ink-soft);margin-bottom:3px;"><b>${esc(m.fromName)}</b> · ${fmtDate(m.at)} · ${fmtTime(m.at)}</div>
+        <div style="font-size:11px;color:var(--ink-soft);margin-bottom:3px;"><b>${esc(m.fromName)}</b> · ${fmtDate(m.at)}</div>
         <div style="font-size:13.5px;white-space:pre-wrap;">${esc(m.text)}</div>
       </div>`;
     }).join('')}
@@ -4871,7 +4889,7 @@ function renderStockLogModal(key, label){
   showModal(`<h3>📜 Stock Log — ${esc(label)}</h3><p class="desc" style="margin-top:-6px;">Last 7 days.</p>
     ${entries.length===0?`<div class="empty">No movements recorded (last 7 days).</div>`:`
     <table><thead><tr><th>Type</th><th>Change</th><th>Note</th><th>By</th><th>Time</th></tr></thead><tbody>
-    ${entries.map(m=>`<tr><td>${kindLabel[m.kind]||m.kind}</td><td class="mono ${m.delta>=0?'':'stockneg'}" style="${m.delta>=0?'color:var(--success);font-weight:800;':''}">${m.delta>=0?'+':''}${m.kind==='purchase'?fmtMl(Math.abs(m.delta)):Math.abs(m.delta)+' pc'}</td><td>${esc(m.note)}</td><td>${esc(m.by)}</td><td class="mono">${fmtDate(m.at)} ${fmtTime(m.at)}</td></tr>`).join('')}
+    ${entries.map(m=>`<tr><td>${kindLabel[m.kind]||m.kind}</td><td class="mono ${m.delta>=0?'':'stockneg'}" style="${m.delta>=0?'color:var(--success);font-weight:800;':''}">${m.delta>=0?'+':''}${m.kind==='purchase'?fmtMl(Math.abs(m.delta)):Math.abs(m.delta)+' pc'}</td><td>${esc(m.note)}</td><td>${esc(m.by)}</td><td class="mono">${fmtDate(m.at)}</td></tr>`).join('')}
     </tbody></table>`}
     <div class="modal-actions"><button type="button" class="btn btn-outline" id="cancelModal">Close</button></div>`);
 }
@@ -5181,7 +5199,7 @@ function openRetailModal(type, existingEntry){
   // type: 'sale' (counter/cash sale, one combined total) | 'sample' (free, no amount)
   // existingEntry: pass an existing retailSales record to EDIT it instead of creating a new one
   const isSale = type==='sale';
-  retailDraft = existingEntry ? existingEntry.items.map(x=>({key:x.key, name:findItem(x.key)?findItem(x.key).name:x.itemLabel, size:findItem(x.key)?findItem(x.key).size:'', qty:x.qty})) : [];
+  retailDraft = existingEntry ? (existingEntry.items||[]).map(x=>({key:x.key, name:findItem(x.key)?findItem(x.key).name:x.itemLabel, size:findItem(x.key)?findItem(x.key).size:'', qty:x.qty})) : [];
   showModal(`
     <h3>${existingEntry?'Edit ':''}${isSale?'💵 Retail / Cash Sale':'🎁 Give Sample'}</h3>
     <p class="desc" style="margin-top:-6px;">${isSale?'Sold directly from ready stock — deducted immediately.':'Given free from ready stock — deducted immediately.'}</p>
@@ -5217,7 +5235,7 @@ function openRetailModal(type, existingEntry){
     // When editing, this entry's OWN current quantities are already
     // deducted from readyStock — add them back in before checking
     // availability, since they'll be released and re-deducted below.
-    const ownQty = key => existingEntry ? (existingEntry.items.find(x=>x.key===key)?.qty||0) : 0;
+    const ownQty = key => existingEntry ? ((existingEntry.items||[]).find(x=>x.key===key)?.qty||0) : 0;
     for(const d of retailDraft){
       const currentAvail = (S.readyStock[d.key]||0) + ownQty(d.key);
       if(currentAvail < d.qty){
@@ -5226,7 +5244,7 @@ function openRetailModal(type, existingEntry){
       }
     }
     const totalAmount = isSale ? (parseFloat(document.getElementById('retailTotalAmount').value)||0) : 0;
-    if(existingEntry) existingEntry.items.forEach(d=>{ S.readyStock[d.key] = (S.readyStock[d.key]||0) + d.qty; logStockMovement(d.key, d.itemLabel, 'retail', d.qty, 'Retail entry edited — released for re-recording'); }); // release old
+    if(existingEntry) (existingEntry.items||[]).forEach(d=>{ S.readyStock[d.key] = (S.readyStock[d.key]||0) + d.qty; logStockMovement(d.key, d.itemLabel, 'retail', d.qty, 'Retail entry edited — released for re-recording'); }); // release old
     retailDraft.forEach(d=>{ S.readyStock[d.key] = (S.readyStock[d.key]||0) - d.qty; logStockMovement(d.key, `${d.name} ${d.size}`, 'retail', -d.qty, `${isSale?'Retail sale':'Sample given'}${existingEntry?' (edited)':''}`); }); // deduct new
     const entry = existingEntry || { id:uid(), type, by:S.currentUser.name, byUsername:S.currentUser.username, at:Date.now() };
     entry.items = retailDraft.map(d=>({ key:d.key, itemLabel:`${d.name} ${d.size}`, qty:d.qty }));
@@ -5266,7 +5284,7 @@ function toggleRetailBooked(id){
 function deleteRetailEntry(id){
   if(!confirm('Delete this entry? Ready stock will be credited back.')) return;
   const e = S.retailSales.find(x=>x.id===id); if(!e) return;
-  e.items.forEach(d=>{ S.readyStock[d.key] = (S.readyStock[d.key]||0) + d.qty; logStockMovement(d.key, d.itemLabel, 'retail', d.qty, 'Retail entry deleted — credited back'); });
+  (e.items||[]).forEach(d=>{ S.readyStock[d.key] = (S.readyStock[d.key]||0) + d.qty; logStockMovement(d.key, d.itemLabel, 'retail', d.qty, 'Retail entry deleted — credited back'); });
   safeSet('app:readyStock', S.readyStock);
   S.retailSales = S.retailSales.filter(x=>x.id!==id);
   savePartitionForItem('retailSales', e);
