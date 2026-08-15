@@ -462,7 +462,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-14-security2";
+const APP_BUILD = "2026-08-14-dailywork-merge1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -726,9 +726,9 @@ const S = {
   loaded:false,
   loadFailed:false,
   users:[], orders:[], customers:[], attendance:[], tasks:[], loginLog:[],
-  rawMaterial:{}, filledStock:{}, readyStock:{}, expenses:[], activityLog:[], stockTasks:[], dominoPrints:[], chatMessages:[], retailSales:[], trackingViewLogs:[], siteVisitLogs:[],
+  rawMaterial:{}, filledStock:{}, readyStock:{}, expenses:[], activityLog:[], stockTasks:[], dominoPrints:[], chatMessages:[], retailSales:[], trackingViewLogs:[], siteVisitLogs:[], stockMovementLog:[],
   lowStock:{raw:{}, filled:{}, ready:{}}, watchStock:{raw:{}, filled:{}, ready:{}}, rolePermissions:{}, customRoles:[], catalogItems:[], transports:[], dailyRecordMarks:{}, dailyWorkDate:null, batchReferences:{},
-  _partitionKeysSeen:{orders:new Set(), activityLog:new Set(), attendance:new Set(), expenses:new Set(), dominoPrints:new Set(), loginLog:new Set(), chatMessages:new Set(), retailSales:new Set(), trackingViewLogs:new Set(), siteVisitLogs:new Set()},
+  _partitionKeysSeen:{orders:new Set(), activityLog:new Set(), attendance:new Set(), expenses:new Set(), dominoPrints:new Set(), loginLog:new Set(), chatMessages:new Set(), retailSales:new Set(), trackingViewLogs:new Set(), siteVisitLogs:new Set(), stockMovementLog:new Set()},
   currentUser:null, view:'home', stockView:'raw', notifOpen:false, moreOpen:false, profileOpen:false, alertPanelOpen:null, toast:null,
   chatModalOpen:false, chatView:'announcements', chatActiveThread:null,
   postLoginPhase:null, pendingUser:null, postLoginLoadingStep:0,
@@ -740,7 +740,7 @@ const MAX_PC_ENTRY = 5000;   // max pieces in a single filling / packaging / ord
 const MAX_PURCHASE_L = 2000; // max liters in a single purchase entry
 
 const ROLES = {
-  admin:{label:'Admin', tabs:['home','orders','customers','stock','domino','tasks','expenses','dailywork','log','attendance','users']},
+  admin:{label:'Admin', tabs:['home','orders','customers','stock','domino','tasks','expenses','dailywork','attendance','users']},
   manager:{label:'Manager', tabs:['home','orders','stock','domino','tasks','expenses','checkin']},
   sales:{label:'Sales', tabs:['home','orders','customers','stock','tasks','checkin']},
   filling:{label:'Filling Team', tabs:['home','tasks','checkin','stock']},
@@ -1092,7 +1092,7 @@ function safeSet(oldKey, value){
 // backend as one row PER CALENDAR DAY ("orders_2026-08-10") instead of one
 // giant cell. This keeps every row comfortably under Sheets' ~50,000
 // character per-cell limit no matter how much history accumulates.
-const PARTITIONED_TS_FIELD = { orders:'createdAt', activityLog:'at', attendance:'timestamp', expenses:'at', dominoPrints:'at', loginLog:'at', chatMessages:'at', retailSales:'at', trackingViewLogs:'at', siteVisitLogs:'at' };
+const PARTITIONED_TS_FIELD = { orders:'createdAt', activityLog:'at', attendance:'timestamp', expenses:'at', dominoPrints:'at', loginLog:'at', chatMessages:'at', retailSales:'at', trackingViewLogs:'at', siteVisitLogs:'at', stockMovementLog:'at' };
 const PARTITIONED_ENTITIES = Object.keys(PARTITIONED_TS_FIELD);
 function mergePartitionedEntity(rawData, entity){
   const merged = [];
@@ -1168,6 +1168,7 @@ function applyServerData(data){
   S.batchReferences = data.batchReferences || {};
   S.trackingViewLogs = mergePartitionedEntity(data, 'trackingViewLogs').filter(l=>l.at >= Date.now()-7*24*60*60*1000).sort((a,b)=>b.at-a.at);
   S.siteVisitLogs = mergePartitionedEntity(data, 'siteVisitLogs').filter(l=>l.at >= Date.now()-7*24*60*60*1000).sort((a,b)=>b.at-a.at);
+  S.stockMovementLog = mergePartitionedEntity(data, 'stockMovementLog').filter(l=>l.at >= Date.now()-7*24*60*60*1000).sort((a,b)=>b.at-a.at);
   cleanupOldChatDays();
   cleanupOldLogDays();
   cleanupOldBusinessData();
@@ -1187,7 +1188,7 @@ function cleanupOldLogDays(){
   if(!S.currentUser || S.currentUser.role!=='admin') return;
   const cutoff = localDateKey(Date.now() - 7*24*60*60*1000);
   const stale = [];
-  ['trackingViewLogs','siteVisitLogs'].forEach(entity=>{
+  ['trackingViewLogs','siteVisitLogs','stockMovementLog'].forEach(entity=>{
     const seen = S._partitionKeysSeen[entity];
     if(!seen || !seen.size) return;
     [...seen].filter(dk=>dk < cutoff).forEach(dk=>stale.push(entity+'_'+dk));
@@ -1496,7 +1497,7 @@ function filterSortInventory(list, searchKey, valueFn, labelFn){
 function searchBarHtml(searchKey, placeholder){
   return `<div class="search-wrap"><input type="text" id="search_${searchKey}" placeholder="${esc(placeholder)}" value="${esc(S.search[searchKey]||'')}" /></div>`;
 }
-function bindSearchBar(searchKey){
+function bindSearchBar(searchKey, updateResultsFn){
   const el = document.getElementById('search_'+searchKey);
   if(!el) return;
   let t = null;
@@ -1504,8 +1505,12 @@ function bindSearchBar(searchKey){
     S.search[searchKey]=el.value;
     clearTimeout(t);
     t = setTimeout(()=>{
-      render();
-      setTimeout(()=>{ const e2=document.getElementById('search_'+searchKey); if(e2){ e2.focus(); e2.setSelectionRange(e2.value.length,e2.value.length); } },0);
+      if(updateResultsFn){
+        updateResultsFn(); // the search input's own DOM node is never touched — no focus loss, no keyboard flicker
+      } else {
+        render();
+        setTimeout(()=>{ const e2=document.getElementById('search_'+searchKey); if(e2){ e2.focus(); e2.setSelectionRange(e2.value.length,e2.value.length); } },0);
+      }
     }, 120);
   });
 }
@@ -1676,6 +1681,14 @@ function activityLabel(e){
 function activityAmount(e){
   if(e.kind==='purchase') return fmtMl(e.ml);
   return `${e.qty} pc`;
+}
+// Records a single stock movement for the per-item audit trail (admin-only,
+// 7-day retention). kind: 'purchase'|'filling'|'packaging'|'order'|'retail'|'adjust'.
+// delta is signed (+added, -deducted) so the log reads naturally either way.
+function logStockMovement(key, itemLabel, kind, delta, note){
+  const entry = { id:uid(), key, itemLabel, kind, delta, note: note||'', by:S.currentUser.name, byUsername:S.currentUser.username, at:Date.now() };
+  S.stockMovementLog.push(entry);
+  savePartitionForItem('stockMovementLog', entry);
 }
 function applyActivityForward(e){
   if(e.kind==='purchase'){ S.rawMaterial[e.cat] = (S.rawMaterial[e.cat]||0) + e.ml; }
@@ -2325,12 +2338,18 @@ function setOrderStatus(id, status){
     o.items.forEach(d=>{
       S.readyStock[d.key] = (S.readyStock[d.key]||0) - d.qty;
       if(S.readyStock[d.key] < 0) shortItems.push(`${d.name} ${d.size}`);
+      logStockMovement(d.key, `${d.name} ${d.size}`, 'order', -d.qty, `Order accepted — ${orderDisplayLabel(o)}`);
     });
     o.stockDeducted = true;
     safeSet('app:readyStock', S.readyStock);
   }
   if(status==='rejected' && o.stockDeducted){
-    o.items.forEach(d=>{ if(!d.cancelled) S.readyStock[d.key] = (S.readyStock[d.key]||0) + d.qty; });
+    o.items.forEach(d=>{
+      if(!d.cancelled){
+        S.readyStock[d.key] = (S.readyStock[d.key]||0) + d.qty;
+        logStockMovement(d.key, `${d.name} ${d.size}`, 'order', d.qty, `Order rejected — ${orderDisplayLabel(o)}`);
+      }
+    });
     o.stockDeducted = false;
     safeSet('app:readyStock', S.readyStock);
   }
@@ -2366,7 +2385,6 @@ function renderView(){
     case 'ready': return renderReady();
     case 'stock': return renderStock();
     case 'expenses': return renderExpenses();
-    case 'log': return renderLogView();
     case 'domino': return renderDomino();
     case 'dailywork': return renderDailyWork();
     default: return '';
@@ -2386,7 +2404,6 @@ function bindView(){
     case 'ready': return bindReady();
     case 'stock': return bindStock();
     case 'expenses': return bindExpenses();
-    case 'log': return bindLogView();
     case 'domino': return bindDomino();
     case 'dailywork': return bindDailyWork();
   }
@@ -2395,6 +2412,7 @@ function bindView(){
 /* ============================= DAILY WORK (admin — for updating external accounting) ============================= */
 function renderDailyWork(){
   const date = S.dailyWorkDate || localDateKey(Date.now());
+  const purchaseEntries = S.activityLog.filter(e=>e.kind==='purchase' && localDateKey(e.at)===date).sort((a,b)=>a.at-b.at);
   const fillingEntries = S.activityLog.filter(e=>e.kind==='filling' && localDateKey(e.at)===date).sort((a,b)=>a.at-b.at);
   const packagingEntries = S.activityLog.filter(e=>e.kind==='packaging' && localDateKey(e.at)===date).sort((a,b)=>a.at-b.at);
   const expenseEntries = S.expenses.filter(e=>localDateKey(e.at)===date).sort((a,b)=>a.at-b.at);
@@ -2404,21 +2422,39 @@ function renderDailyWork(){
   const newOrderEntries = S.orders.filter(o=>localDateKey(o.createdAt)===date).sort((a,b)=>a.createdAt-b.createdAt);
   const totalOrderValue = newOrderEntries.reduce((s,o)=>s+orderMrpValue(o),0);
 
-  const allEntries = [...fillingEntries, ...packagingEntries, ...expenseEntries, ...retailEntries, ...newOrderEntries];
+  const allEntries = [...purchaseEntries, ...fillingEntries, ...packagingEntries, ...expenseEntries, ...retailEntries, ...newOrderEntries];
   const bookedCount = allEntries.filter(e=>e.booked).length;
   const totalCount = allEntries.length;
 
-  const bookCell = (e, source)=> e.booked
+  // Unified action cell for every section: booked -> only Undo (Edit/Delete
+  // hidden, since a booked entry is meant to be locked once it's reflected
+  // in the accounting software); not booked -> Edit + Delete + Book.
+  // canDelete=false (New Orders) still gets Edit + Book, just never Delete
+  // — deleting an order is a bigger action (cancels it) done from
+  // Orders/Home's own Accept/Reject/Delete flow, not from here.
+  const actionCell = (e, source, canDelete)=> e.booked
     ? `<button type="button" class="btn btn-sm btn-outline" data-book="${source}|${e.id}">↩ Undo</button>`
-    : `<button type="button" class="btn btn-sm btn-accent" data-book="${source}|${e.id}">✅ Book</button>`;
+    : `<div class="row-actions" style="flex-wrap:wrap;gap:4px;">
+        <button type="button" class="btn btn-sm btn-outline" data-edit-entry="${source}|${e.id}">Edit</button>
+        ${canDelete?`<button type="button" class="btn btn-sm btn-danger" data-del-entry="${source}|${e.id}">Delete</button>`:''}
+        <button type="button" class="btn btn-sm btn-accent" data-book="${source}|${e.id}">✅ Book</button>
+      </div>`;
 
   return `
   <div class="card">
     <h2>📆 Daily Work</h2>
-    <p class="desc">Filling, packing, and expenses for the day — book each one as you update your accounting software.</p>
+    <p class="desc">Every entry for the day, in one place — book each as you update your accounting software. Editing or deleting stays available until it's booked.</p>
     <div class="field"><label>Date</label><input type="date" id="dwDateSel" value="${date}" max="${localDateKey(Date.now())}" /></div>
     ${totalCount>0 ? `<div style="background:${bookedCount===totalCount?'var(--success-bg)':'var(--bg)'};border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin:10px 0;font-size:12.5px;font-weight:700;">${bookedCount===totalCount?'✅':'📋'} ${bookedCount} of ${totalCount} entries booked</div>` : ''}
     ${(totalCount>0 && bookedCount<totalCount) ? `<button type="button" class="btn btn-outline" id="dwBookAllBtn" style="width:100%;">✅ Book all remaining (${totalCount-bookedCount})</button>` : ''}
+  </div>
+
+  <div class="card">
+    <h2>🛢️ Purchase — ${purchaseEntries.length} entr${purchaseEntries.length===1?'y':'ies'}</h2>
+    ${purchaseEntries.length===0?`<div class="empty">No purchases recorded this day.</div>`:`
+    <table><thead><tr><th>Category</th><th>Qty</th><th>By</th><th>Time</th><th></th></tr></thead><tbody>
+    ${purchaseEntries.map(e=>`<tr${e.booked?' style="opacity:0.55;"':''}><td>${esc(e.cat)}</td><td class="mono">${fmtMl(e.ml)}</td><td>${esc(e.by)}</td><td class="mono">${fmtTime(e.at)}</td><td>${actionCell(e,'activityLog',true)}</td></tr>`).join('')}
+    </tbody></table>`}
   </div>
 
   <div class="card">
@@ -2428,7 +2464,7 @@ function renderDailyWork(){
     ${fillingEntries.map(e=>{
       const it = findItem(e.key);
       const qtyDisplay = it && it.caseSize ? fmtCase(e.qty, it.caseSize) : `${e.qty} pc`;
-      return `<tr${e.booked?' style="opacity:0.55;"':''}><td>${esc(e.itemLabel)}</td><td class="mono">${qtyDisplay}</td><td>${esc(e.by)}</td><td class="mono">${fmtTime(e.at)}</td><td>${bookCell(e,'activityLog')}</td></tr>`;
+      return `<tr${e.booked?' style="opacity:0.55;"':''}><td>${esc(e.itemLabel)}</td><td class="mono">${qtyDisplay}</td><td>${esc(e.by)}</td><td class="mono">${fmtTime(e.at)}</td><td>${actionCell(e,'activityLog',true)}</td></tr>`;
     }).join('')}
     </tbody></table>`}
   </div>
@@ -2440,7 +2476,7 @@ function renderDailyWork(){
     ${packagingEntries.map(e=>{
       const it = findItem(e.key);
       const qtyDisplay = it && it.caseSize ? fmtCase(e.qty, it.caseSize) : `${e.qty} pc`;
-      return `<tr${e.booked?' style="opacity:0.55;"':''}><td>${esc(e.itemLabel)}${e.note?` <span class="mono">(${esc(e.note)})</span>`:''}</td><td class="mono">${qtyDisplay}</td><td>${esc(e.by)}</td><td class="mono">${fmtTime(e.at)}</td><td>${bookCell(e,'activityLog')}</td></tr>`;
+      return `<tr${e.booked?' style="opacity:0.55;"':''}><td>${esc(e.itemLabel)}${e.note?` <span class="mono">(${esc(e.note)})</span>`:''}</td><td class="mono">${qtyDisplay}</td><td>${esc(e.by)}</td><td class="mono">${fmtTime(e.at)}</td><td>${actionCell(e,'activityLog',true)}</td></tr>`;
     }).join('')}
     </tbody></table>`}
   </div>
@@ -2449,7 +2485,7 @@ function renderDailyWork(){
     <h2>💰 Expenses — ${expenseEntries.length} entr${expenseEntries.length===1?'y':'ies'}${totalExpense?` · ₹${totalExpense.toLocaleString('en-IN')}`:''}</h2>
     ${expenseEntries.length===0?`<div class="empty">No expenses recorded this day.</div>`:`
     <table><thead><tr><th>To</th><th>Description</th><th>Amount</th><th>Entered by</th><th>Time</th><th></th></tr></thead><tbody>
-    ${expenseEntries.map(e=>`<tr${e.booked?' style="opacity:0.55;"':''}><td><b>${esc(e.byName)}</b></td><td>${esc(e.description||e.category||'—')}</td><td class="mono">${e.type==='settlement'?'− ':''}₹${(e.amount||0).toLocaleString('en-IN')}</td><td>${esc(e.enteredByName||e.byName)}</td><td class="mono">${fmtTime(e.at)}</td><td>${bookCell(e,'expenses')}</td></tr>`).join('')}
+    ${expenseEntries.map(e=>`<tr${e.booked?' style="opacity:0.55;"':''}><td><b>${esc(e.byName)}</b></td><td>${esc(e.description||e.category||'—')}</td><td class="mono">${e.type==='settlement'?'− ':''}₹${(e.amount||0).toLocaleString('en-IN')}</td><td>${esc(e.enteredByName||e.byName)}</td><td class="mono">${fmtTime(e.at)}</td><td>${actionCell(e,'expenses',true)}</td></tr>`).join('')}
     </tbody></table>`}
   </div>
 
@@ -2457,17 +2493,42 @@ function renderDailyWork(){
     <h2>💵 Retail Sale &amp; Samples — ${retailEntries.length} entr${retailEntries.length===1?'y':'ies'}${totalRetail?` · ₹${totalRetail.toLocaleString('en-IN')}`:''}</h2>
     ${retailEntries.length===0?`<div class="empty">No retail sales or samples this day.</div>`:`
     <table><thead><tr><th>Items</th><th>Type</th><th>Total</th><th>By</th><th>Time</th><th></th></tr></thead><tbody>
-    ${retailEntries.map(e=>`<tr${e.booked?' style="opacity:0.55;"':''}><td>${(e.items||[]).map(i=>`${esc(i.itemLabel)} <span class="mono">×${i.qty}</span>`).join('<br/>')}</td><td>${e.type==='sale'?'<span class="badge badge-approved">Sale</span>':'<span class="badge badge-pending">Sample</span>'}</td><td class="mono">${e.type==='sale'?'₹'+(e.totalAmount||0).toLocaleString('en-IN'):'—'}</td><td>${esc(e.by)}</td><td class="mono">${fmtTime(e.at)}</td><td>${bookCell(e,'retailSales')}</td></tr>`).join('')}
+    ${retailEntries.map(e=>`<tr${e.booked?' style="opacity:0.55;"':''}><td>${(e.items||[]).map(i=>`${esc(i.itemLabel)} <span class="mono">×${i.qty}</span>`).join('<br/>')}</td><td>${e.type==='sale'?'<span class="badge badge-approved">Sale</span>':'<span class="badge badge-pending">Sample</span>'}</td><td class="mono">${e.type==='sale'?'₹'+(e.totalAmount||0).toLocaleString('en-IN'):'—'}</td><td>${esc(e.by)}</td><td class="mono">${fmtTime(e.at)}</td><td>${actionCell(e,'retailSales',true)}</td></tr>`).join('')}
     </tbody></table>`}
   </div>
 
   <div class="card">
     <h2>🛍️ New Orders — ${newOrderEntries.length} entr${newOrderEntries.length===1?'y':'ies'}${totalOrderValue?` · ₹${totalOrderValue.toLocaleString('en-IN')}`:''}</h2>
+    <p class="desc" style="margin-top:-6px;">Delete an order from Home/Orders' Accept · Reject · Delete flow, not from here.</p>
     ${newOrderEntries.length===0?`<div class="empty">No orders created this day.</div>`:`
     <table><thead><tr><th>Party</th><th>Items</th><th>MRP Value</th><th>By</th><th>Time</th><th></th></tr></thead><tbody>
-    ${newOrderEntries.map(o=>`<tr${o.booked?' style="opacity:0.55;"':''}><td>${esc(orderDisplayLabel(o))}</td><td>${o.items.filter(i=>!i.cancelled).map(i=>`${esc(i.name)} ${esc(i.size)} <span class="mono">×${i.qty}</span>`).join('<br/>')}</td><td class="mono">₹${orderMrpValue(o).toLocaleString('en-IN')}</td><td>${esc(o.createdBy)}</td><td class="mono">${fmtTime(o.createdAt)}</td><td>${bookCell(o,'orders')}</td></tr>`).join('')}
+    ${newOrderEntries.map(o=>`<tr${o.booked?' style="opacity:0.55;"':''}><td>${esc(orderDisplayLabel(o))}</td><td>${o.items.filter(i=>!i.cancelled).map(i=>`${esc(i.name)} ${esc(i.size)} <span class="mono">×${i.qty}</span>`).join('<br/>')}</td><td class="mono">₹${orderMrpValue(o).toLocaleString('en-IN')}</td><td>${esc(o.createdBy)}</td><td class="mono">${fmtTime(o.createdAt)}</td><td>${actionCell(o,'orders',false)}</td></tr>`).join('')}
     </tbody></table>`}
   </div>`;
+}
+function editDailyEntry(source, id){
+  if(source==='activityLog'){ const e = S.activityLog.find(x=>x.id===id); if(e) openEditLogModal(e); }
+  else if(source==='expenses'){ const e = S.expenses.find(x=>x.id===id); if(e) openExpenseModal(e, e.type||'expense', e.byUsername); }
+  else if(source==='retailSales'){ editRetailEntry(id); }
+  else if(source==='orders'){ const o = S.orders.find(x=>x.id===id); if(o) openOrderModal(o); }
+}
+function deleteDailyEntry(source, id){
+  if(source==='activityLog'){
+    if(!confirm('Delete this entry? Its stock effect will be reversed.')) return;
+    const e = S.activityLog.find(x=>x.id===id); if(!e) return;
+    revertActivity(e);
+    S.activityLog = S.activityLog.filter(x=>x.id!==id);
+    saveAfterActivityChange(e); render(); showToast('Entry deleted & stock reverted');
+  } else if(source==='expenses'){
+    if(!confirm('Delete this entry?')) return;
+    const item = S.expenses.find(x=>x.id===id);
+    S.expenses = S.expenses.filter(x=>x.id!==id);
+    if(item) savePartitionForItem('expenses', item);
+    render();
+  } else if(source==='retailSales'){
+    deleteRetailEntry(id);
+  }
+  // orders are intentionally NOT deletable from here -- see actionCell's canDelete=false above
 }
 function toggleEntryBooked(source, id){
   const list = source==='expenses' ? S.expenses : source==='retailSales' ? S.retailSales : source==='orders' ? S.orders : S.activityLog;
@@ -2484,10 +2545,18 @@ function bindDailyWork(){
     const [source, id] = b.dataset.book.split('|');
     toggleEntryBooked(source, id);
   }));
+  document.querySelectorAll('[data-edit-entry]').forEach(b=>b.addEventListener('click', ()=>{
+    const [source, id] = b.dataset.editEntry.split('|');
+    editDailyEntry(source, id);
+  }));
+  document.querySelectorAll('[data-del-entry]').forEach(b=>b.addEventListener('click', ()=>{
+    const [source, id] = b.dataset.delEntry.split('|');
+    deleteDailyEntry(source, id);
+  }));
   const bookAllBtn = document.getElementById('dwBookAllBtn');
   if(bookAllBtn) bookAllBtn.addEventListener('click', ()=>{
     const date = S.dailyWorkDate || localDateKey(Date.now());
-    S.activityLog.filter(e=>(e.kind==='filling'||e.kind==='packaging') && localDateKey(e.at)===date && !e.booked).forEach(e=>{ e.booked = true; savePartitionForItem('activityLog', e); });
+    S.activityLog.filter(e=>(e.kind==='purchase'||e.kind==='filling'||e.kind==='packaging') && localDateKey(e.at)===date && !e.booked).forEach(e=>{ e.booked = true; savePartitionForItem('activityLog', e); });
     S.expenses.filter(e=>localDateKey(e.at)===date && !e.booked).forEach(e=>{ e.booked = true; savePartitionForItem('expenses', e); });
     S.retailSales.filter(e=>localDateKey(e.at)===date && !e.booked).forEach(e=>{ e.booked = true; savePartitionForItem('retailSales', e); });
     S.orders.filter(o=>localDateKey(o.createdAt)===date && !o.booked).forEach(o=>{ o.booked = true; savePartitionForItem('orders', o); });
@@ -3307,8 +3376,8 @@ function renderRetailSalesCard(){
       <div class="row-actions"><button class="btn btn-outline btn-sm" id="retailSaleBtn">💵 Retail Sale</button><button class="btn btn-outline btn-sm" id="sampleBtn">🎁 Sample</button></div>
     </div>
     ${entries.length===0?`<div class="empty">No retail sales or samples in the last 7 days.</div>`:`
-    <table><thead><tr><th>Items</th><th>Type</th><th>Total</th><th>Time</th></tr></thead><tbody>
-    ${entries.map(e=>`<tr><td>${(e.items||[]).map(i=>`${esc(i.itemLabel)} <span class="mono">×${i.qty}</span>`).join('<br/>')}</td><td>${e.type==='sale'?'<span class="badge badge-approved">Sale</span>':'<span class="badge badge-pending">Sample</span>'}</td><td class="mono">${e.type==='sale'?'₹'+(e.totalAmount||0).toLocaleString('en-IN'):'—'}</td><td class="mono">${fmtDate(e.at)} ${fmtTime(e.at)}</td></tr>`).join('')}
+    <table><thead><tr><th>Items</th><th>Type</th><th>Total</th><th>Time</th><th></th></tr></thead><tbody>
+    ${entries.map(e=>`<tr><td>${(e.items||[]).map(i=>`${esc(i.itemLabel)} <span class="mono">×${i.qty}</span>`).join('<br/>')}</td><td>${e.type==='sale'?'<span class="badge badge-approved">Sale</span>':'<span class="badge badge-pending">Sample</span>'}</td><td class="mono">${e.type==='sale'?'₹'+(e.totalAmount||0).toLocaleString('en-IN'):'—'}</td><td class="mono">${fmtDate(e.at)} ${fmtTime(e.at)}</td><td><button type="button" class="btn btn-sm btn-outline" data-edit-retail="${e.id}">Edit</button></td></tr>`).join('')}
     </tbody></table>
     <p class="desc" style="margin-top:8px;">Total cash sales (7 days): <b>₹${totalAmount.toLocaleString('en-IN')}</b></p>`}
   </div>`;
@@ -3346,6 +3415,7 @@ function bindOrders(){
   if(sampleBtn) sampleBtn.addEventListener('click', ()=>openRetailModal('sample'));
   const siteVisitBtn = document.getElementById('siteVisitLogsBtn');
   if(siteVisitBtn) siteVisitBtn.addEventListener('click', openSiteVisitLogsModal);
+  document.querySelectorAll('[data-edit-retail]').forEach(b=>b.addEventListener('click', ()=>editRetailEntry(b.dataset.editRetail)));
   bindOrderRowActions();
 }
 function openStatModal(key){
@@ -4128,7 +4198,7 @@ async function resetAllDataExceptUsers(){
   });
   S.orders = []; S.customers = []; S.attendance = []; S.tasks = []; S.loginLog = [];
   S.rawMaterial = {}; S.filledStock = {}; S.readyStock = {};
-  S.expenses = []; S.activityLog = []; S.stockTasks = []; S.dominoPrints = []; S.chatMessages = []; S.retailSales = []; S.trackingViewLogs = []; S.siteVisitLogs = [];
+  S.expenses = []; S.activityLog = []; S.stockTasks = []; S.dominoPrints = []; S.chatMessages = []; S.retailSales = []; S.trackingViewLogs = []; S.siteVisitLogs = []; S.stockMovementLog = [];
   S.lowStock = {raw:{}, filled:{}, ready:{}};
   PARTITIONED_ENTITIES.forEach(entity=>{ S._partitionKeysSeen[entity] = new Set(); });
   offlineQueue = {}; persistOfflineQueue(); updateSyncStatusUI(); // don't let a stale queued save push old data back after reset
@@ -4465,7 +4535,7 @@ function renderThreadView(otherUsername){
       </div>`).join('')}
     </div>
     <div class="row-actions">
-      <input id="threadReplyInput" placeholder="Type a message…" style="flex:1;padding:9px 12px;border-radius:20px;border:1.5px solid var(--border);" />
+      <textarea id="threadReplyInput" placeholder="Type a message… (Enter to send, Shift+Enter for new line)" rows="1" style="flex:1;padding:9px 12px;border-radius:16px;border:1.5px solid var(--border);font-family:inherit;font-size:inherit;resize:none;max-height:100px;overflow-y:auto;"></textarea>
       <button type="button" class="btn btn-primary btn-sm" id="sendThreadReplyBtn">Send</button>
     </div>
   `;
@@ -4508,13 +4578,21 @@ function bindMessagesModal(){
   });
   const backBtn = document.getElementById('backToThreadsBtn');
   if(backBtn) backBtn.addEventListener('click', ()=>{ S.chatActiveThread = null; refreshMessagesModal(); });
-  const sendReplyBtn = document.getElementById('sendThreadReplyBtn');
-  if(sendReplyBtn) sendReplyBtn.addEventListener('click', ()=>{
+  const sendReply = ()=>{
     const input = document.getElementById('threadReplyInput');
     if(!input || !input.value.trim()) return;
     sendPersonalMessage(S.chatActiveThread, input.value);
     input.value = '';
     refreshMessagesModal();
+  };
+  const sendReplyBtn = document.getElementById('sendThreadReplyBtn');
+  if(sendReplyBtn) sendReplyBtn.addEventListener('click', sendReply);
+  const replyInput = document.getElementById('threadReplyInput');
+  if(replyInput) replyInput.addEventListener('keydown', (e)=>{
+    if(e.key==='Enter' && !e.shiftKey){
+      e.preventDefault(); // Enter sends; Shift+Enter still inserts a normal newline
+      sendReply();
+    }
   });
 }
 function refreshMessagesModal(){
@@ -4787,6 +4865,20 @@ function openTaskModal(existingTask){
 }
 
 /* ============================= RAW MATERIAL ============================= */
+function renderStockLogModal(key, label){
+  const entries = S.stockMovementLog.filter(m=>m.key===key).sort((a,b)=>b.at-a.at);
+  const kindLabel = {purchase:'🛢️ Purchase', filling:'🧴 Filling', packaging:'📦 Packaging', order:'🛍️ Order', retail:'💵 Retail/Sample', adjust:'✏️ Admin adjust'};
+  showModal(`<h3>📜 Stock Log — ${esc(label)}</h3><p class="desc" style="margin-top:-6px;">Last 7 days.</p>
+    ${entries.length===0?`<div class="empty">No movements recorded (last 7 days).</div>`:`
+    <table><thead><tr><th>Type</th><th>Change</th><th>Note</th><th>By</th><th>Time</th></tr></thead><tbody>
+    ${entries.map(m=>`<tr><td>${kindLabel[m.kind]||m.kind}</td><td class="mono ${m.delta>=0?'':'stockneg'}" style="${m.delta>=0?'color:var(--success);font-weight:800;':''}">${m.delta>=0?'+':''}${m.kind==='purchase'?fmtMl(Math.abs(m.delta)):Math.abs(m.delta)+' pc'}</td><td>${esc(m.note)}</td><td>${esc(m.by)}</td><td class="mono">${fmtDate(m.at)} ${fmtTime(m.at)}</td></tr>`).join('')}
+    </tbody></table>`}
+    <div class="modal-actions"><button type="button" class="btn btn-outline" id="cancelModal">Close</button></div>`);
+}
+function renderRawMaterialRows(){
+  const isAdmin = S.currentUser.role==='admin';
+  return filterSortInventory(RAW_CATEGORIES,'raw',c=>S.rawMaterial[c]||0,c=>c).map(cat=>{const v=S.rawMaterial[cat]||0; const th=S.lowStock.raw[cat]; const cls = v<0?'stockneg':(th && v<=th?'stocklow':''); return `<tr><td>${esc(cat)}</td><td class="mono ${cls}">${fmtMl(v)}</td>${isAdmin?`<td class="row-actions"><button class="btn btn-sm btn-outline" data-adjust-raw="${esc(cat)}">Adjust</button><button class="btn btn-sm btn-outline" data-lowalert-raw="${esc(cat)}">Low alert</button><button class="btn btn-sm btn-outline" data-stocklog-key="${esc(cat)}" data-stocklog-label="${esc(cat)}">📜 Log</button></td>`:''}</tr>`;}).join('');
+}
 function renderRawMaterial(){
   const alerts = getStockAlerts().raw;
   const isAdmin = S.currentUser.role==='admin';
@@ -4802,19 +4894,30 @@ function renderRawMaterial(){
     </div>
     ${alertBanner(alerts)}
     ${searchBarHtml('raw','Search category…')}
-    <table><thead><tr><th>Category</th><th>In stock</th>${isAdmin?'<th></th>':''}</tr></thead><tbody>
-    ${filterSortInventory(RAW_CATEGORIES,'raw',c=>S.rawMaterial[c]||0,c=>c).map(cat=>{const v=S.rawMaterial[cat]||0; const th=S.lowStock.raw[cat]; const cls = v<0?'stockneg':(th && v<=th?'stocklow':''); return `<tr><td>${esc(cat)}</td><td class="mono ${cls}">${fmtMl(v)}</td>${isAdmin?`<td class="row-actions"><button class="btn btn-sm btn-outline" data-adjust-raw="${esc(cat)}">Adjust</button><button class="btn btn-sm btn-outline" data-lowalert-raw="${esc(cat)}">Low alert</button></td>`:''}</tr>`;}).join('')}
-    </tbody></table>
+    <table><thead><tr><th>Category</th><th>In stock</th>${isAdmin?'<th></th>':''}</tr></thead><tbody id="stockRows_raw">${renderRawMaterialRows()}</tbody></table>
   </div>`;
+}
+function bindRawMaterialRows(){
+  document.querySelectorAll('[data-adjust-raw]').forEach(b=>b.addEventListener('click', ()=> openAdjustModal('raw', b.dataset.adjustRaw, S.rawMaterial[b.dataset.adjustRaw]||0, b.dataset.adjustRaw)));
+  document.querySelectorAll('[data-lowalert-raw]').forEach(b=>b.addEventListener('click', ()=> openLowAlertModal('raw', b.dataset.lowalertRaw, b.dataset.lowalertRaw, 'mL')));
+  document.querySelectorAll('[data-stocklog-key]').forEach(b=>b.addEventListener('click', ()=> renderStockLogModal(b.dataset.stocklogKey, b.dataset.stocklogLabel)));
 }
 function bindRawMaterial(){
   const pb = document.getElementById('recPurchaseBtn');
   if(pb) pb.addEventListener('click', openPurchaseModal);
   const bulkBtn = document.getElementById('bulkEditRawBtn');
   if(bulkBtn) bulkBtn.addEventListener('click', ()=>openBulkStockModal('raw'));
-  document.querySelectorAll('[data-adjust-raw]').forEach(b=>b.addEventListener('click', ()=> openAdjustModal('raw', b.dataset.adjustRaw, S.rawMaterial[b.dataset.adjustRaw]||0, b.dataset.adjustRaw)));
-  document.querySelectorAll('[data-lowalert-raw]').forEach(b=>b.addEventListener('click', ()=> openLowAlertModal('raw', b.dataset.lowalertRaw, b.dataset.lowalertRaw, 'mL')));
-  bindSearchBar('raw');
+  bindRawMaterialRows();
+  // Surgical update on search: only the table body's rows get replaced —
+  // the search input itself is never touched, so the DOM node keeping
+  // focus never gets destroyed/recreated. Rebuilding the whole page (the
+  // old behaviour) briefly closed and reopened the on-screen keyboard on
+  // every keystroke, since mobile browsers tie keyboard visibility to that
+  // specific focused node, not just "an element with the same id".
+  bindSearchBar('raw', ()=>{
+    const tbody = document.getElementById('stockRows_raw');
+    if(tbody){ tbody.innerHTML = renderRawMaterialRows(); bindRawMaterialRows(); }
+  });
 }
 function openPurchaseModal(){
   showModal(`
@@ -4842,6 +4945,7 @@ function openPurchaseModal(){
     S.rawMaterial[cat] = (S.rawMaterial[cat]||0) + ml;
     safeSet('app:rawMaterial', S.rawMaterial);
     logActivity({kind:'purchase', cat, ml});
+    logStockMovement(cat, cat, 'purchase', ml, 'Purchase recorded');
     syncStockTasksFromAlerts();
     closeModal(); render(); showToast('Purchase recorded');
   });
@@ -4879,6 +4983,7 @@ function openFillingModal(prefillKey, prefillQty){
     S.filledStock[key] = (S.filledStock[key]||0) + qty;
     Promise.all([safeSet('app:rawMaterial',S.rawMaterial), safeSet('app:filledStock',S.filledStock)]);
     logActivity({kind:'filling', key, itemLabel:`${it.name} ${it.size}`, qty, rawCat:it.rawCat, mlPer:it.ml});
+    logStockMovement(key, `${it.name} ${it.size}`, 'filling', qty, 'Filling recorded');
     completeStockTasksForItem('filled', key);
     syncStockTasksFromAlerts();
     closeModal(); render();
@@ -4887,6 +4992,10 @@ function openFillingModal(prefillKey, prefillQty){
 }
 
 /* ============================= FILLED STOCK ============================= */
+function renderFilledRows(){
+  const isAdmin = S.currentUser.role==='admin';
+  return filterSortInventory(CATALOG_FLAT,'filled',it=>S.filledStock[it.key]||0,it=>it.name+' '+it.size).map(it=>{const v=S.filledStock[it.key]||0; const th=S.lowStock.filled[it.key]; const cls = v<0?'stockneg':(th && v<=th?'stocklow':''); return `<tr><td>${esc(it.name)}</td><td class="mono">${esc(it.size)}</td><td class="mono ${cls}">${v} pc</td>${isAdmin?`<td class="row-actions"><button class="btn btn-sm btn-outline" data-adjust-filled="${it.key}">Adjust</button><button class="btn btn-sm btn-outline" data-lowalert-filled="${it.key}">Low alert</button><button class="btn btn-sm btn-outline" data-stocklog-key="${it.key}" data-stocklog-label="${esc(it.name+' '+it.size)}">📜 Log</button></td>`:''}</tr>`;}).join('');
+}
 function renderFilled(){
   const alerts = getStockAlerts().filled;
   const isAdmin = S.currentUser.role==='admin';
@@ -4901,19 +5010,24 @@ function renderFilled(){
     </div>
     ${alertBanner(alerts)}
     ${searchBarHtml('filled','Search item…')}
-    <table><thead><tr><th>Item</th><th>Size</th><th>In stock</th>${isAdmin?'<th></th>':''}</tr></thead><tbody>
-    ${filterSortInventory(CATALOG_FLAT,'filled',it=>S.filledStock[it.key]||0,it=>it.name+' '+it.size).map(it=>{const v=S.filledStock[it.key]||0; const th=S.lowStock.filled[it.key]; const cls = v<0?'stockneg':(th && v<=th?'stocklow':''); return `<tr><td>${esc(it.name)}</td><td class="mono">${esc(it.size)}</td><td class="mono ${cls}">${v} pc</td>${isAdmin?`<td class="row-actions"><button class="btn btn-sm btn-outline" data-adjust-filled="${it.key}">Adjust</button><button class="btn btn-sm btn-outline" data-lowalert-filled="${it.key}">Low alert</button></td>`:''}</tr>`;}).join('')}
-    </tbody></table>
+    <table><thead><tr><th>Item</th><th>Size</th><th>In stock</th>${isAdmin?'<th></th>':''}</tr></thead><tbody id="stockRows_filled">${renderFilledRows()}</tbody></table>
   </div>`;
+}
+function bindFilledRows(){
+  document.querySelectorAll('[data-adjust-filled]').forEach(b=>b.addEventListener('click', ()=>{ const it=findItem(b.dataset.adjustFilled); openAdjustModal('filled', b.dataset.adjustFilled, S.filledStock[b.dataset.adjustFilled]||0, `${it.name} ${it.size}`); }));
+  document.querySelectorAll('[data-lowalert-filled]').forEach(b=>b.addEventListener('click', ()=>{ const it=findItem(b.dataset.lowalertFilled); openLowAlertModal('filled', b.dataset.lowalertFilled, `${it.name} ${it.size}`, 'pc'); }));
+  document.querySelectorAll('[data-stocklog-key]').forEach(b=>b.addEventListener('click', ()=> renderStockLogModal(b.dataset.stocklogKey, b.dataset.stocklogLabel)));
 }
 function bindFilled(){
   const fb = document.getElementById('recFillingBtn');
   if(fb) fb.addEventListener('click', ()=>openFillingModal(null));
   const bulkBtnF = document.getElementById('bulkEditFilledBtn');
   if(bulkBtnF) bulkBtnF.addEventListener('click', ()=>openBulkStockModal('filled'));
-  document.querySelectorAll('[data-adjust-filled]').forEach(b=>b.addEventListener('click', ()=>{ const it=findItem(b.dataset.adjustFilled); openAdjustModal('filled', b.dataset.adjustFilled, S.filledStock[b.dataset.adjustFilled]||0, `${it.name} ${it.size}`); }));
-  document.querySelectorAll('[data-lowalert-filled]').forEach(b=>b.addEventListener('click', ()=>{ const it=findItem(b.dataset.lowalertFilled); openLowAlertModal('filled', b.dataset.lowalertFilled, `${it.name} ${it.size}`, 'pc'); }));
-  bindSearchBar('filled');
+  bindFilledRows();
+  bindSearchBar('filled', ()=>{
+    const tbody = document.getElementById('stockRows_filled');
+    if(tbody){ tbody.innerHTML = renderFilledRows(); bindFilledRows(); }
+  });
 }
 function openPackagingModal(prefillKey, prefillQty){
   const preIt = prefillKey ? findItem(prefillKey) : null;
@@ -4964,6 +5078,7 @@ function openPackagingModal(prefillKey, prefillQty){
     S.readyStock[key] = (S.readyStock[key]||0) + qty;
     Promise.all([safeSet('app:filledStock',S.filledStock), safeSet('app:readyStock',S.readyStock)]);
     logActivity({kind:'packaging', key, itemLabel: it?`${it.name} ${it.size}`:key, qty, note});
+    logStockMovement(key, it?`${it.name} ${it.size}`:key, 'packaging', qty, 'Packaging recorded');
     completeStockTasksForItem('ready', key);
     autoAdvanceOrders();
     syncStockTasksFromAlerts();
@@ -5061,62 +5176,85 @@ function renderBatchResult(){
 }
 
 /* ============================= RETAIL SALE / SAMPLES ============================= */
-function openRetailModal(type){
+let retailDraft = [];
+function openRetailModal(type, existingEntry){
   // type: 'sale' (counter/cash sale, one combined total) | 'sample' (free, no amount)
+  // existingEntry: pass an existing retailSales record to EDIT it instead of creating a new one
   const isSale = type==='sale';
-  const availableItems = CATALOG_FLAT.filter(it => (S.readyStock[it.key]||0) > 0).sort((a,b)=>a.cat.localeCompare(b.cat)||a.ml-b.ml);
+  retailDraft = existingEntry ? existingEntry.items.map(x=>({key:x.key, name:findItem(x.key)?findItem(x.key).name:x.itemLabel, size:findItem(x.key)?findItem(x.key).size:'', qty:x.qty})) : [];
   showModal(`
-    <h3>${isSale?'💵 Retail / Cash Sale':'🎁 Give Sample'}</h3>
-    <p class="desc" style="margin-top:-6px;">${isSale?'Sold directly from ready stock — deducted immediately.':'Given free from ready stock — deducted immediately.'} Add a quantity for each item involved.</p>
-    <form id="retailForm">
-      <div style="max-height:280px;overflow-y:auto;margin-bottom:12px;">
-        ${availableItems.length===0?`<div class="empty">No ready stock available.</div>`:availableItems.map(it=>`
-          <div class="row-actions" style="justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);">
-            <div style="font-size:12.5px;flex:1;min-width:0;">
-              <div>${esc(it.name)} <span class="mono">${esc(it.size)}</span></div>
-              <div class="mono" style="font-size:10px;color:var(--ink-soft);">${S.readyStock[it.key]} pc available</div>
-            </div>
-            <input type="number" class="retail-item-qty" data-key="${it.key}" data-avail="${S.readyStock[it.key]}" min="0" max="${S.readyStock[it.key]}" value="0" style="width:66px;flex:0 0 auto;text-align:center;" />
-          </div>`).join('')}
+    <h3>${existingEntry?'Edit ':''}${isSale?'💵 Retail / Cash Sale':'🎁 Give Sample'}</h3>
+    <p class="desc" style="margin-top:-6px;">${isSale?'Sold directly from ready stock — deducted immediately.':'Given free from ready stock — deducted immediately.'}</p>
+    <div class="field"><label>Add item (type to search)</label>${itemPickerHtml('retailItemSel', null)}</div>
+    <div class="field"><label>Quantity (pieces)</label>
+      <div style="display:flex;gap:6px;">
+        <input id="retailItemQty" type="number" min="0" max="${MAX_PC_ENTRY}" value="0" style="flex:2;" />
+        <button type="button" class="btn btn-accent btn-sm" id="addRetailItemBtn" style="flex:1;">Add</button>
       </div>
-      ${isSale?`<div class="field"><label>Total Amount Received (₹)</label><input id="retailTotalAmount" type="number" min="0" step="0.01" value="0" /></div>`:''}
-      <div class="modal-actions">
-        <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
-        <button type="submit" class="btn btn-primary">Record</button>
-      </div>
-    </form>
+    </div>
+    <div id="retailDraftList" style="margin:10px 0;"></div>
+    ${isSale?`<div class="field"><label>Total Amount Received (₹)</label><input id="retailTotalAmount" type="number" min="0" step="0.01" value="${existingEntry?existingEntry.totalAmount:0}" /></div>`:''}
+    <div class="modal-actions">
+      <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
+      <button type="button" class="btn btn-primary" id="submitRetailBtn">${existingEntry?'Save changes':'Record'}</button>
+    </div>
   `);
-  document.getElementById('retailForm').addEventListener('submit', e=>{
-    e.preventDefault();
-    const picked = [];
-    document.querySelectorAll('.retail-item-qty').forEach(inp=>{
-      const qty = parseInt(inp.value)||0;
-      if(qty>0) picked.push({ key: inp.dataset.key, qty, avail: parseInt(inp.dataset.avail)||0 });
-    });
-    if(picked.length===0){ showAlert('Enter a quantity for at least one item.'); return; }
-    for(const p of picked){
-      if(p.qty > MAX_PC_ENTRY){ showAlert(`Max ${MAX_PC_ENTRY} pc per item.`); return; }
-      const currentAvail = S.readyStock[p.key]||0; // re-check live, not just the value captured when the modal opened
-      if(currentAvail < p.qty){
-        const it = findItem(p.key);
-        showAlert(`${it?it.name+' '+it.size:p.key} — only ${currentAvail} pc in Ready stock, not enough for ${p.qty} pc.`);
+  renderRetailDraftList();
+  const itemSel = document.getElementById('retailItemSel');
+  document.getElementById('addRetailItemBtn').addEventListener('click', ()=>{
+    const it = resolveItemFromText(itemSel.value);
+    if(!it){ showAlert('Pick a valid item from the list.'); return; }
+    const qty = parseInt(document.getElementById('retailItemQty').value)||0;
+    if(qty<=0){ showAlert('Enter a quantity.'); return; }
+    if(qty>MAX_PC_ENTRY){ showAlert(`Max ${MAX_PC_ENTRY} pc per line item.`); return; }
+    const existing = retailDraft.find(d=>d.key===it.key);
+    if(existing) existing.qty += qty; else retailDraft.push({key:it.key, name:it.name, size:it.size, qty});
+    renderRetailDraftList();
+    itemSel.value=''; document.getElementById('retailItemQty').value='0';
+  });
+  document.getElementById('submitRetailBtn').addEventListener('click', ()=>{
+    if(retailDraft.length===0){ showAlert('Add at least one item.'); return; }
+    // When editing, this entry's OWN current quantities are already
+    // deducted from readyStock — add them back in before checking
+    // availability, since they'll be released and re-deducted below.
+    const ownQty = key => existingEntry ? (existingEntry.items.find(x=>x.key===key)?.qty||0) : 0;
+    for(const d of retailDraft){
+      const currentAvail = (S.readyStock[d.key]||0) + ownQty(d.key);
+      if(currentAvail < d.qty){
+        showAlert(`${d.name} ${d.size} — only ${currentAvail} pc available, not enough for ${d.qty} pc.`);
         return;
       }
     }
     const totalAmount = isSale ? (parseFloat(document.getElementById('retailTotalAmount').value)||0) : 0;
-    picked.forEach(p=>{ S.readyStock[p.key] = (S.readyStock[p.key]||0) - p.qty; });
-    const entry = {
-      id: uid(), type,
-      items: picked.map(p=>{ const it = findItem(p.key); return { key:p.key, itemLabel: it?`${it.name} ${it.size}`:p.key, qty:p.qty }; }),
-      totalAmount, by:S.currentUser.name, byUsername:S.currentUser.username, at:Date.now()
-    };
-    S.retailSales.push(entry);
+    if(existingEntry) existingEntry.items.forEach(d=>{ S.readyStock[d.key] = (S.readyStock[d.key]||0) + d.qty; logStockMovement(d.key, d.itemLabel, 'retail', d.qty, 'Retail entry edited — released for re-recording'); }); // release old
+    retailDraft.forEach(d=>{ S.readyStock[d.key] = (S.readyStock[d.key]||0) - d.qty; logStockMovement(d.key, `${d.name} ${d.size}`, 'retail', -d.qty, `${isSale?'Retail sale':'Sample given'}${existingEntry?' (edited)':''}`); }); // deduct new
+    const entry = existingEntry || { id:uid(), type, by:S.currentUser.name, byUsername:S.currentUser.username, at:Date.now() };
+    entry.items = retailDraft.map(d=>({ key:d.key, itemLabel:`${d.name} ${d.size}`, qty:d.qty }));
+    entry.totalAmount = totalAmount;
+    if(!existingEntry) S.retailSales.push(entry);
     safeSet('app:readyStock', S.readyStock);
     savePartitionForItem('retailSales', entry);
     syncStockTasksFromAlerts(); // this deduction can itself create/worsen a shortage
     closeModal(); render();
-    showToast(isSale?'Sale recorded':'Sample recorded');
+    showToast(existingEntry ? 'Updated' : (isSale?'Sale recorded':'Sample recorded'));
   });
+}
+function renderRetailDraftList(){
+  const el = document.getElementById('retailDraftList');
+  if(!el) return;
+  if(retailDraft.length===0){ el.innerHTML = `<div style="font-size:12.5px;color:var(--ink-soft);">No items added yet.</div>`; return; }
+  el.innerHTML = retailDraft.map((d,i)=>`
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:13.5px;">
+      <span>${esc(d.name)} ${esc(d.size)} <span class="mono">×${d.qty}</span></span>
+      <button type="button" class="btn btn-sm btn-outline" data-rm-retail-draft="${i}">✕</button>
+    </div>`).join('');
+  el.querySelectorAll('[data-rm-retail-draft]').forEach(b=>b.addEventListener('click', ()=>{
+    retailDraft.splice(parseInt(b.dataset.rmRetailDraft),1); renderRetailDraftList();
+  }));
+}
+function editRetailEntry(id){
+  const entry = S.retailSales.find(e=>e.id===id);
+  if(entry) openRetailModal(entry.type, entry);
 }
 function toggleRetailBooked(id){
   const e = S.retailSales.find(x=>x.id===id); if(!e) return;
@@ -5125,8 +5263,23 @@ function toggleRetailBooked(id){
   render();
   showToast(e.booked ? 'Booked ✅' : 'Unbooked');
 }
+function deleteRetailEntry(id){
+  if(!confirm('Delete this entry? Ready stock will be credited back.')) return;
+  const e = S.retailSales.find(x=>x.id===id); if(!e) return;
+  e.items.forEach(d=>{ S.readyStock[d.key] = (S.readyStock[d.key]||0) + d.qty; logStockMovement(d.key, d.itemLabel, 'retail', d.qty, 'Retail entry deleted — credited back'); });
+  safeSet('app:readyStock', S.readyStock);
+  S.retailSales = S.retailSales.filter(x=>x.id!==id);
+  savePartitionForItem('retailSales', e);
+  syncStockTasksFromAlerts();
+  render();
+  showToast('Entry deleted & stock credited back');
+}
 
 /* ============================= READY STOCK ============================= */
+function renderReadyRows(){
+  const isAdmin = S.currentUser.role==='admin';
+  return filterSortInventory(CATALOG_FLAT,'ready',it=>S.readyStock[it.key]||0,it=>it.name+' '+it.size).map(it=>{const v=S.readyStock[it.key]||0; const th=S.lowStock.ready[it.key]; const cls = v<0?'stockneg':(th && v<=th?'stocklow':''); return `<tr><td>${esc(it.name)}</td><td class="mono">${esc(it.size)}</td><td class="mono">₹${it.mrp}</td><td class="mono ${cls}">${fmtReadyDisplay(v,it.caseSize,it.pktSize)}</td>${isAdmin?`<td class="row-actions"><button class="btn btn-sm btn-outline" data-adjust-ready="${it.key}">Adjust</button><button class="btn btn-sm btn-outline" data-lowalert-ready="${it.key}">Low alert</button><button class="btn btn-sm btn-outline" data-stocklog-key="${it.key}" data-stocklog-label="${esc(it.name+' '+it.size)}">📜 Log</button></td>`:''}</tr>`;}).join('');
+}
 function renderReady(){
   const alerts = getStockAlerts().ready;
   const isAdmin = S.currentUser.role==='admin';
@@ -5141,19 +5294,24 @@ function renderReady(){
     </div>
     ${alertBanner(alerts)}
     ${searchBarHtml('ready','Search item…')}
-    <table><thead><tr><th>Item</th><th>Size</th><th>MRP</th><th>In stock</th>${isAdmin?'<th></th>':''}</tr></thead><tbody>
-    ${filterSortInventory(CATALOG_FLAT,'ready',it=>S.readyStock[it.key]||0,it=>it.name+' '+it.size).map(it=>{const v=S.readyStock[it.key]||0; const th=S.lowStock.ready[it.key]; const cls = v<0?'stockneg':(th && v<=th?'stocklow':''); return `<tr><td>${esc(it.name)}</td><td class="mono">${esc(it.size)}</td><td class="mono">₹${it.mrp}</td><td class="mono ${cls}">${fmtReadyDisplay(v,it.caseSize,it.pktSize)}</td>${isAdmin?`<td class="row-actions"><button class="btn btn-sm btn-outline" data-adjust-ready="${it.key}">Adjust</button><button class="btn btn-sm btn-outline" data-lowalert-ready="${it.key}">Low alert</button></td>`:''}</tr>`;}).join('')}
-    </tbody></table>
+    <table><thead><tr><th>Item</th><th>Size</th><th>MRP</th><th>In stock</th>${isAdmin?'<th></th>':''}</tr></thead><tbody id="stockRows_ready">${renderReadyRows()}</tbody></table>
   </div>`;
+}
+function bindReadyRows(){
+  document.querySelectorAll('[data-adjust-ready]').forEach(b=>b.addEventListener('click', ()=>{ const it=findItem(b.dataset.adjustReady); openAdjustModal('ready', b.dataset.adjustReady, S.readyStock[b.dataset.adjustReady]||0, `${it.name} ${it.size}`); }));
+  document.querySelectorAll('[data-lowalert-ready]').forEach(b=>b.addEventListener('click', ()=>{ const it=findItem(b.dataset.lowalertReady); openLowAlertModal('ready', b.dataset.lowalertReady, `${it.name} ${it.size}`, 'pc'); }));
+  document.querySelectorAll('[data-stocklog-key]').forEach(b=>b.addEventListener('click', ()=> renderStockLogModal(b.dataset.stocklogKey, b.dataset.stocklogLabel)));
 }
 function bindReady(){
   const rb = document.getElementById('recPackagingBtn');
   if(rb) rb.addEventListener('click', ()=>openPackagingModal(null));
   const bulkBtnR = document.getElementById('bulkEditReadyBtn');
   if(bulkBtnR) bulkBtnR.addEventListener('click', ()=>openBulkStockModal('ready'));
-  document.querySelectorAll('[data-adjust-ready]').forEach(b=>b.addEventListener('click', ()=>{ const it=findItem(b.dataset.adjustReady); openAdjustModal('ready', b.dataset.adjustReady, S.readyStock[b.dataset.adjustReady]||0, `${it.name} ${it.size}`); }));
-  document.querySelectorAll('[data-lowalert-ready]').forEach(b=>b.addEventListener('click', ()=>{ const it=findItem(b.dataset.lowalertReady); openLowAlertModal('ready', b.dataset.lowalertReady, `${it.name} ${it.size}`, 'pc'); }));
-  bindSearchBar('ready');
+  bindReadyRows();
+  bindSearchBar('ready', ()=>{
+    const tbody = document.getElementById('stockRows_ready');
+    if(tbody){ tbody.innerHTML = renderReadyRows(); bindReadyRows(); }
+  });
 }
 
 /* ============================= BULK STOCK EDIT (admin — update qty + low alert for many items at once) ============================= */
@@ -5265,10 +5423,12 @@ function openAdjustModal(kind, id, currentVal, label){
     const raw = parseFloat(document.getElementById('adjVal').value)||0;
     const val = isRaw ? raw*1000 : raw; // Liters -> mL for raw material
     let key;
+    const oldVal = kind==='raw' ? (S.rawMaterial[id]||0) : kind==='filled' ? (S.filledStock[id]||0) : (S.readyStock[id]||0);
     if(kind==='raw'){ S.rawMaterial[id]=val; key='app:rawMaterial'; }
     if(kind==='filled'){ S.filledStock[id]=val; key='app:filledStock'; }
     if(kind==='ready'){ S.readyStock[id]=val; key='app:readyStock'; }
     safeSet(key, kind==='raw'?S.rawMaterial:kind==='filled'?S.filledStock:S.readyStock);
+    if(val !== oldVal) logStockMovement(id, label, 'adjust', val-oldVal, 'Manually adjusted by admin');
     if(kind==='ready') autoAdvanceOrders();
     if(kind==='filled' || kind==='ready') syncStockTasksFromAlerts();
     closeModal(); render(); showToast('Updated');
@@ -5473,6 +5633,7 @@ function showAlert(message){
   overlay.querySelector('#appAlertOkBtn').addEventListener('click', close);
 }
 function showModal(innerHtml){
+  closeModal(); // never stack modals — opening a new one while one is already showing used to leave two overlays behind, needing two closes to get rid of both
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   overlay.id = 'modalOverlay';
