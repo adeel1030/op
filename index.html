@@ -462,7 +462,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-15-batchstamp1";
+const APP_BUILD = "2026-08-15-bugfixes1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -727,7 +727,7 @@ const S = {
   loadFailed:false,
   users:[], orders:[], customers:[], attendance:[], tasks:[], loginLog:[],
   rawMaterial:{}, filledStock:{}, readyStock:{}, expenses:[], activityLog:[], stockTasks:[], dominoPrints:[], chatMessages:[], retailSales:[], trackingViewLogs:[], siteVisitLogs:[], stockMovementLog:[],
-  lowStock:{raw:{}, filled:{}, ready:{}}, watchStock:{raw:{}, filled:{}, ready:{}}, rolePermissions:{}, customRoles:[], catalogItems:[], transports:[], dailyRecordMarks:{}, dailyWorkDate:null, batchReferences:{},
+  lowStock:{raw:{}, filled:{}, ready:{}}, watchStock:{raw:{}, filled:{}, ready:{}}, rolePermissions:{}, customRoles:[], catalogItems:[], transports:[], dailyRecordMarks:{}, dailyWorkDate:null, batchReferences:{}, holidays:{},
   _partitionKeysSeen:{orders:new Set(), activityLog:new Set(), attendance:new Set(), expenses:new Set(), dominoPrints:new Set(), loginLog:new Set(), chatMessages:new Set(), retailSales:new Set(), trackingViewLogs:new Set(), siteVisitLogs:new Set(), stockMovementLog:new Set()},
   currentUser:null, view:'home', stockView:'raw', notifOpen:false, moreOpen:false, profileOpen:false, alertPanelOpen:null, toast:null,
   chatModalOpen:false, chatView:'announcements', chatActiveThread:null,
@@ -812,13 +812,17 @@ const ENTRY_MODULES = [
   {key:'entry_purchase', label:'Record purchase (raw)'},
   {key:'entry_filling', label:'Record filling'},
   {key:'entry_packing', label:'Record packing'},
+  {key:'entry_domino', label:'Quick Action: Domino'},
+  {key:'entry_retail', label:'Quick Action: Retail Sale'},
+  {key:'entry_samples', label:'Quick Action: Samples'},
+  {key:'entry_batch', label:'Quick Action: Batch'},
 ];
 const DEFAULT_ENTRY_PERMS = {
-  admin:    {entry_order:true, entry_purchase:true, entry_filling:true, entry_packing:true},
-  manager:  {entry_order:true, entry_purchase:true, entry_filling:true, entry_packing:true},
-  sales:    {entry_order:true, entry_purchase:false, entry_filling:false, entry_packing:false},
-  filling:  {entry_order:false, entry_purchase:false, entry_filling:true, entry_packing:false},
-  packaging:{entry_order:false, entry_purchase:false, entry_filling:false, entry_packing:true},
+  admin:    {entry_order:true, entry_purchase:true, entry_filling:true, entry_packing:true, entry_domino:true, entry_retail:true, entry_samples:true, entry_batch:true},
+  manager:  {entry_order:true, entry_purchase:true, entry_filling:true, entry_packing:true, entry_domino:true, entry_retail:true, entry_samples:true, entry_batch:true},
+  sales:    {entry_order:true, entry_purchase:false, entry_filling:false, entry_packing:false, entry_domino:false, entry_retail:false, entry_samples:false, entry_batch:false},
+  filling:  {entry_order:false, entry_purchase:false, entry_filling:true, entry_packing:false, entry_domino:false, entry_retail:false, entry_samples:false, entry_batch:false},
+  packaging:{entry_order:false, entry_purchase:false, entry_filling:false, entry_packing:true, entry_domino:true, entry_retail:false, entry_samples:false, entry_batch:false},
 };
 function canDoEntry(role, key){
   if(role==='admin') return true;
@@ -871,6 +875,12 @@ function groupByDate(list, atFn){
 }
 function dateGroupHeaderHtml(h){
   return `<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;color:var(--ink-soft);margin:14px 0 6px;padding-left:2px;">${esc(h)}</div>`;
+}
+function isSundayDateKey(dk){
+  return new Date(dk+'T12:00:00').getDay() === 0; // noon avoids any DST/timezone edge landing on the wrong day
+}
+function holidayLabelFor(dk){
+  return S.holidays[dk] ? S.holidays[dk].label : null;
 }
 function localDateKey(ts){
   const d = new Date(ts);
@@ -1184,6 +1194,7 @@ function applyServerData(data){
   S.transports = data.transports || [];
   S.dailyRecordMarks = data.dailyRecordMarks || {};
   S.batchReferences = data.batchReferences || {};
+  S.holidays = data.holidays || {};
   S.trackingViewLogs = mergePartitionedEntity(data, 'trackingViewLogs').filter(l=>l.at >= Date.now()-7*24*60*60*1000).sort((a,b)=>b.at-a.at);
   S.siteVisitLogs = mergePartitionedEntity(data, 'siteVisitLogs').filter(l=>l.at >= Date.now()-7*24*60*60*1000).sort((a,b)=>b.at-a.at);
   S.stockMovementLog = mergePartitionedEntity(data, 'stockMovementLog').filter(l=>l.at >= Date.now()-7*24*60*60*1000).sort((a,b)=>b.at-a.at);
@@ -4476,12 +4487,10 @@ function quickActionIcons(role){
   if(canDoEntry(role, 'entry_purchase')) icons.push({key:'purchase', ico:'🛢️', color:'green', lbl:'Purchase', sub:'Buy raw material'});
   if(canDoEntry(role, 'entry_filling')) icons.push({key:'filling', ico:'🧴', color:'blue', lbl:'Filling', sub:'Fill products'});
   if(canDoEntry(role, 'entry_packing')) icons.push({key:'packing', ico:'📦', color:'orange', lbl:'Packing', sub:'Pack products'});
-  if(role==='admin' || role==='manager' || role==='packaging') icons.push({key:'domino', ico:'🖨️', color:'purple', lbl:'Domino', sub:'Log printing'});
-  if(role==='admin' || role==='manager'){
-    icons.push({key:'retailsale', ico:'💵', color:'green', lbl:'Retail Sale', sub:'Cash sale from ready stock'});
-    icons.push({key:'samples', ico:'🎁', color:'orange', lbl:'Samples', sub:'Give sample from ready stock'});
-    icons.push({key:'batch', ico:'🏷️', color:'purple', lbl:'Batch', sub:"This month's batch number"});
-  }
+  if(canDoEntry(role, 'entry_domino')) icons.push({key:'domino', ico:'🖨️', color:'purple', lbl:'Domino', sub:'Log printing'});
+  if(canDoEntry(role, 'entry_retail')) icons.push({key:'retailsale', ico:'💵', color:'green', lbl:'Retail Sale', sub:'Cash sale from ready stock'});
+  if(canDoEntry(role, 'entry_samples')) icons.push({key:'samples', ico:'🎁', color:'orange', lbl:'Samples', sub:'Give sample from ready stock'});
+  if(canDoEntry(role, 'entry_batch')) icons.push({key:'batch', ico:'🏷️', color:'purple', lbl:'Batch', sub:"This month's batch number"});
   const unread = unreadMessageCount();
   icons.push({key:'messages', ico:'💬', color:'blue', lbl:'Messages', sub:'Announcements & chat', badge: unread>0 ? unread : null});
   const tileHtml = i=>`<div class="qa-tile" data-quick-action="${i.key}"><div class="icon-badge ${i.color}" style="position:relative;overflow:visible;"><span style="position:relative;z-index:1;">${i.ico}</span>${i.badge?`<span class="notif-dot pulse">${i.badge}</span>`:''}</div><div class="title">${esc(i.lbl)}</div><div class="sub">${esc(i.sub)}</div></div>`;
@@ -5515,10 +5524,13 @@ function openAdjustModal(kind, id, currentVal, label){
 /* ============================= CHECK IN/OUT (field roles) ============================= */
 function hasMarkedPresentToday(username){
   const today = localDateKey(Date.now());
-  return S.attendance.some(a=>a.username===username && localDateKey(a.timestamp)===today);
+  return S.attendance.some(a=>a.username===username && a.type==='present' && localDateKey(a.timestamp)===today);
 }
 function renderCheckin(){
   const already = hasMarkedPresentToday(S.currentUser.username);
+  const todayKey = localDateKey(Date.now());
+  const isSunday = isSundayDateKey(todayKey);
+  const holidayLabel = holidayLabelFor(todayKey);
   const mine = S.attendance.filter(a=>a.username===S.currentUser.username).sort((a,b)=>b.timestamp-a.timestamp);
   const isFileProtocol = location.protocol === 'file:';
   const insecure = typeof window.isSecureContext !== 'undefined' && !window.isSecureContext;
@@ -5527,10 +5539,14 @@ function renderCheckin(){
     : insecure ? `<div class="alert-banner" style="margin-bottom:12px;"><b>⚠ Location won't work here</b>This page needs to be opened over <b>https://</b> for GPS to work. Ask whoever hosts this app to switch it to HTTPS.</div>` : ''}
   <div class="card" style="text-align:center;padding:30px 18px;">
     <div style="font-size:13px;color:var(--ink-soft);margin-bottom:10px;">Today</div>
-    ${already ? `
+    ${(isSunday || holidayLabel) ? `
+      <div style="font-size:20px;font-weight:800;color:var(--ink-soft);margin-bottom:4px;">🏖️ ${holidayLabel ? `Holiday — ${esc(holidayLabel)}` : 'Week Off (Sunday)'}</div>
+      <p class="desc" style="margin:6px 0 0;">No attendance needed today.</p>
+    ` : already ? `
       <div style="font-size:20px;font-weight:800;color:var(--success);margin-bottom:4px;">✅ Marked present today</div>
       <p class="desc" style="margin:6px 0 0;">You can mark attendance again tomorrow.</p>
     ` : `
+      ${S.currentUser.role==='sales' ? `<div class="field" style="text-align:left;margin-bottom:12px;"><label>Field Location — where are you going for marketing today?</label><input id="fieldLocationInput" placeholder="e.g. Karol Bagh market, Chandni Chowk" required /></div>` : ''}
       <button class="btn btn-primary" id="checkBtn" style="padding:14px 30px;font-size:15px;width:auto;" ${isFileProtocol?'disabled':''}>📍 Mark present</button>
       <div id="geoMsg" class="mono" style="font-size:11.5px;color:var(--ink-soft);margin-top:10px;"></div>
     `}
@@ -5547,10 +5563,10 @@ function renderCheckin(){
     </tbody></table>`}
   </div>`;
 }
-function recordPresent(lat, lng, note){
+function recordPresent(lat, lng, note, fieldLocation){
   const entry = {
     id: uid(), username: S.currentUser.username, name: S.currentUser.name, type:'present',
-    lat: lat, lng: lng, timestamp: Date.now(), note: note||''
+    lat: lat, lng: lng, timestamp: Date.now(), note: note||'', fieldLocation: fieldLocation||''
   };
   S.attendance.push(entry);
   savePartitionForItem('attendance', entry);
@@ -5562,46 +5578,52 @@ function bindCheckin(){
   const attemptGetPosition = (opts)=> new Promise((resolve,reject)=>{
     navigator.geolocation.getCurrentPosition(resolve, reject, opts);
   });
-  const requestLocation = async (msg)=>{
+  const requestLocation = async (msg, fieldLocation)=>{
     // Try a precise GPS fix first; if that fails or times out, retry once
     // with a coarser network/wifi-based fix — this alone recovers location
     // for a lot of indoor/cold-GPS cases that would otherwise fail outright.
     try{
       if(msg) msg.textContent = 'Getting a precise GPS fix…';
       const pos = await attemptGetPosition({enableHighAccuracy:true, timeout:18000, maximumAge:0});
-      recordPresent(pos.coords.latitude, pos.coords.longitude, '');
+      recordPresent(pos.coords.latitude, pos.coords.longitude, '', fieldLocation);
       return;
     }catch(err1){
       if(err1 && err1.code===1){ // permission denied — no point retrying
         if(msg) msg.textContent = 'Location permission denied. Marked present without location.';
-        recordPresent(0, 0, 'geo-error-1');
+        recordPresent(0, 0, 'geo-error-1', fieldLocation);
         return;
       }
       if(msg) msg.textContent = 'Retrying with a faster, lower-accuracy fix…';
       try{
         const pos = await attemptGetPosition({enableHighAccuracy:false, timeout:12000, maximumAge:30000});
-        recordPresent(pos.coords.latitude, pos.coords.longitude, '');
+        recordPresent(pos.coords.latitude, pos.coords.longitude, '', fieldLocation);
         return;
       }catch(err2){
         const reason = err2 && err2.code===1 ? 'Location permission denied.' : err2 && err2.code===2 ? "GPS/location seems off — check phone Location settings." : 'Location timed out.';
         if(msg) msg.textContent = `${reason} Marked present without location.`;
-        recordPresent(0, 0, 'geo-error-'+(err2&&err2.code));
+        recordPresent(0, 0, 'geo-error-'+(err2&&err2.code), fieldLocation);
       }
     }
   };
   btn.addEventListener('click', ()=>{
     const msg = document.getElementById('geoMsg');
+    let fieldLocation = '';
+    if(S.currentUser.role==='sales'){
+      const flInput = document.getElementById('fieldLocationInput');
+      fieldLocation = flInput ? flInput.value.trim() : '';
+      if(!fieldLocation){ showAlert('Field Location is required — where are you going for marketing today?'); return; }
+    }
     if(location.protocol === 'file:'){
       if(msg) msg.textContent = 'This file:// page can never get location — open the hosted https:// link instead.';
       return;
     }
     if(!window.isSecureContext){
       if(msg) msg.textContent = 'Needs https:// for location — marked without it.';
-      recordPresent(0, 0, 'insecure-context'); return;
+      recordPresent(0, 0, 'insecure-context', fieldLocation); return;
     }
     if(!navigator.geolocation){
       if(msg) msg.textContent='Location not supported on this device — marking without it.';
-      recordPresent(0, 0, 'no-geo-support'); return;
+      recordPresent(0, 0, 'no-geo-support', fieldLocation); return;
     }
     // Pre-check permission state where supported, so we can tell the person
     // exactly what's going on instead of guessing from a generic error.
@@ -5609,18 +5631,18 @@ function bindCheckin(){
       navigator.permissions.query({name:'geolocation'}).then(status=>{
         if(status.state==='denied'){
           if(msg) msg.textContent = 'Location blocked for this site — open your browser\'s site settings to allow it, then try again.';
-          recordPresent(0, 0, 'permission-denied-cached');
+          recordPresent(0, 0, 'permission-denied-cached', fieldLocation);
           return;
         }
         if(msg) msg.textContent = status.state==='prompt' ? 'Waiting for you to allow location…' : 'Getting your location…';
-        requestLocation(msg);
+        requestLocation(msg, fieldLocation);
       }).catch(()=>{
         if(msg) msg.textContent = 'Waiting for location…';
-        requestLocation(msg);
+        requestLocation(msg, fieldLocation);
       });
     } else {
       if(msg) msg.textContent = 'Waiting for location…';
-      requestLocation(msg);
+      requestLocation(msg, fieldLocation);
     }
   });
 }
@@ -5633,20 +5655,30 @@ function dateKeyToTs(dateKey){
 // Day-wise list of every employee, marked Present if they have any
 // attendance record that day (works with both new 'present' entries and
 // any legacy 'checkin'/'checkout' records).
+function isWorkingDay(dk){
+  return !isSundayDateKey(dk) && !S.holidays[dk];
+}
+function attendanceStatusFor(username, dk){
+  if(isSundayDateKey(dk)) return {status:'sunday'};
+  if(S.holidays[dk]) return {status:'holiday', label:S.holidays[dk].label};
+  const dayRecords = S.attendance.filter(a=>a.username===username && localDateKey(a.timestamp)===dk).sort((a,b)=>b.timestamp-a.timestamp);
+  if(!dayRecords.length) return {status:'unmarked'};
+  return {status: dayRecords[0].type, record: dayRecords[0]};
+}
 function computePresenceByDate(){
-  const byDate = {};
-  S.attendance.forEach(a=>{
-    const dk = localDateKey(a.timestamp);
-    byDate[dk] = byDate[dk] || {};
-    if(!byDate[dk][a.username]) byDate[dk][a.username] = a; // first record of the day (has lat/lng)
-  });
   const relevantUsers = S.users.filter(u=>u.role!=='admin');
-  return Object.keys(byDate).sort().reverse().slice(0,30).map(dk=>({
+  const allDateKeys = new Set();
+  S.attendance.forEach(a=>allDateKeys.add(localDateKey(a.timestamp)));
+  Object.keys(S.holidays).forEach(dk=>allDateKeys.add(dk));
+  allDateKeys.add(localDateKey(Date.now())); // always show today, even with zero records, so admin can act on it
+  return [...allDateKeys].sort().reverse().slice(0,30).map(dk=>({
     dateKey: dk,
     dateTs: dateKeyToTs(dk),
+    isSunday: isSundayDateKey(dk),
+    holidayLabel: holidayLabelFor(dk),
     entries: relevantUsers.map(u=>{
-      const rec = byDate[dk][u.username];
-      return { name:u.name, present: !!rec, lat: rec?rec.lat:null, lng: rec?rec.lng:null };
+      const st = attendanceStatusFor(u.username, dk);
+      return { username:u.username, name:u.name, status:st.status, record:st.record, holidayLabel:st.label };
     })
   }));
 }
@@ -5655,15 +5687,39 @@ function renderAttendanceMap(){
   const loginSections = groupByDate(S.loginLog.slice().sort((a,b)=>b.at-a.at).slice(0,100), l=>l.at);
   return `
   <div class="card">
-    <h2>Attendance</h2>
-    <p class="desc">Day-wise presence — who marked attendance each day.</p>
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+      <div><h2>Attendance</h2><p class="desc">Day-wise presence — who marked attendance each day.</p></div>
+      <div class="row-actions" style="flex-wrap:wrap;">
+        <button type="button" class="btn btn-outline btn-sm" id="markForOthersBtn">📍 Mark for someone</button>
+        <button type="button" class="btn btn-outline btn-sm" id="markHolidayBtn">🏖️ Mark holiday</button>
+        <button type="button" class="btn btn-outline btn-sm" id="monthlySummaryBtn">📊 Monthly summary</button>
+      </div>
+    </div>
     ${presence.length===0?`<div class="empty">No attendance marked yet.</div>`:
-      presence.map(p=>dateGroupHeaderHtml(dateHeading(p.dateTs))+`<table><thead><tr><th>Employee</th><th>Status</th><th>Location</th></tr></thead><tbody>
-      ${p.entries.map(e=>{
-        const locCell = e.present ? ((e.lat||e.lng) ? `<a href="https://www.google.com/maps?q=${e.lat},${e.lng}" target="_blank" rel="noopener" class="mono" style="color:var(--primary);">📍 view</a>` : `<span class="mono">no location</span>`) : `<span class="mono">—</span>`;
-        return `<tr><td>${esc(e.name)}</td><td>${e.present?'<span class="badge badge-approved">Present</span>':'<span class="mono">—</span>'}</td><td>${locCell}</td></tr>`;
+      presence.map(p=>{
+        if(p.isSunday || p.holidayLabel){
+          return dateGroupHeaderHtml(dateHeading(p.dateTs)) + `<div class="empty">🏖️ ${p.holidayLabel?`Holiday — ${esc(p.holidayLabel)}`:'Week Off (Sunday)'}</div>`;
+        }
+        return dateGroupHeaderHtml(dateHeading(p.dateTs))+`<table><thead><tr><th>Employee</th><th>Status</th><th>Location</th></tr></thead><tbody>
+        ${p.entries.map(e=>{
+          let statusCell, locCell;
+          if(e.status==='present'){
+            statusCell = `<span class="badge badge-approved">Present</span>${e.record.markedByAdmin?' <span class="mono" style="font-size:9.5px;">(by admin)</span>':''}`;
+            const hasLoc = e.record.lat||e.record.lng;
+            const gpsLine = e.record.markedByAdmin ? `<span class="mono">Marked by Admin</span>` : (hasLoc ? `<a href="https://www.google.com/maps?q=${e.record.lat},${e.record.lng}" target="_blank" rel="noopener" class="mono" style="color:var(--primary);">📍 view</a>` : `<span class="mono">no location</span>`);
+            const flLine = e.record.fieldLocation ? `<div class="mono" style="font-size:10.5px;color:var(--ink-soft);margin-top:2px;">Field Location - ${esc(e.record.fieldLocation)}</div>` : '';
+            locCell = gpsLine + flLine;
+          } else if(e.status==='absent'){
+            statusCell = `<span class="badge badge-rejected">Absent</span>`;
+            locCell = `<span class="mono">Marked by Admin</span>`;
+          } else {
+            statusCell = `<span class="mono">—</span>`;
+            locCell = `<span class="mono">—</span>`;
+          }
+          return `<tr><td>${esc(e.name)}</td><td>${statusCell}</td><td>${locCell}</td></tr>`;
+        }).join('')}
+        </tbody></table>`;
       }).join('')}
-      </tbody></table>`).join('')}
   </div>
   <div class="card">
     <h2>Login activity</h2>
@@ -5680,13 +5736,131 @@ function renderAttendanceMap(){
       groupByDate(S.attendance.slice().sort((a,b)=>b.timestamp-a.timestamp), a=>a.timestamp).map(s=>dateGroupHeaderHtml(s.heading)+`<table><thead><tr><th>Name</th><th>Time</th><th>Location</th></tr></thead><tbody>
       ${s.items.map(a=>{
         const hasLoc = a.lat||a.lng;
-        const locCell = hasLoc ? `<a href="https://www.google.com/maps?q=${a.lat},${a.lng}" target="_blank" rel="noopener" class="mono" style="color:var(--primary);">📍 ${a.lat.toFixed(4)}, ${a.lng.toFixed(4)}</a>` : `<span class="mono">no location</span>`;
-        return `<tr><td>${esc(a.name)}</td><td class="mono">${fmtTime(a.timestamp)}</td><td>${locCell}</td></tr>`;
+        const locCell = a.markedByAdmin ? `<span class="mono">Marked by Admin</span>` : (hasLoc ? `<a href="https://www.google.com/maps?q=${a.lat},${a.lng}" target="_blank" rel="noopener" class="mono" style="color:var(--primary);">📍 ${a.lat.toFixed(4)}, ${a.lng.toFixed(4)}</a>` : `<span class="mono">no location</span>`);
+        const flLine = a.fieldLocation ? `<div class="mono" style="font-size:10.5px;color:var(--ink-soft);margin-top:2px;">Field Location - ${esc(a.fieldLocation)}</div>` : '';
+        return `<tr><td>${esc(a.name)}${a.type==='absent'?' <span class="badge badge-rejected" style="font-size:9px;">Absent</span>':''}</td><td class="mono">${fmtTime(a.timestamp)}</td><td>${locCell}${flLine}</td></tr>`;
       }).join('')}
       </tbody></table>`).join('')}
   </div>`;
 }
-function bindAttendanceMap(){ /* no-op — map removed, location is a Google Maps link per row */ }
+function bindAttendanceMap(){
+  const markForBtn = document.getElementById('markForOthersBtn');
+  if(markForBtn) markForBtn.addEventListener('click', openMarkForOthersModal);
+  const holidayBtn = document.getElementById('markHolidayBtn');
+  if(holidayBtn) holidayBtn.addEventListener('click', openMarkHolidayModal);
+  const summaryBtn = document.getElementById('monthlySummaryBtn');
+  if(summaryBtn) summaryBtn.addEventListener('click', openMonthlySummaryModal);
+}
+function openMarkForOthersModal(){
+  const employees = S.users.filter(u=>u.role!=='admin');
+  const today = localDateKey(Date.now());
+  showModal(`
+    <h3>📍 Mark attendance for someone</h3>
+    <p class="desc" style="margin-top:-6px;">Recorded as marked by you, not GPS-verified.</p>
+    <div class="field"><label>Employee</label>
+      <select id="markForUserSel">${employees.map(u=>`<option value="${esc(u.username)}">${esc(u.name)} (${esc(ROLES[u.role]?ROLES[u.role].label:u.role)})</option>`).join('')}</select>
+    </div>
+    <div class="field"><label>Date</label><input type="date" id="markForDateInput" value="${today}" max="${today}" /></div>
+    <div class="field"><label>Status</label>
+      <select id="markForStatusSel"><option value="present">Present</option><option value="absent">Absent</option></select>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
+      <button type="button" class="btn btn-primary" id="confirmMarkForBtn">Mark</button>
+    </div>
+  `);
+  document.getElementById('confirmMarkForBtn').addEventListener('click', ()=>{
+    const username = document.getElementById('markForUserSel').value;
+    const dateStr = document.getElementById('markForDateInput').value;
+    const status = document.getElementById('markForStatusSel').value;
+    const u = S.users.find(x=>x.username===username);
+    if(!u || !dateStr){ showAlert('Pick an employee and date.'); return; }
+    if(!isWorkingDay(dateStr)){ showAlert('This date is a week-off/holiday — attendance doesn\'t apply.'); return; }
+    // Midday avoids any date-boundary ambiguity, and — since the most
+    // recent record per user+day wins (see attendanceStatusFor) — this
+    // correctly overrides an earlier record for the same day if the admin
+    // is correcting a mistake, while a genuine later self-mark (which
+    // would carry a real, later timestamp) still wins over this instead.
+    // For TODAY, use the real current time so "most recent wins" compares
+    // fairly against a genuine self-mark from earlier or later today —
+    // a fixed noon timestamp could otherwise incorrectly outrank (or lose
+    // to) a real same-day self-mark depending purely on what time of day
+    // it happened. For a PAST date there's no "real time" to compare
+    // against, so noon remains a reasonable stand-in there.
+    const ts = dateStr===today ? Date.now() : dateKeyToTs(dateStr);
+    const entry = { id:uid(), username, name:u.name, type:status, lat:0, lng:0, timestamp:ts, note:'', fieldLocation:'', markedByAdmin:true, markedByName:S.currentUser.name };
+    S.attendance.push(entry);
+    savePartitionForItem('attendance', entry);
+    closeModal(); render(); showToast(`${u.name} marked ${status} for ${dateStr}`);
+  });
+}
+function openMarkHolidayModal(){
+  showModal(`
+    <h3>🏖️ Mark a holiday</h3>
+    <p class="desc" style="margin-top:-6px;">Applies to everyone for that date — no attendance needed.</p>
+    <div class="field"><label>Date</label><input type="date" id="holidayDateInput" value="${localDateKey(Date.now())}" /></div>
+    <div class="field"><label>Label</label><input id="holidayLabelInput" placeholder="e.g. Diwali" /></div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
+      <button type="button" class="btn btn-primary" id="confirmHolidayBtn">Mark holiday</button>
+    </div>
+  `);
+  document.getElementById('confirmHolidayBtn').addEventListener('click', ()=>{
+    const dateStr = document.getElementById('holidayDateInput').value;
+    const label = document.getElementById('holidayLabelInput').value.trim() || 'Holiday';
+    if(!dateStr){ showAlert('Pick a date.'); return; }
+    S.holidays[dateStr] = { label, markedBy:S.currentUser.name, at:Date.now() };
+    safeSet('app:holidays', S.holidays);
+    closeModal(); render(); showToast('Holiday marked');
+  });
+}
+function openMonthlySummaryModal(){
+  const now = new Date();
+  showModal(`
+    <h3>📊 Monthly Attendance Summary</h3>
+    <div class="field"><label>Month</label><input type="month" id="summaryMonthInput" value="${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}" /></div>
+    <div id="summaryResultBox" style="margin-top:12px;"></div>
+    <div class="modal-actions"><button type="button" class="btn btn-outline" id="cancelModal">Close</button></div>
+  `);
+  const input = document.getElementById('summaryMonthInput');
+  const refresh = ()=>{
+    const [y, m] = input.value.split('-').map(Number);
+    renderMonthlySummary(y, m);
+  };
+  input.addEventListener('change', refresh);
+  refresh();
+}
+function renderMonthlySummary(year, month1based){
+  const box = document.getElementById('summaryResultBox');
+  if(!box) return;
+  const daysInMonth = new Date(year, month1based, 0).getDate();
+  const employees = S.users.filter(u=>u.role!=='admin');
+  const today = localDateKey(Date.now());
+  let workingDaysCount = 0;
+  const dayKeys = [];
+  for(let d=1; d<=daysInMonth; d++){
+    const dk = `${year}-${String(month1based).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    if(dk > today) break; // don't count days that haven't happened yet
+    dayKeys.push(dk);
+    if(isWorkingDay(dk)) workingDaysCount++;
+  }
+  const rows = employees.map(u=>{
+    let presentCount = 0;
+    const absentDates = [];
+    dayKeys.forEach(dk=>{
+      if(!isWorkingDay(dk)) return;
+      const st = attendanceStatusFor(u.username, dk);
+      if(st.status==='present') presentCount++;
+      else absentDates.push(dk);
+    });
+    return { name:u.name, present:presentCount, absent:absentDates.length, absentDates };
+  });
+  box.innerHTML = workingDaysCount===0 ? `<div class="empty">No working days yet this month.</div>` : `
+    <table><thead><tr><th>Employee</th><th>Working days</th><th>Present</th><th>Absent</th></tr></thead><tbody>
+    ${rows.map(r=>`<tr><td>${esc(r.name)}</td><td class="mono">${workingDaysCount}</td><td class="mono" style="color:var(--success);font-weight:700;">${r.present}</td><td class="mono" style="color:var(--danger);font-weight:700;">${r.absent}</td></tr>
+    ${r.absentDates.length?`<tr><td colspan="4" style="font-size:10.5px;color:var(--ink-soft);padding-top:0;padding-bottom:10px;">Absent: ${r.absentDates.map(dk=>fmtDate(dateKeyToTs(dk))).join(', ')}</td></tr>`:''}`).join('')}
+    </tbody></table>`;
+}
 
 /* ============================= MODAL ============================= */
 // Centered red alert dialog — replaces the native browser showAlert() everywhere,
