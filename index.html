@@ -462,7 +462,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-15-retailfix1";
+const APP_BUILD = "2026-08-15-editlog1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -1709,14 +1709,37 @@ function logStockMovement(key, itemLabel, kind, delta, note){
   savePartitionForItem('stockMovementLog', entry);
 }
 function applyActivityForward(e){
-  if(e.kind==='purchase'){ S.rawMaterial[e.cat] = (S.rawMaterial[e.cat]||0) + e.ml; }
-  if(e.kind==='filling'){ const mlUsed = e.actualMl!=null ? e.actualMl : (e.qty*e.mlPer); S.rawMaterial[e.rawCat] = (S.rawMaterial[e.rawCat]||0) - mlUsed; S.filledStock[e.key] = (S.filledStock[e.key]||0) + e.qty; }
-  if(e.kind==='packaging'){ S.filledStock[e.key] = (S.filledStock[e.key]||0) - e.qty; S.readyStock[e.key] = (S.readyStock[e.key]||0) + e.qty; }
+  if(e.kind==='purchase'){ S.rawMaterial[e.cat] = (S.rawMaterial[e.cat]||0) + e.ml; logStockMovement(e.cat, e.cat, 'purchase', e.ml, `${activityLabel(e)} — entry edited`); }
+  if(e.kind==='filling'){
+    const mlUsed = e.actualMl!=null ? e.actualMl : (e.qty*e.mlPer);
+    S.rawMaterial[e.rawCat] = (S.rawMaterial[e.rawCat]||0) - mlUsed;
+    S.filledStock[e.key] = (S.filledStock[e.key]||0) + e.qty;
+    logStockMovement(e.rawCat, e.rawCat, 'filling', -mlUsed, `${activityLabel(e)} — entry edited`);
+    logStockMovement(e.key, e.itemLabel, 'filling', e.qty, `${activityLabel(e)} — entry edited`);
+  }
+  if(e.kind==='packaging'){
+    S.filledStock[e.key] = (S.filledStock[e.key]||0) - e.qty;
+    S.readyStock[e.key] = (S.readyStock[e.key]||0) + e.qty;
+    logStockMovement(e.key, e.itemLabel, 'packaging', -e.qty, `${activityLabel(e)} — entry edited (from filled)`);
+    logStockMovement(e.key, e.itemLabel, 'packaging', e.qty, `${activityLabel(e)} — entry edited`);
+  }
 }
-function revertActivity(e){
-  if(e.kind==='purchase'){ S.rawMaterial[e.cat] = (S.rawMaterial[e.cat]||0) - e.ml; }
-  if(e.kind==='filling'){ const mlUsed = e.actualMl!=null ? e.actualMl : (e.qty*e.mlPer); S.rawMaterial[e.rawCat] = (S.rawMaterial[e.rawCat]||0) + mlUsed; S.filledStock[e.key] = (S.filledStock[e.key]||0) - e.qty; }
-  if(e.kind==='packaging'){ S.filledStock[e.key] = (S.filledStock[e.key]||0) + e.qty; S.readyStock[e.key] = (S.readyStock[e.key]||0) - e.qty; }
+function revertActivity(e, reason){
+  const tag = reason==='delete' ? 'entry deleted' : 'reverted';
+  if(e.kind==='purchase'){ S.rawMaterial[e.cat] = (S.rawMaterial[e.cat]||0) - e.ml; logStockMovement(e.cat, e.cat, 'purchase', -e.ml, `${activityLabel(e)} — ${tag}`); }
+  if(e.kind==='filling'){
+    const mlUsed = e.actualMl!=null ? e.actualMl : (e.qty*e.mlPer);
+    S.rawMaterial[e.rawCat] = (S.rawMaterial[e.rawCat]||0) + mlUsed;
+    S.filledStock[e.key] = (S.filledStock[e.key]||0) - e.qty;
+    logStockMovement(e.rawCat, e.rawCat, 'filling', mlUsed, `${activityLabel(e)} — ${tag}`);
+    logStockMovement(e.key, e.itemLabel, 'filling', -e.qty, `${activityLabel(e)} — ${tag}`);
+  }
+  if(e.kind==='packaging'){
+    S.filledStock[e.key] = (S.filledStock[e.key]||0) + e.qty;
+    S.readyStock[e.key] = (S.readyStock[e.key]||0) - e.qty;
+    logStockMovement(e.key, e.itemLabel, 'packaging', e.qty, `${activityLabel(e)} — ${tag} (to filled)`);
+    logStockMovement(e.key, e.itemLabel, 'packaging', -e.qty, `${activityLabel(e)} — ${tag}`);
+  }
 }
 function saveAfterActivityChange(entry){
   safeSet('app:rawMaterial', S.rawMaterial);
@@ -1792,7 +1815,7 @@ function openEditLogModal(e){
         e.actualMl = !isNaN(actualL) && actualL>=0 ? actualL*1000 : null; // null = fall back to standard qty*mlPer
       }
     }
-    applyActivityForward(e);
+    applyActivityForward(e); // already logs "entry edited" internally (see applyActivityForward)
     saveAfterActivityChange(e);
     closeModal(); render(); showToast('Entry updated');
   });
@@ -2286,6 +2309,7 @@ function markOrderReadyNow(orderId){
       // Otherwise the shortage number (and the filling/packing task it
       // drives) stays inflated for a need that's no longer real.
       S.readyStock[it.key] = stockNow + it.qty;
+      logStockMovement(it.key, `${it.name} ${it.size}`, 'order', it.qty, `Mark Ready — item cancelled (short), credited back — ${orderDisplayLabel(o)}`);
       stockChanged = true;
     }
   });
@@ -2304,6 +2328,7 @@ function undoMarkOrderReady(orderId){
       // Re-deduct the qty that was credited back, since this item is
       // needed again now that the order is back in Processing.
       S.readyStock[it.key] = (S.readyStock[it.key]||0) - it.qty;
+      logStockMovement(it.key, `${it.name} ${it.size}`, 'order', -it.qty, `Undo Mark Ready — item needed again, re-deducted — ${orderDisplayLabel(o)}`);
       stockChanged = true;
     }
   });
@@ -2534,9 +2559,10 @@ function deleteDailyEntry(source, id){
   if(source==='activityLog'){
     if(!confirm('Delete this entry? Its stock effect will be reversed.')) return;
     const e = S.activityLog.find(x=>x.id===id); if(!e) return;
-    revertActivity(e);
+    revertActivity(e, 'delete');
     S.activityLog = S.activityLog.filter(x=>x.id!==id);
-    saveAfterActivityChange(e); render(); showToast('Entry deleted & stock reverted');
+    saveAfterActivityChange(e);
+    render(); showToast('Entry deleted & stock reverted');
   } else if(source==='expenses'){
     if(!confirm('Delete this entry?')) return;
     const item = S.expenses.find(x=>x.id===id);
@@ -3518,6 +3544,7 @@ Regards
       o.items.forEach(d=>{
         if(d.cancelled) return; // already credited back separately (e.g. by Mark Ready) — crediting again would double-count
         S.readyStock[d.key]=(S.readyStock[d.key]||0)+d.qty;
+        logStockMovement(d.key, `${d.name} ${d.size}`, 'order', d.qty, `Order deleted — ${orderDisplayLabel(o)}`);
       });
       safeSet('app:readyStock', S.readyStock);
       syncStockTasksFromAlerts();
@@ -3602,10 +3629,11 @@ function openOrderModal(existingOrder){
           // has to release the old amount and reserve the new amount.
           // Cancelled items were already credited back separately (e.g. by
           // Mark Ready) — skip them here too, or they'd be double-credited.
-          existingOrder.items.forEach(d=>{ if(!d.cancelled) S.readyStock[d.key] = (S.readyStock[d.key]||0) + d.qty; });
+          existingOrder.items.forEach(d=>{ if(!d.cancelled){ S.readyStock[d.key] = (S.readyStock[d.key]||0) + d.qty; logStockMovement(d.key, `${d.name} ${d.size}`, 'order', d.qty, `Order edited — ${orderDisplayLabel(existingOrder)} (released old qty)`); } });
           orderDraft.forEach(d=>{
             S.readyStock[d.key] = (S.readyStock[d.key]||0) - d.qty;
             if(S.readyStock[d.key] < 0) shortItems.push(`${d.name} ${d.size}`);
+            logStockMovement(d.key, `${d.name} ${d.size}`, 'order', -d.qty, `Order edited — ${orderDisplayLabel(existingOrder)} (new qty)`);
           });
           safeSet('app:readyStock', S.readyStock);
         }
