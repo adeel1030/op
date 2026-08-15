@@ -462,7 +462,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-15-editlog1";
+const APP_BUILD = "2026-08-15-batchstamp1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -1703,8 +1703,17 @@ function activityAmount(e){
 // Records a single stock movement for the per-item audit trail (admin-only,
 // 7-day retention). kind: 'purchase'|'filling'|'packaging'|'order'|'retail'|'adjust'.
 // delta is signed (+added, -deducted) so the log reads naturally either way.
-function logStockMovement(key, itemLabel, kind, delta, note){
-  const entry = { id:uid(), key, itemLabel, kind, delta, note: note||'', by:S.currentUser.name, byUsername:S.currentUser.username, at:Date.now() };
+function logStockMovement(key, itemLabel, kind, delta, note, poolOverride){
+  // Unit/pool isn't always obvious from `kind` alone (e.g. 'adjust' could be
+  // raw/filled/ready; packaging's filled-side line also uses kind='packaging'
+  // just like its ready-side line) — poolOverride disambiguates those.
+  // Raw material categories are auto-detected by key, since they're never
+  // ambiguous with a catalog item key.
+  const isRaw = poolOverride==='raw' || (!poolOverride && RAW_CATEGORIES.includes(key));
+  const isFilledPool = poolOverride==='filled' || (!poolOverride && !isRaw && kind==='filling');
+  const unit = isRaw ? 'mL' : 'pc';
+  const totalAfter = isRaw ? (S.rawMaterial[key]||0) : isFilledPool ? (S.filledStock[key]||0) : (S.readyStock[key]||0);
+  const entry = { id:uid(), key, itemLabel, kind, delta, note: note||'', unit, totalAfter, by:S.currentUser.name, byUsername:S.currentUser.username, at:Date.now() };
   S.stockMovementLog.push(entry);
   savePartitionForItem('stockMovementLog', entry);
 }
@@ -1720,7 +1729,7 @@ function applyActivityForward(e){
   if(e.kind==='packaging'){
     S.filledStock[e.key] = (S.filledStock[e.key]||0) - e.qty;
     S.readyStock[e.key] = (S.readyStock[e.key]||0) + e.qty;
-    logStockMovement(e.key, e.itemLabel, 'packaging', -e.qty, `${activityLabel(e)} — entry edited (from filled)`);
+    logStockMovement(e.key, e.itemLabel, 'packaging', -e.qty, `${activityLabel(e)} — entry edited (from filled)`, 'filled');
     logStockMovement(e.key, e.itemLabel, 'packaging', e.qty, `${activityLabel(e)} — entry edited`);
   }
 }
@@ -1737,7 +1746,7 @@ function revertActivity(e, reason){
   if(e.kind==='packaging'){
     S.filledStock[e.key] = (S.filledStock[e.key]||0) + e.qty;
     S.readyStock[e.key] = (S.readyStock[e.key]||0) - e.qty;
-    logStockMovement(e.key, e.itemLabel, 'packaging', e.qty, `${activityLabel(e)} — ${tag} (to filled)`);
+    logStockMovement(e.key, e.itemLabel, 'packaging', e.qty, `${activityLabel(e)} — ${tag} (to filled)`, 'filled');
     logStockMovement(e.key, e.itemLabel, 'packaging', -e.qty, `${activityLabel(e)} — ${tag}`);
   }
 }
@@ -4914,10 +4923,14 @@ function openTaskModal(existingTask){
 function renderStockLogModal(key, label){
   const entries = S.stockMovementLog.filter(m=>m.key===key).sort((a,b)=>b.at-a.at);
   const kindLabel = {purchase:'🛢️ Purchase', filling:'🧴 Filling', packaging:'📦 Packaging', order:'🛍️ Order', retail:'💵 Retail/Sample', adjust:'✏️ Admin adjust'};
+  // Older log entries (from before "unit"/"totalAfter" were tracked) fall
+  // back to the old purchase-only mL guess, and show "—" for the total
+  // since we don't know which pool it was at the time.
+  const fmtQty = (m, val)=> (m.unit ? m.unit==='mL' : m.kind==='purchase') ? fmtMl(Math.abs(val)) : Math.abs(val)+' pc';
   showModal(`<h3>📜 Stock Log — ${esc(label)}</h3><p class="desc" style="margin-top:-6px;">Last 7 days.</p>
     ${entries.length===0?`<div class="empty">No movements recorded (last 7 days).</div>`:`
-    <table><thead><tr><th>Type</th><th>Change</th><th>Note</th><th>By</th><th>Time</th></tr></thead><tbody>
-    ${entries.map(m=>`<tr><td>${kindLabel[m.kind]||m.kind}</td><td class="mono ${m.delta>=0?'':'stockneg'}" style="${m.delta>=0?'color:var(--success);font-weight:800;':''}">${m.delta>=0?'+':''}${m.kind==='purchase'?fmtMl(Math.abs(m.delta)):Math.abs(m.delta)+' pc'}</td><td>${esc(m.note)}</td><td>${esc(m.by)}</td><td class="mono">${fmtDate(m.at)}</td></tr>`).join('')}
+    <table><thead><tr><th>Type</th><th>Change</th><th>Total after</th><th>Note</th><th>By</th><th>Time</th></tr></thead><tbody>
+    ${entries.map(m=>`<tr><td>${kindLabel[m.kind]||m.kind}</td><td class="mono ${m.delta>=0?'':'stockneg'}" style="${m.delta>=0?'color:var(--success);font-weight:800;':''}">${m.delta>=0?'+':''}${fmtQty(m,m.delta)}</td><td class="mono">${m.totalAfter!=null?fmtQty(m,m.totalAfter):'—'}</td><td>${esc(m.note)}</td><td>${esc(m.by)}</td><td class="mono">${fmtDate(m.at)}</td></tr>`).join('')}
     </tbody></table>`}
     <div class="modal-actions"><button type="button" class="btn btn-outline" id="cancelModal">Close</button></div>`);
 }
@@ -5185,11 +5198,29 @@ function renderBatchResult(){
   const isAdmin = S.currentUser.role==='admin';
   const batchNo = batchNumberFor(cat);
   if(batchNo){
+    const sizesForCat = CATALOG_FLAT.filter(it=>it.cat===cat);
     box.innerHTML = `<div style="background:var(--bg);border-radius:12px;padding:16px;text-align:center;">
       <div style="font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;">${esc(cat)}</div>
       <div style="font-size:26px;font-weight:900;color:var(--primary);">${batchNo}/${currentMonthLabel()}</div>
     </div>
+    ${sizesForCat.length>0?`<div class="field" style="margin-top:10px;"><label>Size</label>
+      <select id="batchSizeSel"><option value="">Select a size…</option>${sizesForCat.map(it=>`<option value="${it.key}">${esc(it.size)}</option>`).join('')}</select>
+    </div>
+    <div id="batchStampBox"></div>`:''}
     ${isAdmin?`<button type="button" class="btn btn-outline btn-sm" id="editBatchRefBtn" style="width:100%;margin-top:10px;">✏️ Edit Jan 2026 reference (currently ${esc(String(S.batchReferences[cat]))})</button><div id="batchRefEditBox"></div>`:''}`;
+    const sizeSel = document.getElementById('batchSizeSel');
+    if(sizeSel) sizeSel.addEventListener('change', ()=>{
+      const stampBox = document.getElementById('batchStampBox');
+      const it = findItem(sizeSel.value);
+      if(!it){ stampBox.innerHTML=''; return; }
+      const usp = it.ml ? (it.mrp/it.ml) : null;
+      stampBox.innerHTML = `<div style="background:var(--primary);color:#fff;border-radius:12px;padding:16px;margin-top:10px;font-family:var(--font-mono);text-align:left;line-height:1.9;">
+        <div><b>MRP</b> — ${it.mrp}/-</div>
+        <div><b>USP</b> — ${usp!=null?usp.toFixed(3):'—'}/mL</div>
+        <div><b>Batch No</b> — ${batchNo}</div>
+        <div><b>Date of Pkg</b> — ${currentMonthLabel()}</div>
+      </div>`;
+    });
   } else {
     box.innerHTML = `<div class="empty">No January 2026 reference set for this item yet.</div>
     ${isAdmin?`<div class="field"><label>January 2026 reference number</label><input id="batchRefInput" type="number" min="0" placeholder="e.g. 36" /></div>
@@ -5474,7 +5505,7 @@ function openAdjustModal(kind, id, currentVal, label){
     if(kind==='filled'){ S.filledStock[id]=val; key='app:filledStock'; }
     if(kind==='ready'){ S.readyStock[id]=val; key='app:readyStock'; }
     safeSet(key, kind==='raw'?S.rawMaterial:kind==='filled'?S.filledStock:S.readyStock);
-    if(val !== oldVal) logStockMovement(id, label, 'adjust', val-oldVal, 'Manually adjusted by admin');
+    if(val !== oldVal) logStockMovement(id, label, 'adjust', val-oldVal, 'Manually adjusted by admin', kind);
     if(kind==='ready') autoAdvanceOrders();
     if(kind==='filled' || kind==='ready') syncStockTasksFromAlerts();
     closeModal(); render(); showToast('Updated');
