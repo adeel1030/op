@@ -485,7 +485,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-15-autocomplete-discount1";
+const APP_BUILD = "2026-08-16-purchase-liters1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -5169,7 +5169,7 @@ function openPurchaseModal(){
     <form id="purchaseForm">
       <div class="field"><label>Category</label><select id="purCat">${RAW_CATEGORIES.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('')}</select></div>
       <div class="field"><label>Quantity (Liters — max ${MAX_PURCHASE_L} L per entry)</label>
-        <div style="display:flex;gap:6px;"><input id="purQty" type="number" min="0.01" max="${MAX_PURCHASE_L}" step="0.01" required style="flex:2;"/><select id="purUnit" style="flex:1;"><option value="L" selected>Liters</option><option value="mL">mL</option></select></div>
+        <input id="purQty" type="number" min="0.01" max="${MAX_PURCHASE_L}" step="0.01" placeholder="Liters" required />
       </div>
       <div class="modal-actions">
         <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
@@ -5181,8 +5181,7 @@ function openPurchaseModal(){
     e.preventDefault();
     const cat = document.getElementById('purCat').value;
     const qty = parseFloat(document.getElementById('purQty').value)||0;
-    const unit = document.getElementById('purUnit').value;
-    const ml = unit==='L'? qty*1000 : qty;
+    const ml = qty*1000;
     const litres = ml/1000;
     if(litres>MAX_PURCHASE_L){ showAlert(`Max ${MAX_PURCHASE_L} L allowed in a single purchase entry.`); return; }
     if(litres<=0){ showAlert('Enter a valid quantity.'); return; }
