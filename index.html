@@ -485,7 +485,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-16-purchase-liters1";
+const APP_BUILD = "2026-08-16-chat-whatsapp1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -1315,7 +1315,8 @@ function startSyncPolling(intervalMs){
     if(!S.currentUser) return;
     flushOfflineQueue(); // fire-and-forget; retries any saves that failed while offline
     if(syncing) return;
-    const modalOpen = !!document.getElementById('modalOverlay');
+    const messagesModalOpen = !!document.getElementById('messagesModalBody');
+    const modalOpen = !!document.getElementById('modalOverlay') && !messagesModalOpen;
     if(modalOpen) return;
     try{
       const serverUpdatedAt = await apiFetchVersion();
@@ -1327,7 +1328,7 @@ function startSyncPolling(intervalMs){
         autoAdvanceOrders();
         syncStockTasksFromAlerts();
         setSyncLabel(null);
-        render();
+        if(messagesModalOpen) refreshMessagesModal(); else render();
       }
     }catch(e){ /* transient network hiccup — try again next tick */ }
   }, intervalMs || 4000);
@@ -4763,20 +4764,39 @@ function renderThreadView(otherUsername){
   const other = S.users.find(u=>u.username===otherUsername);
   const myUsername = S.currentUser.username;
   const msgs = S.chatMessages.filter(m=>m.type==='personal' && ((m.fromUsername===myUsername && m.toUsername===otherUsername) || (m.fromUsername===otherUsername && m.toUsername===myUsername))).sort((a,b)=>a.at-b.at);
+  const sections = groupByDate(msgs, m=>m.at);
+  let bubblesHtml = '';
+  sections.forEach(sec=>{
+    bubblesHtml += `<div style="text-align:center;margin:10px 0 8px;"><span style="background:var(--bg);color:var(--ink-soft);font-size:10.5px;font-weight:700;padding:3px 10px;border-radius:20px;">${esc(sec.heading)}</span></div>`;
+    sec.items.forEach((m,i)=>{
+      const mine = m.fromUsername===myUsername;
+      // Consecutive messages from the same sender sit closer together —
+      // only the LAST one in a run gets the usual bottom margin, matching
+      // WhatsApp's grouped-bubble look instead of uniform spacing on every line.
+      const next = sec.items[i+1];
+      const isLastInGroup = !next || next.fromUsername!==m.fromUsername;
+      const tick = mine ? (m.read ? `<span style="color:#4FC3F7;">✓✓</span>` : `<span style="opacity:0.7;">✓</span>`) : '';
+      bubblesHtml += `<div style="text-align:${mine?'right':'left'};margin-bottom:${isLastInGroup?8:2}px;">
+        <span style="display:inline-block;background:${mine?'var(--primary)':'var(--bg)'};color:${mine?'#fff':'var(--ink)'};padding:7px 11px;border-radius:12px;font-size:13px;max-width:80%;white-space:pre-wrap;text-align:left;">${esc(m.text)}</span>
+        <div style="font-size:9.5px;color:var(--ink-soft);margin-top:2px;">${fmtTime(m.at)} ${tick}</div>
+      </div>`;
+    });
+  });
   return `
     <button type="button" class="btn btn-sm btn-outline" id="backToThreadsBtn" style="margin-bottom:10px;">‹ Back</button>
     <div style="font-weight:800;margin-bottom:8px;">${esc(other?other.name:otherUsername)}</div>
-    <div style="max-height:280px;overflow-y:auto;margin-bottom:10px;">
-      ${msgs.length===0?`<div class="empty">Say hello 👋</div>`:msgs.map(m=>`<div style="text-align:${m.fromUsername===myUsername?'right':'left'};margin-bottom:6px;">
-        <span style="display:inline-block;background:${m.fromUsername===myUsername?'var(--primary)':'var(--bg)'};color:${m.fromUsername===myUsername?'#fff':'var(--ink)'};padding:7px 11px;border-radius:12px;font-size:13px;max-width:80%;white-space:pre-wrap;text-align:left;">${esc(m.text)}</span>
-        <div style="font-size:9.5px;color:var(--ink-soft);margin-top:2px;">${fmtTime(m.at)}</div>
-      </div>`).join('')}
+    <div id="threadMsgList" style="max-height:280px;overflow-y:auto;margin-bottom:10px;">
+      ${msgs.length===0?`<div class="empty">Say hello 👋</div>`:bubblesHtml}
     </div>
     <div class="row-actions">
-      <textarea id="threadReplyInput" placeholder="Type a message… (Enter to send, Shift+Enter for new line)" rows="1" style="flex:1;padding:9px 12px;border-radius:16px;border:1.5px solid var(--border);font-family:inherit;font-size:inherit;resize:none;max-height:100px;overflow-y:auto;"></textarea>
-      <button type="button" class="btn btn-primary btn-sm" id="sendThreadReplyBtn">Send</button>
+      <textarea id="threadReplyInput" placeholder="Type a message…" rows="1" style="flex:1;padding:9px 12px;border-radius:16px;border:1.5px solid var(--border);font-family:inherit;font-size:inherit;resize:none;max-height:100px;overflow-y:auto;"></textarea>
+      <button type="button" class="btn btn-primary btn-sm" id="sendThreadReplyBtn" disabled style="opacity:0.5;">Send</button>
     </div>
   `;
+}
+function scrollThreadToBottom(){
+  const list = document.getElementById('threadMsgList');
+  if(list) list.scrollTop = list.scrollHeight;
 }
 function markAllAnnouncementsRead(){
   S.chatMessages.forEach(m=>{
@@ -4786,7 +4806,7 @@ function markAllAnnouncementsRead(){
     }
   });
 }
-function bindMessagesModal(){
+function bindMessagesModal(skipScroll){
   document.querySelectorAll('[data-chat-tab]').forEach(b=>b.addEventListener('click', ()=>{
     if(S.chatView==='announcements') markAllAnnouncementsRead(); // leaving the tab — they've seen the dots by now
     S.chatView = b.dataset.chatTab; S.chatActiveThread = null; refreshMessagesModal();
@@ -4822,22 +4842,50 @@ function bindMessagesModal(){
     sendPersonalMessage(S.chatActiveThread, input.value);
     input.value = '';
     refreshMessagesModal();
+    scrollThreadToBottom();
   };
   const sendReplyBtn = document.getElementById('sendThreadReplyBtn');
   if(sendReplyBtn) sendReplyBtn.addEventListener('click', sendReply);
   const replyInput = document.getElementById('threadReplyInput');
-  if(replyInput) replyInput.addEventListener('keydown', (e)=>{
-    if(e.key==='Enter' && !e.shiftKey){
-      e.preventDefault(); // Enter sends; Shift+Enter still inserts a normal newline
-      sendReply();
-    }
-  });
+  if(replyInput){
+    // Enter always makes a new line here — like WhatsApp's mobile keyboard,
+    // where Enter never sends; only the Send button does. (No special
+    // keydown handling needed — a textarea's default Enter behavior IS a
+    // newline; we just don't intercept it anymore.)
+    replyInput.addEventListener('input', ()=>{
+      if(sendReplyBtn){
+        const hasText = !!replyInput.value.trim();
+        sendReplyBtn.disabled = !hasText;
+        sendReplyBtn.style.opacity = hasText ? '1' : '0.5';
+      }
+    });
+  }
+  if(!skipScroll) scrollThreadToBottom(); // land at the newest message when a thread first opens (unless the person was reading older messages during a background refresh)
 }
 function refreshMessagesModal(){
   const body = document.getElementById('messagesModalBody');
-  if(body) body.innerHTML = renderMessagesModalContent();
+  if(!body) return;
+  const oldInput = document.getElementById('threadReplyInput');
+  const draftText = oldInput ? oldInput.value : null;
+  const wasFocused = oldInput && document.activeElement===oldInput;
+  const selStart = oldInput ? oldInput.selectionStart : null;
+  const selEnd = oldInput ? oldInput.selectionEnd : null;
+  const oldList = document.getElementById('threadMsgList');
+  // "Near the bottom" = within ~60px of the true bottom — if they've
+  // scrolled up to read older messages, a background refresh shouldn't
+  // yank them back down (same as WhatsApp).
+  const wasNearBottom = !oldList || (oldList.scrollHeight - oldList.scrollTop - oldList.clientHeight < 60);
+  body.innerHTML = renderMessagesModalContent();
   enhanceFormControls(body);
-  bindMessagesModal();
+  bindMessagesModal(!wasNearBottom);
+  if(draftText){
+    const newInput = document.getElementById('threadReplyInput');
+    if(newInput){
+      newInput.value = draftText;
+      newInput.dispatchEvent(new Event('input', {bubbles:true})); // keeps the Send button's enabled/disabled state in sync
+      if(wasFocused){ newInput.focus(); if(selStart!=null) newInput.setSelectionRange(selStart, selEnd); }
+    }
+  }
 }
 
 function bindQuickActionIcons(){
