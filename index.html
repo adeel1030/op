@@ -485,7 +485,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-16-chat-whatsapp1";
+const APP_BUILD = "2026-08-16-lr-upload1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -1170,6 +1170,89 @@ async function apiDeleteKeys(keys){
     body: JSON.stringify({ secret:SECRET, action:'deleteKeys', keys })
   });
   return res.json();
+}
+async function apiUploadLR(base64Data, mimeType, filename){
+  const res = await fetch(API_URL, {
+    method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify({ secret:SECRET, action:'uploadLR', base64Data, mimeType, filename })
+  });
+  return res.json();
+}
+async function apiDeleteLR(fileId){
+  const res = await fetch(API_URL, {
+    method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify({ secret:SECRET, action:'deleteLR', fileId })
+  });
+  return res.json();
+}
+function openUploadLRModal(orderId){
+  const o = S.orders.find(x=>x.id===orderId); if(!o) return;
+  showModal(`
+    <h3>📄 Upload LR (Lorry Receipt)</h3>
+    <p class="desc" style="margin-top:-6px;">${esc(orderDisplayLabel(o))} — kept for 30 days, then auto-removed.</p>
+    <div class="field"><label>Photo</label><input id="lrFileInput" type="file" accept="image/*" capture="environment" /></div>
+    <div id="lrUploadStatus" style="font-size:12.5px;color:var(--ink-soft);margin-top:6px;"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
+      <button type="button" class="btn btn-primary" id="confirmUploadLRBtn" disabled>Upload</button>
+    </div>
+  `);
+  const fileInput = document.getElementById('lrFileInput');
+  const uploadBtn = document.getElementById('confirmUploadLRBtn');
+  const statusEl = document.getElementById('lrUploadStatus');
+  fileInput.addEventListener('change', ()=>{ uploadBtn.disabled = !fileInput.files[0]; });
+  uploadBtn.addEventListener('click', async ()=>{
+    const file = fileInput.files[0];
+    if(!file) return;
+    uploadBtn.disabled = true;
+    statusEl.textContent = 'Uploading…';
+    try{
+      // Kept large enough to stay legible (this is a document, not a
+      // thumbnail) — Drive's storage isn't the tight ~50,000-char-per-cell
+      // squeeze that Sheets-stored data (like profile photos) is under.
+      const dataUrl = await resizeImageFile(file, 1600, 0.8);
+      const base64Data = dataUrl.split(',')[1];
+      const result = await apiUploadLR(base64Data, 'image/jpeg', `LR-${o.id}.jpg`);
+      if(result && result.ok){
+        o.lrPhotoUrl = result.url;
+        o.lrFileId = result.fileId;
+        o.lrUploadedAt = Date.now();
+        o.lrUploadedBy = S.currentUser.name;
+        savePartitionForItem('orders', o);
+        closeModal(); render();
+        showToast('LR uploaded');
+      } else {
+        statusEl.textContent = 'Upload failed — try again.';
+        uploadBtn.disabled = false;
+      }
+    }catch(err){
+      statusEl.textContent = 'Upload failed — try again.';
+      uploadBtn.disabled = false;
+    }
+  });
+}
+function openViewLRModal(orderId){
+  const o = S.orders.find(x=>x.id===orderId); if(!o) return;
+  const daysLeft = Math.max(0, 30 - Math.floor((Date.now()-o.lrUploadedAt)/(24*60*60*1000)));
+  showModal(`
+    <h3>📄 LR — ${esc(orderDisplayLabel(o))}</h3>
+    <p class="desc" style="margin-top:-6px;">Uploaded by ${esc(o.lrUploadedBy||'—')} on ${fmtDate(o.lrUploadedAt)} · auto-removed in ${daysLeft} day${daysLeft===1?'':'s'}.</p>
+    <a href="${esc(o.lrPhotoUrl)}" target="_blank" rel="noopener"><img src="${esc(o.lrPhotoUrl)}" style="width:100%;border-radius:10px;border:1px solid var(--border);margin:10px 0;" /></a>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-danger" id="removeLRBtn">Remove</button>
+      <button type="button" class="btn btn-outline" id="cancelModal">Close</button>
+    </div>
+  `);
+  document.getElementById('removeLRBtn').addEventListener('click', ()=>{
+    showConfirm('Remove this LR photo?', async ()=>{
+      const fileId = o.lrFileId;
+      delete o.lrPhotoUrl; delete o.lrFileId; delete o.lrUploadedAt; delete o.lrUploadedBy;
+      savePartitionForItem('orders', o);
+      closeModal(); render();
+      showToast('LR removed');
+      if(fileId) apiDeleteLR(fileId).catch(()=>{}); // fire-and-forget — the daily cleanup would catch it anyway even if this fails
+    });
+  });
 }
 
 // Retail Sale/Samples originally stored one item directly on the entry
@@ -3482,6 +3565,7 @@ function orderMrpValue(o){
 }
 function renderOrderTile(o, showUndoDispatch){
   const isAdmin = S.currentUser.role==='admin';
+  const isLRUploader = S.currentUser.role==='admin' || S.currentUser.role==='manager';
   const tileCls = o.status==='ready' ? ' tile-ready' : o.status==='processing' ? ' tile-processing' : '';
   return `<div class="order-tile${tileCls}">
     <div class="ot-top"><span class="ot-name">${esc(orderDisplayLabel(o))}${o.source==='website'?' <span class="mono" style="font-weight:400;">🌐 Website</span>':''}</span><span class="badge badge-${o.status}">${esc(ORDER_STAGE_LABEL[o.status]||o.status)}</span></div>
@@ -3516,6 +3600,7 @@ function renderOrderTile(o, showUndoDispatch){
       ${o.status==='ready'?`<button class="btn btn-sm btn-success" data-dispatch-order="${o.id}">Processed &amp; Dispatched</button>`:''}
       ${(o.status==='pending'||o.status==='processing'||o.status==='ready')?`<button class="btn btn-sm btn-outline" data-edit-order="${o.id}">Edit</button>`:''}
       ${o.status==='processed' && showUndoDispatch?`<button class="btn btn-sm btn-outline" data-undo-dispatch="${o.id}">↩ Undo Dispatch</button>`:''}
+      ${(isLRUploader && (o.status==='ready'||o.status==='processed'))?((o.lrPhotoUrl && (Date.now()-o.lrUploadedAt)<30*24*60*60*1000)?`<button class="btn btn-sm btn-outline" data-view-lr="${o.id}">📄 LR</button>`:`<button class="btn btn-sm btn-outline" data-upload-lr="${o.id}">📄 Upload LR</button>`):''}
       <button class="btn btn-sm btn-outline" data-del-order="${o.id}">Delete</button>
       `:''}
     </div>
@@ -3657,6 +3742,8 @@ function openSiteVisitLogsModal(){
     <div class="modal-actions"><button type="button" class="btn btn-outline" id="cancelModal">Close</button></div>`);
 }
 function bindOrderRowActions(closeAfter){
+  document.querySelectorAll('[data-upload-lr]').forEach(b=>b.addEventListener('click', ()=>openUploadLRModal(b.dataset.uploadLr)));
+  document.querySelectorAll('[data-view-lr]').forEach(b=>b.addEventListener('click', ()=>openViewLRModal(b.dataset.viewLr)));
   document.querySelectorAll('[data-view-tracking-logs]').forEach(b=>b.addEventListener('click', ()=>openTrackingLogsModal(b.dataset.viewTrackingLogs)));
   document.querySelectorAll('[data-track-link]').forEach(b=>b.addEventListener('click', async ()=>{
     const o = S.orders.find(x=>x.id===b.dataset.trackLink); if(!o) return;
