@@ -188,6 +188,29 @@
     font-size:16.5px;font-family:var(--font-body);background:#FBFBFD;
   }
   .field input:focus, .field select:focus, .field textarea:focus{outline:none;border-color:var(--primary);background:#fff;}
+  /* Custom in-app dropdown: replaces the native browser <select> popup with
+     an inline-expanding list styled like the rest of the app, instead of
+     the OS's own disconnected-looking dropdown UI. */
+  .idd-wrap{width:100%;}
+  .idd-trigger{
+    width:100%;padding:12px 13px;border:1.5px solid var(--border);border-radius:11px;
+    font-size:16.5px;font-family:var(--font-body);background:#FBFBFD;text-align:left;
+    display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;color:var(--ink);
+  }
+  .idd-trigger.idd-placeholder{color:var(--ink-soft);}
+  .idd-trigger.idd-open{border-color:var(--primary);background:#fff;border-radius:11px 11px 0 0;}
+  .idd-trigger .idd-chevron{flex:0 0 auto;transition:transform .15s ease;color:var(--ink-soft);}
+  .idd-trigger.idd-open .idd-chevron{transform:rotate(180deg);}
+  .idd-list{
+    display:none;border:1.5px solid var(--primary);border-top:none;border-radius:0 0 11px 11px;
+    max-height:240px;overflow-y:auto;background:#fff;box-shadow:0 8px 18px -8px rgba(10,16,32,0.18);
+  }
+  .idd-list.idd-list-open{display:block;}
+  .idd-item{padding:11px 13px;font-size:15px;cursor:pointer;border-top:1px solid var(--border);}
+  .idd-item:first-child{border-top:none;}
+  .idd-item:active{background:var(--bg);}
+  .idd-item.idd-selected{background:var(--success-bg);font-weight:700;color:var(--primary-dark);}
+  .idd-item.idd-disabled{color:var(--ink-soft);pointer-events:none;}
   .btn{
     display:inline-flex;align-items:center;justify-content:center;gap:6px;
     border:none;border-radius:12px;padding:13px 16px;font-size:15px;font-weight:700;
@@ -462,7 +485,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-15-bugfixes1";
+const APP_BUILD = "2026-08-15-features2";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -854,6 +877,7 @@ function navSplit(tabs){
 function uid(){ return (crypto.randomUUID ? crypto.randomUUID() : (Date.now()+'-'+Math.random().toString(36).slice(2))); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function fmtDate(ts){ const d=new Date(ts); return d.toLocaleDateString(undefined,{month:'short',day:'numeric'}) + ' ' + d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'}); }
+function fmtDateOnly(ts){ return new Date(ts).toLocaleDateString(undefined,{month:'short',day:'numeric'}); }
 function fmtTime(ts){ return new Date(ts).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'}); }
 function dateHeading(ts){
   const d = new Date(ts); const today = new Date(); const yest = new Date(Date.now()-86400000);
@@ -1526,6 +1550,73 @@ function filterSortInventory(list, searchKey, valueFn, labelFn){
 function searchBarHtml(searchKey, placeholder){
   return `<div class="search-wrap"><input type="text" id="search_${searchKey}" placeholder="${esc(placeholder)}" value="${esc(S.search[searchKey]||'')}" /></div>`;
 }
+// Enhances every <select> within `container` into a custom in-app dropdown
+// (an inline-expanding list styled like the rest of the app) instead of the
+// browser's own native dropdown popup. The real <select> stays in the DOM
+// (visually hidden) so every existing .value read/write and 'change'
+// listener throughout the app keeps working completely unchanged — this
+// is purely a visual layer on top of it.
+function enhanceDropdowns(container){
+  (container || document).querySelectorAll('select:not([data-idd-enhanced])').forEach(sel=>{
+    sel.dataset.iddEnhanced = '1';
+    const wrap = document.createElement('div');
+    wrap.className = 'idd-wrap';
+    sel.parentNode.insertBefore(wrap, sel);
+    sel.style.display = 'none';
+    wrap.appendChild(sel);
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.className = 'idd-trigger';
+    trigger.innerHTML = `<span class="idd-trigger-text"></span><span class="idd-chevron">▾</span>`;
+    const list = document.createElement('div');
+    list.className = 'idd-list';
+    wrap.appendChild(trigger);
+    wrap.appendChild(list);
+
+    const textSpan = trigger.querySelector('.idd-trigger-text');
+    const refreshTrigger = ()=>{
+      const opt = sel.options[sel.selectedIndex];
+      const isPlaceholder = !opt || !opt.value;
+      textSpan.textContent = opt ? opt.textContent : '';
+      trigger.classList.toggle('idd-placeholder', isPlaceholder);
+      trigger.classList.toggle('idd-disabled-trigger', sel.disabled);
+    };
+    const closeList = ()=>{ list.classList.remove('idd-list-open'); trigger.classList.remove('idd-open'); };
+    const buildList = ()=>{
+      list.innerHTML = '';
+      [...sel.options].forEach((opt, idx)=>{
+        const item = document.createElement('div');
+        item.className = 'idd-item' + (opt.selected?' idd-selected':'') + (opt.disabled?' idd-disabled':'');
+        item.textContent = opt.textContent;
+        if(!opt.disabled){
+          item.addEventListener('click', ()=>{
+            sel.selectedIndex = idx;
+            sel.dispatchEvent(new Event('change', {bubbles:true}));
+            refreshTrigger();
+            closeList();
+          });
+        }
+        list.appendChild(item);
+      });
+    };
+    trigger.addEventListener('click', ()=>{
+      if(sel.disabled) return;
+      const isOpen = list.classList.contains('idd-list-open');
+      document.querySelectorAll('.idd-list.idd-list-open').forEach(l=>{ l.classList.remove('idd-list-open'); if(l.previousElementSibling) l.previousElementSibling.classList.remove('idd-open'); });
+      if(!isOpen){ buildList(); list.classList.add('idd-list-open'); trigger.classList.add('idd-open'); }
+    });
+    // Most code elsewhere that sets sel.value directly also dispatches a
+    // 'change' event right after (the established pattern throughout this
+    // app), which is what keeps the visible trigger text in sync with it.
+    sel.addEventListener('change', refreshTrigger);
+    refreshTrigger();
+  });
+}
+// Close any open custom dropdown when tapping outside of it.
+document.addEventListener('click', (e)=>{
+  if(e.target.closest('.idd-wrap')) return;
+  document.querySelectorAll('.idd-list.idd-list-open').forEach(l=>{ l.classList.remove('idd-list-open'); if(l.previousElementSibling) l.previousElementSibling.classList.remove('idd-open'); });
+});
 function bindSearchBar(searchKey, updateResultsFn){
   const el = document.getElementById('search_'+searchKey);
   if(!el) return;
@@ -1767,40 +1858,6 @@ function saveAfterActivityChange(entry){
   safeSet('app:readyStock', S.readyStock);
   savePartitionForItem('activityLog', entry);
 }
-function renderLogView(){
-  const list = S.activityLog.slice().sort((a,b)=>b.at-a.at);
-  const sections = groupByDate(list, e=>e.at);
-  const rowsHtml = e=>`
-      <tr>
-        <td>${esc(activityLabel(e))}</td>
-        <td class="mono">${activityAmount(e)}</td>
-        <td class="mono">${esc(e.by)}</td>
-        <td class="mono">${fmtTime(e.at)}</td>
-        <td class="row-actions">
-          <button class="btn btn-sm btn-outline" data-edit-log="${e.id}">Edit</button>
-          <button class="btn btn-sm btn-danger" data-del-log="${e.id}">Delete</button>
-        </td>
-      </tr>`;
-  return `<div class="card">
-    <h2>Data entry log</h2>
-    <p class="desc">Who entered what, and when.</p>
-    ${list.length===0?`<div class="empty"><div class="big">🗂️</div>No entries yet.</div>`:
-      sections.map(s=>dateGroupHeaderHtml(s.heading)+`<table><thead><tr><th>Entry</th><th>Qty</th><th>By</th><th>Time</th><th></th></tr></thead><tbody>${s.items.map(rowsHtml).join('')}</tbody></table>`).join('')}
-  </div>`;
-}
-function bindLogView(){
-  document.querySelectorAll('[data-del-log]').forEach(b=>b.addEventListener('click', ()=>{
-    if(!confirm('Delete this entry? Its stock effect will be reversed.')) return;
-    const e = S.activityLog.find(x=>x.id===b.dataset.delLog); if(!e) return;
-    revertActivity(e);
-    S.activityLog = S.activityLog.filter(x=>x.id!==e.id);
-    saveAfterActivityChange(e); render(); showToast('Entry deleted & stock reverted');
-  }));
-  document.querySelectorAll('[data-edit-log]').forEach(b=>b.addEventListener('click', ()=>{
-    const e = S.activityLog.find(x=>x.id===b.dataset.editLog); if(!e) return;
-    openEditLogModal(e);
-  }));
-}
 function openEditLogModal(e){
   const isPurchase = e.kind==='purchase';
   const isFilling = e.kind==='filling';
@@ -1931,6 +1988,7 @@ function render(){
   lastRenderedHtml = newHtml;
   root.innerHTML = newHtml;
   bindShell();
+  enhanceDropdowns(root);
   const newContent = root.querySelector('.content');
   if(newContent){
     newContent.style.scrollBehavior = 'auto'; // land instantly — don't let the smooth-scroll CSS animate this correction
@@ -2317,27 +2375,28 @@ function autoAdvanceOrders(){
 // order back to Processing.
 function markOrderReadyNow(orderId){
   const o = S.orders.find(x=>x.id===orderId); if(!o) return;
-  if(!confirm('Mark this order Ready now? Any item still short in stock will be marked Cancelled.')) return;
-  let stockChanged = false;
-  o.items.forEach(it=>{
-    if(it.cancelled) return;
-    const stockNow = S.readyStock[it.key]||0;
-    if(stockNow < 0){
-      it.cancelled = true; it.autoCancelledByReady = true;
-      // This item's need no longer exists — credit back the qty that was
-      // deducted for it at accept time, same as deleting an order does.
-      // Otherwise the shortage number (and the filling/packing task it
-      // drives) stays inflated for a need that's no longer real.
-      S.readyStock[it.key] = stockNow + it.qty;
-      logStockMovement(it.key, `${it.name} ${it.size}`, 'order', it.qty, `Mark Ready — item cancelled (short), credited back — ${orderDisplayLabel(o)}`);
-      stockChanged = true;
-    }
-  });
-  o.status = 'ready';
-  savePartitionForItem('orders', o);
-  if(stockChanged){ safeSet('app:readyStock', S.readyStock); syncStockTasksFromAlerts(); }
-  render();
-  showToast('Order marked Ready — short items cancelled (undoable)');
+  showConfirm('Mark this order Ready now? Any item still short in stock will be marked Cancelled.', ()=>{
+    let stockChanged = false;
+    o.items.forEach(it=>{
+      if(it.cancelled) return;
+      const stockNow = S.readyStock[it.key]||0;
+      if(stockNow < 0){
+        it.cancelled = true; it.autoCancelledByReady = true;
+        // This item's need no longer exists — credit back the qty that was
+        // deducted for it at accept time, same as deleting an order does.
+        // Otherwise the shortage number (and the filling/packing task it
+        // drives) stays inflated for a need that's no longer real.
+        S.readyStock[it.key] = stockNow + it.qty;
+        logStockMovement(it.key, `${it.name} ${it.size}`, 'order', it.qty, `Mark Ready — item cancelled (short), credited back — ${orderDisplayLabel(o)}`);
+        stockChanged = true;
+      }
+    });
+    o.status = 'ready';
+    savePartitionForItem('orders', o);
+    if(stockChanged){ safeSet('app:readyStock', S.readyStock); syncStockTasksFromAlerts(); }
+    render();
+    showToast('Order marked Ready — short items cancelled (undoable)');
+  }, {danger:false, confirmLabel:'Mark Ready'});
 }
 function undoMarkOrderReady(orderId){
   const o = S.orders.find(x=>x.id===orderId); if(!o) return;
@@ -2577,18 +2636,20 @@ function editDailyEntry(source, id){
 }
 function deleteDailyEntry(source, id){
   if(source==='activityLog'){
-    if(!confirm('Delete this entry? Its stock effect will be reversed.')) return;
-    const e = S.activityLog.find(x=>x.id===id); if(!e) return;
-    revertActivity(e, 'delete');
-    S.activityLog = S.activityLog.filter(x=>x.id!==id);
-    saveAfterActivityChange(e);
-    render(); showToast('Entry deleted & stock reverted');
+    showConfirm('Delete this entry? Its stock effect will be reversed.', ()=>{
+      const e = S.activityLog.find(x=>x.id===id); if(!e) return;
+      revertActivity(e, 'delete');
+      S.activityLog = S.activityLog.filter(x=>x.id!==id);
+      saveAfterActivityChange(e);
+      render(); showToast('Entry deleted & stock reverted');
+    });
   } else if(source==='expenses'){
-    if(!confirm('Delete this entry?')) return;
-    const item = S.expenses.find(x=>x.id===id);
-    S.expenses = S.expenses.filter(x=>x.id!==id);
-    if(item) savePartitionForItem('expenses', item);
-    render();
+    showConfirm('Delete this entry?', ()=>{
+      const item = S.expenses.find(x=>x.id===id);
+      S.expenses = S.expenses.filter(x=>x.id!==id);
+      if(item) savePartitionForItem('expenses', item);
+      render();
+    });
   } else if(source==='retailSales'){
     deleteRetailEntry(id);
   }
@@ -2666,11 +2727,12 @@ function bindDomino(){
   const btn = document.getElementById('newDominoBtn');
   if(btn) btn.addEventListener('click', openDominoModal);
   document.querySelectorAll('[data-del-domino]').forEach(b=>b.addEventListener('click', ()=>{
-    if(!confirm('Delete this entry?')) return;
-    const item = S.dominoPrints.find(x=>x.id===b.dataset.delDomino);
-    S.dominoPrints = S.dominoPrints.filter(x=>x.id!==b.dataset.delDomino);
-    if(item) savePartitionForItem('dominoPrints', item);
-    render();
+    showConfirm('Delete this entry?', ()=>{
+      const item = S.dominoPrints.find(x=>x.id===b.dataset.delDomino);
+      S.dominoPrints = S.dominoPrints.filter(x=>x.id!==b.dataset.delDomino);
+      if(item) savePartitionForItem('dominoPrints', item);
+      render();
+    });
   }));
 }
 function openDominoModal(){
@@ -2797,11 +2859,12 @@ function bindCatalogListModal(){
     const it = findItem(key);
     if(!it) return;
     const stockNote = ((S.filledStock[key]||0)!==0 || (S.readyStock[key]||0)!==0) ? ' It currently has stock recorded against it — that stock data stays, but the item will no longer show up anywhere.' : '';
-    if(!confirm(`Delete "${it.name} ${it.size}" from the catalog?${stockNote}`)) return;
-    S.catalogItems = S.catalogItems.filter(x=>x.key!==key);
-    rebuildCatalogFlat();
-    safeSet('app:catalogItems', S.catalogItems);
-    closeModal(); openManageCatalogModal();
+    showConfirm(`Delete "${it.name} ${it.size}" from the catalog?${stockNote}`, ()=>{
+      S.catalogItems = S.catalogItems.filter(x=>x.key!==key);
+      rebuildCatalogFlat();
+      safeSet('app:catalogItems', S.catalogItems);
+      closeModal(); openManageCatalogModal();
+    });
   }));
   const addBtn2 = document.getElementById('addCatalogItemBtn2');
   if(addBtn2) addBtn2.addEventListener('click', ()=>{ closeModal(); openCatalogItemModal(null); });
@@ -2955,11 +3018,12 @@ function bindExpenses(){
     const x = S.expenses.find(e=>e.id===b.dataset.editExp); if(x) openExpenseModal(x, x.type||'expense', x.byUsername);
   }));
   document.querySelectorAll('[data-del-exp]').forEach(b=>b.addEventListener('click', ()=>{
-    if(!confirm('Delete this entry?')) return;
-    const item = S.expenses.find(x=>x.id===b.dataset.delExp);
-    S.expenses = S.expenses.filter(x=>x.id!==b.dataset.delExp);
-    if(item) savePartitionForItem('expenses', item);
-    render();
+    showConfirm('Delete this entry?', ()=>{
+      const item = S.expenses.find(x=>x.id===b.dataset.delExp);
+      S.expenses = S.expenses.filter(x=>x.id!==b.dataset.delExp);
+      if(item) savePartitionForItem('expenses', item);
+      render();
+    });
   }));
 }
 function openExpenseModal(existing, type, forUsername){
@@ -3359,7 +3423,7 @@ function orderMrpValue(o){
     return sum + (it ? it.mrp*i.qty : 0);
   }, 0);
 }
-function renderOrderTile(o){
+function renderOrderTile(o, showUndoDispatch){
   const isAdmin = S.currentUser.role==='admin';
   const tileCls = o.status==='ready' ? ' tile-ready' : o.status==='processing' ? ' tile-processing' : '';
   return `<div class="order-tile${tileCls}">
@@ -3393,7 +3457,8 @@ function renderOrderTile(o){
       ${o.status==='processing'?`<button class="btn btn-sm btn-outline" data-mark-ready-now="${o.id}">Mark Ready</button>`:''}
       ${o.status==='ready' && o.items.some(it=>it.autoCancelledByReady)?`<button class="btn btn-sm btn-outline" data-undo-ready="${o.id}">↩ Undo Ready</button>`:''}
       ${o.status==='ready'?`<button class="btn btn-sm btn-success" data-dispatch-order="${o.id}">Processed &amp; Dispatched</button>`:''}
-      ${(o.status==='pending'||o.status==='processing')?`<button class="btn btn-sm btn-outline" data-edit-order="${o.id}">Edit</button>`:''}
+      ${(o.status==='pending'||o.status==='processing'||o.status==='ready')?`<button class="btn btn-sm btn-outline" data-edit-order="${o.id}">Edit</button>`:''}
+      ${o.status==='processed' && showUndoDispatch?`<button class="btn btn-sm btn-outline" data-undo-dispatch="${o.id}">↩ Undo Dispatch</button>`:''}
       <button class="btn btn-sm btn-outline" data-del-order="${o.id}">Delete</button>
       `:''}
     </div>
@@ -3421,10 +3486,10 @@ function renderOrdersSegregated(limit){
   const html = section('New', '🛍️', pending) + section('Ready to dispatch', '🚚', ready) + section('Processing', '🔧', processing);
   return html || `<div class="empty"><div class="big">📦</div>No active orders right now.</div>`;
 }
-function renderOrderTilesGrouped(list){
+function renderOrderTilesGrouped(list, showUndoDispatch){
   if(list.length===0) return `<div class="empty"><div class="big">📦</div>No orders yet.</div>`;
   const sections = groupByDate(list, o=>o.createdAt);
-  return sections.map(s=>dateGroupHeaderHtml(s.heading) + s.items.map(renderOrderTile).join('')).join('');
+  return sections.map(s=>dateGroupHeaderHtml(s.heading) + s.items.map(o=>renderOrderTile(o, showUndoDispatch)).join('')).join('');
 }
 
 function renderRetailSalesCard(){
@@ -3487,13 +3552,12 @@ function openStatModal(key){
   if(key==='checkedin'){
     title = "Present today";
     const today = localDateKey(Date.now());
-    const seenUsernames = new Set();
-    const todays = S.attendance.filter(a=>{
-      if(localDateKey(a.timestamp)!==today || seenUsernames.has(a.username)) return false;
-      seenUsernames.add(a.username); return true;
-    });
+    const todays = S.users.filter(u=>u.role!=='admin').map(u=>{
+      const st = attendanceStatusFor(u.username, today);
+      return st.status==='present' ? {name:u.name, record:st.record} : null;
+    }).filter(Boolean);
     bodyHtml = todays.length===0 ? `<div class="empty">No one has marked present today yet.</div>` :
-      todays.map(a=>`<div class="order-tile"><div class="ot-top"><span class="ot-name">${esc(a.name)}</span><span class="badge badge-approved">Present</span></div><div class="ot-meta">${fmtTime(a.timestamp)}</div></div>`).join('');
+      todays.map(a=>`<div class="order-tile"><div class="ot-top"><span class="ot-name">${esc(a.name)}</span><span class="badge badge-approved">Present</span></div><div class="ot-meta">${a.record.markedByAdmin?'':fmtTime(a.record.timestamp)}</div></div>`).join('');
   } else if(key==='alerts'){
     title = 'Stock alerts';
     const alerts = getStockAlerts();
@@ -3502,11 +3566,22 @@ function openStatModal(key){
     const titles = {pending:'New orders', processing:'Processing orders', ready:'Ready to dispatch', processed:'Processed orders'};
     title = titles[key] || key;
     const list = S.orders.filter(o=>o.status===key).sort((a,b)=>b.createdAt-a.createdAt);
-    bodyHtml = renderOrderTilesGrouped(list);
+    bodyHtml = renderOrderTilesGrouped(list, key==='processed');
   }
   showModal(`<h3>${esc(title)}</h3><div>${bodyHtml}</div><div class="modal-actions"><button type="button" class="btn btn-outline" id="cancelModal">Close</button></div>`);
   bindOrderRowActions(true);
   bindAlertTiles();
+  if(key==='processed') document.querySelectorAll('[data-undo-dispatch]').forEach(b=>b.addEventListener('click', ()=>undoDispatch(b.dataset.undoDispatch)));
+}
+function undoDispatch(orderId){
+  const o = S.orders.find(x=>x.id===orderId); if(!o) return;
+  showConfirm('Undo dispatch and move this order back to Ready?', ()=>{
+    o.status = 'ready';
+    delete o.dispatchedAt; delete o.processedAt;
+    savePartitionForItem('orders', o);
+    render(); openStatModal('processed');
+    showToast('Dispatch undone — order back in Ready');
+  }, {danger:false, confirmLabel:'Undo Dispatch'});
 }
 function renderVisitLogList(logs){
   if(!logs.length) return `<div class="empty">No visits recorded (last 7 days).</div>`;
@@ -3545,8 +3620,8 @@ Regards
       await navigator.clipboard.writeText(message);
       showToast('Tracking message copied — share it with the party');
     }catch(e){
-      // Clipboard API unavailable/blocked — fall back to a prompt so it can still be copied manually.
-      prompt('Copy this message:', message);
+      // Clipboard API unavailable/blocked — fall back to a dialog so it can still be copied manually.
+      showCopyableText('Copy this message:', message);
     }
   }));
   document.querySelectorAll('[data-approve-order]').forEach(b=>b.addEventListener('click', ()=>{ setOrderStatus(b.dataset.approveOrder,'processing'); if(closeAfter) closeModal(); render(); }));
@@ -3558,20 +3633,21 @@ Regards
     const o = S.orders.find(x=>x.id===b.dataset.editOrder); if(o) openOrderModal(o);
   }));
   document.querySelectorAll('[data-del-order]').forEach(b=>b.addEventListener('click', ()=>{
-    if(!confirm('Delete this order?')) return;
-    const o = S.orders.find(x=>x.id===b.dataset.delOrder);
-    if(o && o.stockDeducted){
-      o.items.forEach(d=>{
-        if(d.cancelled) return; // already credited back separately (e.g. by Mark Ready) — crediting again would double-count
-        S.readyStock[d.key]=(S.readyStock[d.key]||0)+d.qty;
-        logStockMovement(d.key, `${d.name} ${d.size}`, 'order', d.qty, `Order deleted — ${orderDisplayLabel(o)}`);
-      });
-      safeSet('app:readyStock', S.readyStock);
-      syncStockTasksFromAlerts();
-    }
-    S.orders = S.orders.filter(x=>x.id!==b.dataset.delOrder);
-    if(o) savePartitionForItem('orders', o);
-    if(closeAfter) closeModal(); render();
+    showConfirm('Delete this order?', ()=>{
+      const o = S.orders.find(x=>x.id===b.dataset.delOrder);
+      if(o && o.stockDeducted){
+        o.items.forEach(d=>{
+          if(d.cancelled) return; // already credited back separately (e.g. by Mark Ready) — crediting again would double-count
+          S.readyStock[d.key]=(S.readyStock[d.key]||0)+d.qty;
+          logStockMovement(d.key, `${d.name} ${d.size}`, 'order', d.qty, `Order deleted — ${orderDisplayLabel(o)}`);
+        });
+        safeSet('app:readyStock', S.readyStock);
+        syncStockTasksFromAlerts();
+      }
+      S.orders = S.orders.filter(x=>x.id!==b.dataset.delOrder);
+      if(o) savePartitionForItem('orders', o);
+      if(closeAfter) closeModal(); render();
+    });
   }));
 }
 
@@ -3593,7 +3669,7 @@ function openOrderModal(existingOrder){
     <div class="field" id="ordCaseRow" style="display:none;"><label>Cases (<span id="ordCaseSizeHint"></span> pc each)</label><input id="ordItemCases" type="number" min="0" value="0" /></div>
     <div class="field"><label>Pieces (loose, on top of cases)</label>
       <div style="display:flex;gap:6px;">
-        <input id="ordItemQty" type="number" min="0" max="${MAX_PC_ENTRY}" value="0" style="flex:2;" />
+        <input id="ordItemQty" type="number" min="0" max="${MAX_PC_ENTRY}" placeholder="Qty" style="flex:2;" />
         <button type="button" class="btn btn-accent btn-sm" id="addItemBtn" style="flex:1;">Add</button>
       </div>
     </div>
@@ -3684,16 +3760,18 @@ function openOrderModal(existingOrder){
       }
     };
     if(!existingCust){
-      if(confirm(`"${typedName}" is a new party — save it to the customer directory for next time?`)){
-        const city = (prompt('City (used to show orders to non-admin staff without revealing the full party name):') || '').trim();
-        const c = { id: uid(), name: typedName, phone:'', city, address:'', gstin:'', addedBy: S.currentUser.name, addedByUsername:S.currentUser.username, addedAt: Date.now() };
-        S.customers.push(c);
-        safeSet('app:customers', S.customers);
-        custId = c.id; custName = c.name; custCity = city;
-      }
-      // else: proceed without saving a customer record — order still records the typed name.
+      showConfirm(`"${typedName}" is a new party — save it to the customer directory for next time?`, ()=>{
+        showPrompt('City (used to show orders to non-admin staff without revealing the full party name):', '', (city)=>{
+          const c = { id: uid(), name: typedName, phone:'', city, address:'', gstin:'', addedBy: S.currentUser.name, addedByUsername:S.currentUser.username, addedAt: Date.now() };
+          S.customers.push(c);
+          safeSet('app:customers', S.customers);
+          custId = c.id; custName = c.name; custCity = city;
+          finish();
+        });
+      }, {danger:false, confirmLabel:'Save'}, finish); // declining still submits the order, just without saving a new customer record
+    } else {
+      finish();
     }
-    finish();
   });
 }
 let editingDraftIndex = null;
@@ -3891,15 +3969,18 @@ function openChatOrderModal(){
       showToast('Order submitted — waiting on owner to accept');
     };
     if(!existingCust){
-      if(confirm(`"${typedName}" is a new party — save it to the customer directory for next time?`)){
-        const city = (prompt('City (used to show orders to non-admin staff without revealing the full party name):') || '').trim();
-        const c = { id: uid(), name: typedName, phone:'', city, address:'', gstin:'', addedBy: S.currentUser.name, addedByUsername:S.currentUser.username, addedAt: Date.now() };
-        S.customers.push(c);
-        safeSet('app:customers', S.customers);
-        custId = c.id; custName = c.name; custCity = city;
-      }
+      showConfirm(`"${typedName}" is a new party — save it to the customer directory for next time?`, ()=>{
+        showPrompt('City (used to show orders to non-admin staff without revealing the full party name):', '', (city)=>{
+          const c = { id: uid(), name: typedName, phone:'', city, address:'', gstin:'', addedBy: S.currentUser.name, addedByUsername:S.currentUser.username, addedAt: Date.now() };
+          S.customers.push(c);
+          safeSet('app:customers', S.customers);
+          custId = c.id; custName = c.name; custCity = city;
+          finish();
+        });
+      }, {danger:false, confirmLabel:'Save'}, finish);
+    } else {
+      finish();
     }
-    finish();
   });
 }
 
@@ -3968,27 +4049,28 @@ function bindCustomers(){
     const c = S.customers.find(x=>x.id===b.dataset.editCust); if(c) openCustomerModal(c);
   }));
   document.querySelectorAll('[data-del-cust]').forEach(b=>b.addEventListener('click', ()=>{
-    if(!confirm('Delete this customer?')) return;
-    S.customers = S.customers.filter(c=>c.id!==b.dataset.delCust);
-    safeSet('app:customers', S.customers); render();
+    showConfirm('Delete this customer?', ()=>{
+      S.customers = S.customers.filter(c=>c.id!==b.dataset.delCust);
+      safeSet('app:customers', S.customers); render();
+    });
   }));
   document.querySelectorAll('[data-edit-transport]').forEach(b=>b.addEventListener('click', ()=>{
     const oldName = b.dataset.editTransport;
-    const newName = prompt('Fix the spelling for this transporter:', oldName);
-    if(newName===null) return;
-    const trimmed = newName.trim();
-    if(!trimmed || trimmed===oldName) return;
-    renameTransportEverywhere(oldName, trimmed);
-    render();
-    showToast('Transporter renamed everywhere');
+    showPrompt('Fix the spelling for this transporter:', oldName, (newName)=>{
+      if(!newName || newName===oldName) return;
+      renameTransportEverywhere(oldName, newName);
+      render();
+      showToast('Transporter renamed everywhere');
+    });
   }));
   document.querySelectorAll('[data-del-transport]').forEach(b=>b.addEventListener('click', ()=>{
     const name = b.dataset.delTransport;
-    if(!confirm(`Remove "${name}" from the transporter list? Existing orders keep this name — this only stops it from being suggested for new ones.`)) return;
-    S.transports = S.transports.filter(t=>t!==name);
-    safeSet('app:transports', S.transports);
-    render();
-    showToast('Transporter removed');
+    showConfirm(`Remove "${name}" from the transporter list? Existing orders keep this name — this only stops it from being suggested for new ones.`, ()=>{
+      S.transports = S.transports.filter(t=>t!==name);
+      safeSet('app:transports', S.transports);
+      render();
+      showToast('Transporter removed');
+    });
   }));
 }
 function openCustomerModal(existingCust){
@@ -4144,13 +4226,14 @@ function bindTeamListModal(){
     e.stopPropagation();
     const role = b.dataset.delTeam;
     if(S.users.some(u=>u.role===role)){ showAlert('Reassign or remove the members of this team before deleting it.'); return; }
-    if(!confirm(`Delete the "${ROLES[role].label}" team? This cannot be undone.`)) return;
-    S.customRoles = S.customRoles.filter(c=>c.key!==role);
-    delete S.rolePermissions[role];
-    rebuildRolesRegistry();
-    safeSet('app:customRoles', S.customRoles);
-    safeSet('app:rolePermissions', S.rolePermissions);
-    closeModal(); openPermissionManager();
+    showConfirm(`Delete the "${ROLES[role].label}" team? This cannot be undone.`, ()=>{
+      S.customRoles = S.customRoles.filter(c=>c.key!==role);
+      delete S.rolePermissions[role];
+      rebuildRolesRegistry();
+      safeSet('app:customRoles', S.customRoles);
+      safeSet('app:rolePermissions', S.rolePermissions);
+      closeModal(); openPermissionManager();
+    });
   }));
   const showAddBtn = document.getElementById('showAddTeamBtn');
   if(showAddBtn) showAddBtn.addEventListener('click', ()=>{
@@ -4250,11 +4333,16 @@ function openPermissionConfirm(role, viewChecked, entryChecked){
     closeModal(); render(); showToast(`${ROLES[role].label} permissions updated`);
   });
 }
-async function resetAllDataExceptUsers(){
-  const pwd = prompt("Enter your admin password to confirm — this wipes everything except Users:");
-  if(pwd===null) return;
-  if(!(await verifyPassword(S.currentUser, pwd))){ showAlert('Incorrect password.'); return; }
-  if(!confirm('This will permanently erase ALL orders, customers, stock levels, expenses, logs, tasks, attendance, login history, and domino records. Users stay. This cannot be undone. Continue?')) return;
+function resetAllDataExceptUsers(){
+  showPrompt('Enter your admin password to confirm — this wipes everything except Users:', '', async (pwd)=>{
+    if(!pwd) return;
+    if(!(await verifyPassword(S.currentUser, pwd))){ showAlert('Incorrect password.'); return; }
+    showConfirm('This will permanently erase ALL orders, customers, stock levels, expenses, logs, tasks, attendance, login history, and domino records. Users stay. This cannot be undone. Continue?', ()=>{
+      performResetAllDataExceptUsers();
+    }, {confirmLabel:'Yes, erase everything'});
+  }, {password:true});
+}
+function performResetAllDataExceptUsers(){
   // Every day-partition row we've ever seen for these entities needs to be
   // deleted on the backend too, or old days would silently reappear the
   // next time data is merged back in from the sheet.
@@ -4285,10 +4373,11 @@ function bindUsers(){
   const resetBtn = document.getElementById('resetAllBtn');
   if(resetBtn) resetBtn.addEventListener('click', resetAllDataExceptUsers);
   document.querySelectorAll('[data-edit-user]').forEach(b=>b.addEventListener('click', ()=>openUserModal(b.dataset.editUser)));
-  document.querySelectorAll('[data-del-user]').forEach(b=>b.addEventListener('click', async ()=>{
-    if(!confirm('Remove this user?')) return;
-    S.users = S.users.filter(u=>u.id!==b.dataset.delUser);
-    safeSet('app:users', S.users); render();
+  document.querySelectorAll('[data-del-user]').forEach(b=>b.addEventListener('click', ()=>{
+    showConfirm('Remove this user?', ()=>{
+      S.users = S.users.filter(u=>u.id!==b.dataset.delUser);
+      safeSet('app:users', S.users); render();
+    });
   }));
 }
 function resizeImageFile(file, maxDim, quality){
@@ -4365,12 +4454,16 @@ function openUserModal(id){
     if(!file.type.startsWith('image/')){ showAlert('Please choose an image file.'); return; }
     try{
       const dataUrl = await resizeImageFileSafe(file);
+      const applyPhoto = ()=>{
+        pendingPhoto = dataUrl;
+        const wrap = document.getElementById('uPhotoPreviewWrap');
+        wrap.innerHTML = `<img id="uPhotoPreview" src="${dataUrl}" style="width:100%;height:100%;object-fit:cover;" />`;
+      };
       if(dataUrl.length > 10000){
-        if(!confirm('This photo is a bit large and may fail to save reliably. Use it anyway? (A simpler/smaller image works best.)')) return;
+        showConfirm('This photo is a bit large and may fail to save reliably. Use it anyway? (A simpler/smaller image works best.)', applyPhoto, {danger:false, confirmLabel:'Use it anyway'});
+      } else {
+        applyPhoto();
       }
-      pendingPhoto = dataUrl;
-      const wrap = document.getElementById('uPhotoPreviewWrap');
-      wrap.innerHTML = `<img id="uPhotoPreview" src="${dataUrl}" style="width:100%;height:100%;object-fit:cover;" />`;
     }catch(e){ showAlert('Could not read that image — try a different file.'); }
   });
   const removeBtn = document.getElementById('uPhotoRemoveBtn');
@@ -4401,21 +4494,25 @@ function openUserModal(id){
       showAlert('Password is required for a new user.'); return;
     }
     const draftUsers = existing ? S.users.map(u=>u.id===existing.id ? newRecord : u) : [...S.users, newRecord];
+    const finishSaveUser = ()=>{
+      if(existing){ Object.assign(existing, newRecord); }
+      else { S.users.push(newRecord); }
+      safeSet('app:users', S.users);
+      closeModal(); render(); showToast('Saved');
+    };
     // The whole team is stored together in one backend cell (~50,000 char
     // limit) — photos are what can push it over. Check before saving rather
     // than let it silently fail and retry forever in the background.
     if(photo && JSON.stringify(draftUsers).length > 45000){
-      if(confirm("Saving everyone's data together is getting too large to store reliably (mostly from photos). Save this person WITHOUT a photo instead?")){
+      showConfirm("Saving everyone's data together is getting too large to store reliably (mostly from photos). Save this person WITHOUT a photo instead?", ()=>{
         newRecord.photo = '';
-      } else {
+        finishSaveUser();
+      }, {danger:false, confirmLabel:'Save without photo'}, ()=>{
         showAlert('Not saved. Remove a photo from another team member first, or skip the photo for this one.');
-        return;
-      }
+      });
+      return;
     }
-    if(existing){ Object.assign(existing, newRecord); }
-    else { S.users.push(newRecord); }
-    safeSet('app:users', S.users);
-    closeModal(); render(); showToast('Saved');
+    finishSaveUser();
   });
 }
 
@@ -4662,6 +4759,7 @@ function bindMessagesModal(){
 function refreshMessagesModal(){
   const body = document.getElementById('messagesModalBody');
   if(body) body.innerHTML = renderMessagesModalContent();
+  enhanceDropdowns(body);
   bindMessagesModal();
 }
 
@@ -4865,9 +4963,10 @@ function bindTasks(){
     safeSet('app:tasks', S.tasks); render(); showToast('Task marked done');
   }));
   document.querySelectorAll('[data-del-task]').forEach(b=>b.addEventListener('click', ()=>{
-    if(!confirm('Delete this task?')) return;
-    S.tasks = S.tasks.filter(x=>x.id!==b.dataset.delTask);
-    safeSet('app:tasks', S.tasks); render();
+    showConfirm('Delete this task?', ()=>{
+      S.tasks = S.tasks.filter(x=>x.id!==b.dataset.delTask);
+      safeSet('app:tasks', S.tasks); render();
+    });
   }));
 }
 function openTaskModal(existingTask){
@@ -5104,8 +5203,8 @@ function openPackagingModal(prefillKey, prefillQty){
     <p class="desc" style="margin-top:-6px;">Filled stock → ready stock. Case + pieces add together.</p>
     <form id="packForm">
       <div class="field"><label>Item (type to search)</label>${itemPickerHtml('packItem', prefillKey)}</div>
-      <div id="packCaseRow" class="field" style="display:none;"><label>Cases (<span id="packCaseSizeHint"></span> pc each)</label><input id="packCases" type="number" min="0" value="0" /></div>
-      <div class="field"><label>Pieces (loose, on top of cases)</label><input id="packQty" type="number" min="0" max="${MAX_PC_ENTRY}" value="${prefillQty>0?prefillQty:0}" /></div>
+      <div id="packCaseRow" class="field" style="display:none;"><label>Cases (<span id="packCaseSizeHint"></span> pc each)</label><input id="packCases" type="number" min="0" placeholder="Cases" /></div>
+      <div class="field"><label>Pieces (loose, on top of cases)</label><input id="packQty" type="number" min="0" max="${MAX_PC_ENTRY}" placeholder="Pieces" ${prefillQty>0?`value="${prefillQty}"`:''} /></div>
       ${prefillQty>0?`<p class="desc" style="margin-top:-6px;">Pre-filled with the shortfall — edit if needed.</p>`:''}
       <div class="field"><label>Batch / box note (optional)</label><input id="packNote" placeholder="Batch no., box marking, etc." /></div>
       <div class="modal-actions">
@@ -5186,7 +5285,7 @@ function openBatchModal(){
     <p class="desc" style="margin-top:-6px;">Every size of the same product shares one batch number.</p>
     <div class="field"><label>Item</label>
       <select id="batchItemSel">
-        ${allCats.length===0?'<option value="">No items in catalog</option>':allCats.map(it=>`<option value="${esc(it.cat)}">${esc(it.name)}</option>`).join('')}
+        ${allCats.length===0?'<option value="">No items in catalog</option>':`<option value="">Select an item…</option>${allCats.map(it=>`<option value="${esc(it.cat)}">${esc(it.name)}</option>`).join('')}`}
       </select>
     </div>
     <div id="batchResultBox" style="margin:14px 0;"></div>
@@ -5217,6 +5316,7 @@ function renderBatchResult(){
     </div>
     <div id="batchStampBox"></div>`:''}
     ${isAdmin?`<button type="button" class="btn btn-outline btn-sm" id="editBatchRefBtn" style="width:100%;margin-top:10px;">✏️ Edit Jan 2026 reference (currently ${esc(String(S.batchReferences[cat]))})</button><div id="batchRefEditBox"></div>`:''}`;
+    enhanceDropdowns(box);
     const sizeSel = document.getElementById('batchSizeSel');
     if(sizeSel) sizeSel.addEventListener('change', ()=>{
       const stampBox = document.getElementById('batchStampBox');
@@ -5274,7 +5374,7 @@ function openRetailModal(type, existingEntry){
     <div class="field"><label>Add item (type to search)</label>${itemPickerHtml('retailItemSel', null)}</div>
     <div class="field"><label>Quantity (pieces)</label>
       <div style="display:flex;gap:6px;">
-        <input id="retailItemQty" type="number" min="0" max="${MAX_PC_ENTRY}" value="0" style="flex:2;" />
+        <input id="retailItemQty" type="number" min="0" max="${MAX_PC_ENTRY}" placeholder="Qty" style="flex:2;" />
         <button type="button" class="btn btn-accent btn-sm" id="addRetailItemBtn" style="flex:1;">Add</button>
       </div>
     </div>
@@ -5350,15 +5450,16 @@ function toggleRetailBooked(id){
   showToast(e.booked ? 'Booked ✅' : 'Unbooked');
 }
 function deleteRetailEntry(id){
-  if(!confirm('Delete this entry? Ready stock will be credited back.')) return;
-  const e = S.retailSales.find(x=>x.id===id); if(!e) return;
-  (e.items||[]).forEach(d=>{ S.readyStock[d.key] = (S.readyStock[d.key]||0) + d.qty; logStockMovement(d.key, d.itemLabel, 'retail', d.qty, 'Retail entry deleted — credited back'); });
-  safeSet('app:readyStock', S.readyStock);
-  S.retailSales = S.retailSales.filter(x=>x.id!==id);
-  savePartitionForItem('retailSales', e);
-  syncStockTasksFromAlerts();
-  render();
-  showToast('Entry deleted & stock credited back');
+  showConfirm('Delete this entry? Ready stock will be credited back.', ()=>{
+    const e = S.retailSales.find(x=>x.id===id); if(!e) return;
+    (e.items||[]).forEach(d=>{ S.readyStock[d.key] = (S.readyStock[d.key]||0) + d.qty; logStockMovement(d.key, d.itemLabel, 'retail', d.qty, 'Retail entry deleted — credited back'); });
+    safeSet('app:readyStock', S.readyStock);
+    S.retailSales = S.retailSales.filter(x=>x.id!==id);
+    savePartitionForItem('retailSales', e);
+    syncStockTasksFromAlerts();
+    render();
+    showToast('Entry deleted & stock credited back');
+  });
 }
 
 /* ============================= READY STOCK ============================= */
@@ -5557,8 +5658,9 @@ function renderCheckin(){
     <table><thead><tr><th>Date</th><th>Time</th><th>Location</th></tr></thead><tbody>
     ${mine.slice(0,30).map(a=>{
       const hasLoc = a.lat||a.lng;
-      const locCell = hasLoc?`<a href="https://www.google.com/maps?q=${a.lat},${a.lng}" target="_blank" rel="noopener" class="mono" style="color:var(--primary);">📍 view</a>`:`<span class="mono">no location</span>`;
-      return `<tr><td class="mono">${esc(dateHeading(a.timestamp))}</td><td class="mono">${fmtTime(a.timestamp)}</td><td>${locCell}</td></tr>`;
+      const locCell = a.markedByAdmin ? `<span class="mono">Marked by Admin</span>` : (hasLoc?`<a href="https://www.google.com/maps?q=${a.lat},${a.lng}" target="_blank" rel="noopener" class="mono" style="color:var(--primary);">📍 view</a>`:`<span class="mono">no location</span>`);
+      const timeCell = (a.type==='present' && !a.markedByAdmin) ? fmtTime(a.timestamp) : '—';
+      return `<tr><td class="mono">${esc(dateHeading(a.timestamp))}</td><td class="mono">${timeCell}</td><td>${locCell}</td></tr>`;
     }).join('')}
     </tbody></table>`}
   </div>`;
@@ -5738,7 +5840,8 @@ function renderAttendanceMap(){
         const hasLoc = a.lat||a.lng;
         const locCell = a.markedByAdmin ? `<span class="mono">Marked by Admin</span>` : (hasLoc ? `<a href="https://www.google.com/maps?q=${a.lat},${a.lng}" target="_blank" rel="noopener" class="mono" style="color:var(--primary);">📍 ${a.lat.toFixed(4)}, ${a.lng.toFixed(4)}</a>` : `<span class="mono">no location</span>`);
         const flLine = a.fieldLocation ? `<div class="mono" style="font-size:10.5px;color:var(--ink-soft);margin-top:2px;">Field Location - ${esc(a.fieldLocation)}</div>` : '';
-        return `<tr><td>${esc(a.name)}${a.type==='absent'?' <span class="badge badge-rejected" style="font-size:9px;">Absent</span>':''}</td><td class="mono">${fmtTime(a.timestamp)}</td><td>${locCell}${flLine}</td></tr>`;
+        const timeCell = (a.type==='present' && !a.markedByAdmin) ? fmtTime(a.timestamp) : '—';
+        return `<tr><td>${esc(a.name)}${a.type==='absent'?' <span class="badge badge-rejected" style="font-size:9px;">Absent</span>':''}</td><td class="mono">${timeCell}</td><td>${locCell}${flLine}</td></tr>`;
       }).join('')}
       </tbody></table>`).join('')}
   </div>`;
@@ -5858,13 +5961,37 @@ function renderMonthlySummary(year, month1based){
   box.innerHTML = workingDaysCount===0 ? `<div class="empty">No working days yet this month.</div>` : `
     <table><thead><tr><th>Employee</th><th>Working days</th><th>Present</th><th>Absent</th></tr></thead><tbody>
     ${rows.map(r=>`<tr><td>${esc(r.name)}</td><td class="mono">${workingDaysCount}</td><td class="mono" style="color:var(--success);font-weight:700;">${r.present}</td><td class="mono" style="color:var(--danger);font-weight:700;">${r.absent}</td></tr>
-    ${r.absentDates.length?`<tr><td colspan="4" style="font-size:10.5px;color:var(--ink-soft);padding-top:0;padding-bottom:10px;">Absent: ${r.absentDates.map(dk=>fmtDate(dateKeyToTs(dk))).join(', ')}</td></tr>`:''}`).join('')}
+    ${r.absentDates.length?`<tr><td colspan="4" style="font-size:10.5px;color:var(--ink-soft);padding-top:0;padding-bottom:10px;">Absent: ${r.absentDates.map(dk=>fmtDateOnly(dateKeyToTs(dk))).join(', ')}</td></tr>`:''}`).join('')}
     </tbody></table>`;
 }
 
 /* ============================= MODAL ============================= */
 // Centered red alert dialog — replaces the native browser showAlert() everywhere,
 // since a browser-native popup looks jarring and inconsistent with the app.
+// Styled replacement for prompt() used purely to show text for manual
+// copying (clipboard API fallback) — a textarea instead of showPrompt's
+// single-line input, since the text can be multi-line.
+function showCopyableText(message, text){
+  const existing = document.getElementById('appAlertOverlay');
+  if(existing) existing.remove();
+  const overlay = document.createElement('div');
+  overlay.className = 'app-alert-overlay';
+  overlay.id = 'appAlertOverlay';
+  overlay.innerHTML = `
+    <div class="app-alert-box">
+      <div class="app-alert-icon">📋</div>
+      <div class="app-alert-message">${esc(message)}</div>
+      <textarea readonly style="width:100%;box-sizing:border-box;padding:11px 12px;border-radius:11px;border:1.5px solid var(--border);font-size:13px;margin-bottom:12px;min-height:120px;font-family:inherit;">${esc(text)}</textarea>
+      <button type="button" class="app-alert-ok-btn" id="appAlertOkBtn">Close</button>
+    </div>`;
+  const host = document.querySelector('.device-screen') || document.body;
+  host.appendChild(overlay);
+  const ta = overlay.querySelector('textarea');
+  setTimeout(()=>{ ta.focus(); ta.select(); }, 50);
+  const close = ()=>{ overlay.remove(); };
+  overlay.addEventListener('click', (e)=>{ if(e.target===overlay) close(); });
+  overlay.querySelector('#appAlertOkBtn').addEventListener('click', close);
+}
 function showAlert(message){
   const existing = document.getElementById('appAlertOverlay');
   if(existing) existing.remove(); // don't stack multiple alerts
@@ -5883,6 +6010,67 @@ function showAlert(message){
   overlay.addEventListener('click', (e)=>{ if(e.target===overlay) close(); });
   overlay.querySelector('#appAlertOkBtn').addEventListener('click', close);
 }
+// Styled replacement for the native confirm() — since a DOM dialog can't
+// block execution the way confirm() does, the code that used to run after
+// "if(!confirm(...)) return;" now runs inside onConfirm instead. Cancel
+// (or tapping outside) just closes the dialog and does nothing further,
+// matching confirm()'s "false" behavior.
+function showConfirm(message, onConfirm, opts, onCancel){
+  const existing = document.getElementById('appAlertOverlay');
+  if(existing) existing.remove();
+  const overlay = document.createElement('div');
+  overlay.className = 'app-alert-overlay';
+  overlay.id = 'appAlertOverlay';
+  const confirmLabel = (opts && opts.confirmLabel) || 'Yes';
+  const cancelLabel = (opts && opts.cancelLabel) || 'Cancel';
+  const danger = !opts || opts.danger !== false; // red confirm button by default (most confirms guard a destructive action)
+  overlay.innerHTML = `
+    <div class="app-alert-box">
+      <div class="app-alert-icon">${danger?'⚠️':'❓'}</div>
+      <div class="app-alert-message">${esc(message)}</div>
+      <div style="display:flex;gap:8px;">
+        <button type="button" class="app-alert-ok-btn" id="appConfirmCancelBtn" style="background:var(--bg);color:var(--ink);border:1.5px solid var(--border);">${esc(cancelLabel)}</button>
+        <button type="button" class="app-alert-ok-btn" id="appConfirmOkBtn" style="background:${danger?'var(--danger)':'var(--primary)'};">${esc(confirmLabel)}</button>
+      </div>
+    </div>`;
+  const host = document.querySelector('.device-screen') || document.body;
+  host.appendChild(overlay);
+  const close = ()=>{ overlay.remove(); };
+  overlay.addEventListener('click', (e)=>{ if(e.target===overlay){ close(); if(onCancel) onCancel(); } });
+  overlay.querySelector('#appConfirmCancelBtn').addEventListener('click', ()=>{ close(); if(onCancel) onCancel(); });
+  overlay.querySelector('#appConfirmOkBtn').addEventListener('click', ()=>{ close(); onConfirm(); });
+}
+// Styled replacement for the native prompt() — same async-via-callback
+// approach as showConfirm. onSubmit receives the trimmed input value, or
+// is never called at all if the person cancels.
+function showPrompt(message, defaultValue, onSubmit, opts){
+  const existing = document.getElementById('appAlertOverlay');
+  if(existing) existing.remove();
+  const overlay = document.createElement('div');
+  overlay.className = 'app-alert-overlay';
+  overlay.id = 'appAlertOverlay';
+  const isPassword = opts && opts.password;
+  overlay.innerHTML = `
+    <div class="app-alert-box">
+      <div class="app-alert-icon">✏️</div>
+      <div class="app-alert-message">${esc(message)}</div>
+      <input type="${isPassword?'password':'text'}" id="appPromptInput" value="${esc(defaultValue||'')}" style="width:100%;box-sizing:border-box;padding:11px 12px;border-radius:11px;border:1.5px solid var(--border);font-size:14px;margin-bottom:12px;" />
+      <div style="display:flex;gap:8px;">
+        <button type="button" class="app-alert-ok-btn" id="appPromptCancelBtn" style="background:var(--bg);color:var(--ink);border:1.5px solid var(--border);">Cancel</button>
+        <button type="button" class="app-alert-ok-btn" id="appPromptOkBtn" style="background:var(--primary);">OK</button>
+      </div>
+    </div>`;
+  const host = document.querySelector('.device-screen') || document.body;
+  host.appendChild(overlay);
+  const input = overlay.querySelector('#appPromptInput');
+  setTimeout(()=>{ input.focus(); input.select(); }, 50);
+  const close = ()=>{ overlay.remove(); };
+  overlay.addEventListener('click', (e)=>{ if(e.target===overlay) close(); });
+  overlay.querySelector('#appPromptCancelBtn').addEventListener('click', close);
+  const submit = ()=>{ const val = input.value.trim(); close(); onSubmit(val); };
+  overlay.querySelector('#appPromptOkBtn').addEventListener('click', submit);
+  input.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); submit(); } });
+}
 function showModal(innerHtml){
   closeModal(); // never stack modals — opening a new one while one is already showing used to leave two overlays behind, needing two closes to get rid of both
   const overlay = document.createElement('div');
@@ -5891,6 +6079,7 @@ function showModal(innerHtml){
   overlay.innerHTML = `<div class="modal"><div class="sheet-handle"></div>${innerHtml}</div>`;
   const host = document.querySelector('.device-screen') || document.body;
   host.appendChild(overlay);
+  enhanceDropdowns(overlay);
   overlay.addEventListener('click', (e)=>{ if(e.target===overlay) closeModal(); });
   const cancelBtn = overlay.querySelector('#cancelModal');
   if(cancelBtn) cancelBtn.addEventListener('click', closeModal);
