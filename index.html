@@ -485,7 +485,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-15-features2";
+const APP_BUILD = "2026-08-15-autocomplete-discount1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -1556,6 +1556,62 @@ function searchBarHtml(searchKey, placeholder){
 // (visually hidden) so every existing .value read/write and 'change'
 // listener throughout the app keeps working completely unchanged — this
 // is purely a visual layer on top of it.
+// Enhances every <input list="..."> within `container` into a custom
+// in-app searchable autocomplete (an inline-filtering list styled like the
+// rest of the app) instead of the browser's own native datalist suggestion
+// popup. The input keeps working exactly as before (free typing still
+// allowed, for cases like entering a brand-new party name) — this only
+// replaces the SUGGESTION UI on top of it.
+function enhanceAutocomplete(container){
+  (container || document).querySelectorAll('input[list]:not([data-idac-enhanced])').forEach(input=>{
+    const datalistId = input.getAttribute('list');
+    const datalist = document.getElementById(datalistId);
+    if(!datalist) return;
+    input.dataset.idacEnhanced = '1';
+    input.removeAttribute('list'); // stop the native browser suggestion popup — we render our own below instead
+    const options = [...datalist.options].map(o=>o.value);
+
+    const wrap = document.createElement('div');
+    wrap.className = 'idd-wrap';
+    input.parentNode.insertBefore(wrap, input);
+    wrap.appendChild(input);
+    const list = document.createElement('div');
+    list.className = 'idd-list';
+    wrap.appendChild(list);
+
+    const closeList = ()=>{ list.classList.remove('idd-list-open'); };
+    const buildList = (filterText)=>{
+      if(input.disabled){ closeList(); return; }
+      const norm = (filterText||'').trim().toLowerCase();
+      const filtered = (norm ? options.filter(o=>o.toLowerCase().includes(norm)) : options).slice(0,50); // cap for perf on long catalogs
+      list.innerHTML = '';
+      if(filtered.length===0){ closeList(); return; }
+      filtered.forEach(opt=>{
+        const item = document.createElement('div');
+        item.className = 'idd-item';
+        item.textContent = opt;
+        // mousedown (not click) fires before the input's blur, so the
+        // selection registers before blur's delayed close removes the list
+        item.addEventListener('mousedown', (e)=>{
+          e.preventDefault();
+          input.value = opt;
+          input.dispatchEvent(new Event('input', {bubbles:true}));
+          input.dispatchEvent(new Event('change', {bubbles:true}));
+          closeList();
+        });
+        list.appendChild(item);
+      });
+      list.classList.add('idd-list-open');
+    };
+    input.addEventListener('input', ()=>buildList(input.value));
+    input.addEventListener('focus', ()=>buildList(input.value));
+    input.addEventListener('blur', ()=>{ setTimeout(closeList, 150); });
+  });
+}
+function enhanceFormControls(container){
+  enhanceDropdowns(container);
+  enhanceAutocomplete(container);
+}
 function enhanceDropdowns(container){
   (container || document).querySelectorAll('select:not([data-idd-enhanced])').forEach(sel=>{
     sel.dataset.iddEnhanced = '1';
@@ -1988,7 +2044,7 @@ function render(){
   lastRenderedHtml = newHtml;
   root.innerHTML = newHtml;
   bindShell();
-  enhanceDropdowns(root);
+  enhanceFormControls(root);
   const newContent = root.querySelector('.content');
   if(newContent){
     newContent.style.scrollBehavior = 'auto'; // land instantly — don't let the smooth-scroll CSS animate this correction
@@ -2624,7 +2680,7 @@ function renderDailyWork(){
     <p class="desc" style="margin-top:-6px;">Delete an order from Home/Orders' Accept · Reject · Delete flow, not from here.</p>
     ${newOrderEntries.length===0?`<div class="empty">No orders created this day.</div>`:`
     <table><thead><tr><th>Party</th><th>Items</th><th>MRP Value</th><th>By</th><th>Time</th><th></th></tr></thead><tbody>
-    ${newOrderEntries.map(o=>`<tr${o.booked?' style="opacity:0.55;"':''}><td>${esc(orderDisplayLabel(o))}</td><td>${o.items.filter(i=>!i.cancelled).map(i=>`${esc(i.name)} ${esc(i.size)} <span class="mono">×${i.qty}</span>`).join('<br/>')}</td><td class="mono">₹${orderMrpValue(o).toLocaleString('en-IN')}</td><td>${esc(o.createdBy)}</td><td class="mono">${fmtTime(o.createdAt)}</td><td>${actionCell(o,'orders',false)}</td></tr>`).join('')}
+    ${newOrderEntries.map(o=>{ const liveCust = liveCustomerFor(o); const disc = liveCust ? (liveCust.discountPercent||0) : 0; return `<tr${o.booked?' style="opacity:0.55;"':''}><td>${esc(orderDisplayLabel(o))}</td><td>${o.items.filter(i=>!i.cancelled).map(i=>`${esc(i.name)} ${esc(i.size)} <span class="mono">×${i.qty}</span>`).join('<br/>')}</td><td class="mono">₹${orderMrpValue(o).toLocaleString('en-IN')}${disc>0?` (${disc}% off)`:''}</td><td>${esc(o.createdBy)}</td><td class="mono">${fmtTime(o.createdAt)}</td><td>${actionCell(o,'orders',false)}</td></tr>`; }).join('')}
     </tbody></table>`}
   </div>`;
 }
@@ -3449,7 +3505,7 @@ function renderOrderTile(o, showUndoDispatch){
     }).join('<br/>')}</div>
     ${o.transportName?`<div class="ot-meta"><b>🚚 ${esc(o.transportName)}</b>${o.totalCases?` · ${o.totalCases} cases`:''}${o.dispatchedAt?` · ${fmtDate(o.dispatchedAt)}`:''}</div>`:''}
     <div class="ot-meta">${o.orderNumber?`#${esc(o.orderNumber)} · `:''}by ${esc(o.createdBy)} · ${fmtTime(o.createdAt)}${isAdmin && (o.orderLat||o.orderLng) ? ` · <a href="https://www.google.com/maps?q=${o.orderLat},${o.orderLng}" target="_blank" rel="noopener" style="color:var(--primary);">📍 Order location</a>` : ''}${isAdmin ? ` · <button type="button" class="mono" data-view-tracking-logs="${o.id}" style="background:none;border:none;color:var(--primary);cursor:pointer;padding:0;font-size:inherit;">📜 Logs</button>` : ''}</div>
-    ${isAdmin ? `<div class="ot-meta"><b>MRP Value: ₹${orderMrpValue(o).toLocaleString('en-IN')}</b></div>` : ''}
+    ${isAdmin ? (()=>{ const liveCust = liveCustomerFor(o); const disc = liveCust ? (liveCust.discountPercent||0) : 0; return `<div class="ot-meta"><b>MRP Value: ₹${orderMrpValue(o).toLocaleString('en-IN')}${disc>0?` (${disc}% off)`:''}</b></div>`; })() : ''}
     <div class="row-actions">
       ${(isAdmin || (S.currentUser.role==='sales' && o.createdByUsername===S.currentUser.username)) ? `<button class="btn btn-sm btn-outline" data-track-link="${o.id}">🔗 Track link</button>` : ''}
       ${isAdmin?`
@@ -3506,7 +3562,7 @@ function renderRetailSalesCard(){
     </div>
     ${entries.length===0?`<div class="empty">No retail sales or samples in the last 7 days.</div>`:`
     <table><thead><tr><th>Items</th><th>Type</th><th>Total</th><th>Time</th><th></th></tr></thead><tbody>
-    ${entries.map(e=>`<tr><td>${(e.items||[]).map(i=>`${esc(i.itemLabel)} <span class="mono">×${i.qty}</span>`).join('<br/>')}</td><td>${e.type==='sale'?'<span class="badge badge-approved">Sale</span>':'<span class="badge badge-pending">Sample</span>'}</td><td class="mono">${e.type==='sale'?'₹'+(e.totalAmount||0).toLocaleString('en-IN'):'—'}</td><td class="mono">${fmtDate(e.at)}</td><td><button type="button" class="btn btn-sm btn-outline" data-edit-retail="${e.id}">Edit</button></td></tr>`).join('')}
+    ${entries.map(e=>`<tr><td>${(e.items||[]).map(i=>`${esc(i.itemLabel)} <span class="mono">×${i.qty}</span>`).join('<br/>')}</td><td>${e.type==='sale'?'<span class="badge badge-approved">Sale</span>':'<span class="badge badge-pending">Sample</span>'}</td><td class="mono">${e.type==='sale'?'₹'+(e.totalAmount||0).toLocaleString('en-IN'):'—'}</td><td class="mono">${fmtDate(e.at)}</td><td>${S.currentUser.role==='admin'?`<button type="button" class="btn btn-sm btn-outline" data-edit-retail="${e.id}">Edit</button>`:''}</td></tr>`).join('')}
     </tbody></table>
     <p class="desc" style="margin-top:8px;">Total cash sales (7 days): <b>₹${totalAmount.toLocaleString('en-IN')}</b></p>`}
   </div>`;
@@ -3762,11 +3818,14 @@ function openOrderModal(existingOrder){
     if(!existingCust){
       showConfirm(`"${typedName}" is a new party — save it to the customer directory for next time?`, ()=>{
         showPrompt('City (used to show orders to non-admin staff without revealing the full party name):', '', (city)=>{
-          const c = { id: uid(), name: typedName, phone:'', city, address:'', gstin:'', addedBy: S.currentUser.name, addedByUsername:S.currentUser.username, addedAt: Date.now() };
-          S.customers.push(c);
-          safeSet('app:customers', S.customers);
-          custId = c.id; custName = c.name; custCity = city;
-          finish();
+          showPrompt('Discount % for this party (enter 0 if none):', '0', (discountStr)=>{
+            const discountPercent = Math.max(0, Math.min(100, parseFloat(discountStr)||0));
+            const c = { id: uid(), name: typedName, phone:'', city, address:'', gstin:'', discountPercent, addedBy: S.currentUser.name, addedByUsername:S.currentUser.username, addedAt: Date.now() };
+            S.customers.push(c);
+            safeSet('app:customers', S.customers);
+            custId = c.id; custName = c.name; custCity = city;
+            finish();
+          });
         });
       }, {danger:false, confirmLabel:'Save'}, finish); // declining still submits the order, just without saving a new customer record
     } else {
@@ -3971,11 +4030,14 @@ function openChatOrderModal(){
     if(!existingCust){
       showConfirm(`"${typedName}" is a new party — save it to the customer directory for next time?`, ()=>{
         showPrompt('City (used to show orders to non-admin staff without revealing the full party name):', '', (city)=>{
-          const c = { id: uid(), name: typedName, phone:'', city, address:'', gstin:'', addedBy: S.currentUser.name, addedByUsername:S.currentUser.username, addedAt: Date.now() };
-          S.customers.push(c);
-          safeSet('app:customers', S.customers);
-          custId = c.id; custName = c.name; custCity = city;
-          finish();
+          showPrompt('Discount % for this party (enter 0 if none):', '0', (discountStr)=>{
+            const discountPercent = Math.max(0, Math.min(100, parseFloat(discountStr)||0));
+            const c = { id: uid(), name: typedName, phone:'', city, address:'', gstin:'', discountPercent, addedBy: S.currentUser.name, addedByUsername:S.currentUser.username, addedAt: Date.now() };
+            S.customers.push(c);
+            safeSet('app:customers', S.customers);
+            custId = c.id; custName = c.name; custCity = city;
+            finish();
+          });
         });
       }, {danger:false, confirmLabel:'Save'}, finish);
     } else {
@@ -4078,7 +4140,7 @@ function openCustomerModal(existingCust){
     <h3>${existingCust?'Edit customer':'Add customer'}</h3>
     <form id="custForm">
       <div class="field"><label>Name</label><input id="custName" value="${existingCust?esc(existingCust.name):''}" required /></div>
-      <div class="field"><label>WhatsApp number (10-digit)</label><input id="custPhone" type="tel" inputmode="numeric" maxlength="10" placeholder="9876543210" value="${existingCust?esc(existingCust.phone||''):''}" required /></div>
+      <div class="field"><label>WhatsApp number (10-digit, optional)</label><input id="custPhone" type="tel" inputmode="numeric" maxlength="10" placeholder="9876543210" value="${existingCust?esc(existingCust.phone||''):''}" /></div>
       <div class="field"><label>City</label><input id="custCity" value="${existingCust?esc(existingCust.city||''):''}" placeholder="e.g. Jaipur" required /></div>
       <div class="field"><label>Address</label><textarea id="custAddr" rows="2">${existingCust?esc(existingCust.address||''):''}</textarea></div>
       <div class="field"><label>GSTIN (optional)</label><input id="custGstin" value="${existingCust?esc(existingCust.gstin||''):''}" placeholder="22AAAAA0000A1Z5" style="text-transform:uppercase;" /></div>
@@ -4086,6 +4148,7 @@ function openCustomerModal(existingCust){
         <input id="custTransport" list="custTransportList" value="${existingCust?esc(existingCust.transport||''):''}" placeholder="e.g. XYZ Roadways" />
         <datalist id="custTransportList">${S.transports.map(t=>`<option value="${esc(t)}"></option>`).join('')}</datalist>
       </div>
+      ${S.currentUser.role==='admin'?`<div class="field"><label>Discount % (admin only — shown next to MRP Value on this party's orders)</label><input id="custDiscount" type="number" min="0" max="100" step="0.1" value="${existingCust&&existingCust.discountPercent?existingCust.discountPercent:''}" placeholder="e.g. 10" /></div>`:''}
       <div class="modal-actions">
         <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
         <button type="submit" class="btn btn-primary">${existingCust?'Save changes':'Add customer'}</button>
@@ -4095,7 +4158,7 @@ function openCustomerModal(existingCust){
   document.getElementById('custForm').addEventListener('submit', (e)=>{
     e.preventDefault();
     const phone = document.getElementById('custPhone').value.trim();
-    if(!/^\d{10}$/.test(phone)){ showAlert('Enter a valid 10-digit WhatsApp number.'); return; }
+    if(phone && !/^\d{10}$/.test(phone)){ showAlert('Enter a valid 10-digit WhatsApp number, or leave it blank.'); return; }
     const fields = {
       name: document.getElementById('custName').value.trim(),
       phone,
@@ -4104,9 +4167,23 @@ function openCustomerModal(existingCust){
       gstin: document.getElementById('custGstin').value.trim().toUpperCase(),
       transport: document.getElementById('custTransport').value.trim(),
     };
+    if(S.currentUser.role==='admin'){
+      const discountInput = document.getElementById('custDiscount');
+      fields.discountPercent = discountInput ? Math.max(0, Math.min(100, parseFloat(discountInput.value)||0)) : 0;
+    }
     rememberTransport(fields.transport);
-    if(existingCust){
-      Object.assign(existingCust, fields);
+    // Re-find by id rather than trusting the closure-captured reference —
+    // if a background sync reassigned S.customers while this modal was
+    // open, that old reference would be orphaned and editing it silently
+    // wouldn't touch the array actually used for saving/rendering.
+    const liveExisting = existingCust ? S.customers.find(c=>c.id===existingCust.id) : null;
+    if(liveExisting){
+      Object.assign(liveExisting, fields);
+    } else if(existingCust){
+      // Extremely rare: the customer vanished from S.customers entirely
+      // (e.g. deleted elsewhere) while this edit was open — re-add it
+      // rather than silently losing the edit.
+      S.customers.push({ ...existingCust, ...fields });
     } else {
       S.customers.push({
         id: uid(), ...fields,
@@ -4759,7 +4836,7 @@ function bindMessagesModal(){
 function refreshMessagesModal(){
   const body = document.getElementById('messagesModalBody');
   if(body) body.innerHTML = renderMessagesModalContent();
-  enhanceDropdowns(body);
+  enhanceFormControls(body);
   bindMessagesModal();
 }
 
@@ -5316,7 +5393,7 @@ function renderBatchResult(){
     </div>
     <div id="batchStampBox"></div>`:''}
     ${isAdmin?`<button type="button" class="btn btn-outline btn-sm" id="editBatchRefBtn" style="width:100%;margin-top:10px;">✏️ Edit Jan 2026 reference (currently ${esc(String(S.batchReferences[cat]))})</button><div id="batchRefEditBox"></div>`:''}`;
-    enhanceDropdowns(box);
+    enhanceFormControls(box);
     const sizeSel = document.getElementById('batchSizeSel');
     if(sizeSel) sizeSel.addEventListener('change', ()=>{
       const stampBox = document.getElementById('batchStampBox');
@@ -5379,7 +5456,7 @@ function openRetailModal(type, existingEntry){
       </div>
     </div>
     <div id="retailDraftList" style="margin:10px 0;"></div>
-    ${isSale?`<div class="field"><label>Total Amount Received (₹)</label><input id="retailTotalAmount" type="number" min="0" step="0.01" value="${existingEntry?existingEntry.totalAmount:0}" /></div>`:''}
+    ${isSale?`<div class="field"><label>Total Amount Received (₹)</label><input id="retailTotalAmount" type="number" min="0.01" step="0.01" placeholder="Amount" required ${existingEntry?`value="${existingEntry.totalAmount}"`:''} /></div>`:''}
     <div class="modal-actions">
       <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
       <button type="button" class="btn btn-primary" id="submitRetailBtn">${existingEntry?'Save changes':'Record'}</button>
@@ -5412,6 +5489,7 @@ function openRetailModal(type, existingEntry){
       }
     }
     const totalAmount = isSale ? (parseFloat(document.getElementById('retailTotalAmount').value)||0) : 0;
+    if(isSale && totalAmount<=0){ showAlert('Enter the amount received.'); return; }
     if(existingEntry) (existingEntry.items||[]).forEach(d=>{ S.readyStock[d.key] = (S.readyStock[d.key]||0) + d.qty; logStockMovement(d.key, d.itemLabel, 'retail', d.qty, 'Retail entry edited — released for re-recording'); }); // release old
     retailDraft.forEach(d=>{ S.readyStock[d.key] = (S.readyStock[d.key]||0) - d.qty; logStockMovement(d.key, `${d.name} ${d.size}`, 'retail', -d.qty, `${isSale?'Retail sale':'Sample given'}${existingEntry?' (edited)':''}`); }); // deduct new
     const entry = existingEntry || { id:uid(), type, by:S.currentUser.name, byUsername:S.currentUser.username, at:Date.now() };
@@ -5439,6 +5517,7 @@ function renderRetailDraftList(){
   }));
 }
 function editRetailEntry(id){
+  if(S.currentUser.role!=='admin') return; // Edit is admin-only — this guards against any path besides the (already admin-gated) button
   const entry = S.retailSales.find(e=>e.id===id);
   if(entry) openRetailModal(entry.type, entry);
 }
@@ -6079,7 +6158,7 @@ function showModal(innerHtml){
   overlay.innerHTML = `<div class="modal"><div class="sheet-handle"></div>${innerHtml}</div>`;
   const host = document.querySelector('.device-screen') || document.body;
   host.appendChild(overlay);
-  enhanceDropdowns(overlay);
+  enhanceFormControls(overlay);
   overlay.addEventListener('click', (e)=>{ if(e.target===overlay) closeModal(); });
   const cancelBtn = overlay.querySelector('#cancelModal');
   if(cancelBtn) cancelBtn.addEventListener('click', closeModal);
