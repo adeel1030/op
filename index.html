@@ -513,7 +513,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-16-manager-active1";
+const APP_BUILD = "2026-08-17-stocklog-poolfix1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -2021,9 +2021,10 @@ function logStockMovement(key, itemLabel, kind, delta, note, poolOverride){
   // ambiguous with a catalog item key.
   const isRaw = poolOverride==='raw' || (!poolOverride && RAW_CATEGORIES.includes(key));
   const isFilledPool = poolOverride==='filled' || (!poolOverride && !isRaw && kind==='filling');
+  const pool = isRaw ? 'raw' : isFilledPool ? 'filled' : 'ready';
   const unit = isRaw ? 'mL' : 'pc';
   const totalAfter = isRaw ? (S.rawMaterial[key]||0) : isFilledPool ? (S.filledStock[key]||0) : (S.readyStock[key]||0);
-  const entry = { id:uid(), key, itemLabel, kind, delta, note: note||'', unit, totalAfter, by:S.currentUser.name, byUsername:S.currentUser.username, at:Date.now() };
+  const entry = { id:uid(), key, itemLabel, kind, delta, note: note||'', unit, pool, totalAfter, by:S.currentUser.name, byUsername:S.currentUser.username, at:Date.now() };
   S.stockMovementLog.push(entry);
   savePartitionForItem('stockMovementLog', entry);
 }
@@ -5464,8 +5465,9 @@ function openTaskModal(existingTask){
 }
 
 /* ============================= RAW MATERIAL ============================= */
-function renderStockLogModal(key, label){
-  const entries = S.stockMovementLog.filter(m=>m.key===key).sort((a,b)=>b.at-a.at);
+function renderStockLogModal(key, label, pool){
+  const inferPool = m => m.pool || (RAW_CATEGORIES.includes(m.key) ? 'raw' : (m.kind==='filling' ? 'filled' : 'ready')); // old entries (pre-fix) never stored their pool — infer it the same way logStockMovement itself would have
+  const entries = S.stockMovementLog.filter(m=>m.key===key && inferPool(m)===pool).sort((a,b)=>b.at-a.at);
   const kindLabel = {purchase:'🛢️ Purchase', filling:'🧴 Filling', packaging:'📦 Packaging', order:'🛍️ Order', retail:'💵 Retail/Sample', adjust:'✏️ Admin adjust'};
   // Older log entries (from before "unit"/"totalAfter" were tracked) fall
   // back to the old purchase-only mL guess, and show "—" for the total
@@ -5503,7 +5505,7 @@ function renderRawMaterial(){
 function bindRawMaterialRows(){
   document.querySelectorAll('[data-adjust-raw]').forEach(b=>b.addEventListener('click', ()=> openAdjustModal('raw', b.dataset.adjustRaw, S.rawMaterial[b.dataset.adjustRaw]||0, b.dataset.adjustRaw)));
   document.querySelectorAll('[data-lowalert-raw]').forEach(b=>b.addEventListener('click', ()=> openLowAlertModal('raw', b.dataset.lowalertRaw, b.dataset.lowalertRaw, 'mL')));
-  document.querySelectorAll('[data-stocklog-key]').forEach(b=>b.addEventListener('click', ()=> renderStockLogModal(b.dataset.stocklogKey, b.dataset.stocklogLabel)));
+  document.querySelectorAll('[data-stocklog-key]').forEach(b=>b.addEventListener('click', ()=> renderStockLogModal(b.dataset.stocklogKey, b.dataset.stocklogLabel, 'raw')));
 }
 function bindRawMaterial(){
   const pb = document.getElementById('recPurchaseBtn');
@@ -5618,7 +5620,7 @@ function renderFilled(){
 function bindFilledRows(){
   document.querySelectorAll('[data-adjust-filled]').forEach(b=>b.addEventListener('click', ()=>{ const it=findItem(b.dataset.adjustFilled); openAdjustModal('filled', b.dataset.adjustFilled, S.filledStock[b.dataset.adjustFilled]||0, `${it.name} ${it.size}`); }));
   document.querySelectorAll('[data-lowalert-filled]').forEach(b=>b.addEventListener('click', ()=>{ const it=findItem(b.dataset.lowalertFilled); openLowAlertModal('filled', b.dataset.lowalertFilled, `${it.name} ${it.size}`, 'pc'); }));
-  document.querySelectorAll('[data-stocklog-key]').forEach(b=>b.addEventListener('click', ()=> renderStockLogModal(b.dataset.stocklogKey, b.dataset.stocklogLabel)));
+  document.querySelectorAll('[data-stocklog-key]').forEach(b=>b.addEventListener('click', ()=> renderStockLogModal(b.dataset.stocklogKey, b.dataset.stocklogLabel, 'filled')));
 }
 function bindFilled(){
   const fb = document.getElementById('recFillingBtn');
@@ -5924,7 +5926,7 @@ function renderReady(){
 function bindReadyRows(){
   document.querySelectorAll('[data-adjust-ready]').forEach(b=>b.addEventListener('click', ()=>{ const it=findItem(b.dataset.adjustReady); openAdjustModal('ready', b.dataset.adjustReady, S.readyStock[b.dataset.adjustReady]||0, `${it.name} ${it.size}`); }));
   document.querySelectorAll('[data-lowalert-ready]').forEach(b=>b.addEventListener('click', ()=>{ const it=findItem(b.dataset.lowalertReady); openLowAlertModal('ready', b.dataset.lowalertReady, `${it.name} ${it.size}`, 'pc'); }));
-  document.querySelectorAll('[data-stocklog-key]').forEach(b=>b.addEventListener('click', ()=> renderStockLogModal(b.dataset.stocklogKey, b.dataset.stocklogLabel)));
+  document.querySelectorAll('[data-stocklog-key]').forEach(b=>b.addEventListener('click', ()=> renderStockLogModal(b.dataset.stocklogKey, b.dataset.stocklogLabel, 'ready')));
 }
 function bindReady(){
   const rb = document.getElementById('recPackagingBtn');
