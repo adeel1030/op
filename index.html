@@ -43,28 +43,6 @@
     --sat:env(safe-area-inset-top,0px);
     --sab:env(safe-area-inset-bottom,0px);
   }
-  [data-theme="dark"]{
-    --bg:#12171A;
-    --surface:#1B2226;
-    --ink:#EAF1EC;
-    --ink-soft:#8FA398;
-    --primary:#3FA073;
-    --primary-dark:#2A7A56;
-    --accent:#F2A93B;
-    --accent-ink:#2A1D06;
-    --gold:#D9B84A;
-    --gold-dark:#B4952F;
-    --success:#3FBE87;
-    --success-bg:#173328;
-    --danger:#E5695C;
-    --danger-bg:#3A1E1B;
-    --warning:#E0A63C;
-    --warning-bg:#3A2F14;
-    --info:#5B8FD9;
-    --info-bg:#182A3F;
-    --border:#2B3438;
-  }
-  [data-theme="dark"] body{ background:#0B0E10; }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
   html,body{margin:0;padding:0;height:100%;overscroll-behavior:none;}
   body{
@@ -405,7 +383,7 @@
     position:absolute;left:0;right:0;bottom:0;z-index:30;
     background:linear-gradient(100deg, #0E1F14, var(--primary-dark));
     border-top:1px solid rgba(201,162,39,0.25);
-    display:flex;padding:6px 6px calc(6px + var(--sab));
+    display:flex;justify-content:center;padding:6px 6px calc(6px + var(--sab));
     height:calc(var(--navbar-h) + var(--sab));
     overflow-x:auto;-webkit-overflow-scrolling:touch;
     box-shadow:0 -4px 16px -6px rgba(0,0,0,0.35);
@@ -535,7 +513,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-16-ui-refresh1";
+const APP_BUILD = "2026-08-16-manager-active1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -800,10 +778,9 @@ const S = {
   loadFailed:false,
   users:[], orders:[], customers:[], attendance:[], tasks:[], loginLog:[],
   rawMaterial:{}, filledStock:{}, readyStock:{}, expenses:[], activityLog:[], stockTasks:[], dominoPrints:[], chatMessages:[], retailSales:[], trackingViewLogs:[], siteVisitLogs:[], stockMovementLog:[],
-  lowStock:{raw:{}, filled:{}, ready:{}}, watchStock:{raw:{}, filled:{}, ready:{}}, rolePermissions:{}, customRoles:[], catalogItems:[], transports:[], dailyRecordMarks:{}, dailyWorkDate:null, batchReferences:{}, holidays:{},
+  lowStock:{raw:{}, filled:{}, ready:{}}, watchStock:{raw:{}, filled:{}, ready:{}}, rolePermissions:{}, customRoles:[], catalogItems:[], transports:[], dailyRecordMarks:{}, dailyWorkDate:null, batchReferences:{}, holidays:{}, activeSessions:{},
   _partitionKeysSeen:{orders:new Set(), activityLog:new Set(), attendance:new Set(), expenses:new Set(), dominoPrints:new Set(), loginLog:new Set(), chatMessages:new Set(), retailSales:new Set(), trackingViewLogs:new Set(), siteVisitLogs:new Set(), stockMovementLog:new Set()},
   currentUser:null, view:'home', stockView:'raw', notifOpen:false, moreOpen:false, profileOpen:false, alertPanelOpen:null, toast:null,
-  theme: (()=>{ try{ return localStorage.getItem('app:theme')||'light'; }catch(e){ return 'light'; } })(),
   chatModalOpen:false, chatView:'announcements', chatActiveThread:null,
   postLoginPhase:null, pendingUser:null, postLoginLoadingStep:0,
   search:{}, // per-view search text
@@ -920,7 +897,7 @@ const TAB_SHORT = {
   tasks:'Tasks', checkin:'Attend', stock:'Stock',
   expenses:'Expense', log:'Log', domino:'Domino', dailywork:'Daily'
 };
-const NAV_MAX = 5; // 4 primary tabs + the "More" button, once a role has more than this many tabs
+const NAV_MAX = 6; // 5 primary tabs + the "More" button, once a role has more than this many tabs
 function navSplit(tabs){
   if(tabs.length <= NAV_MAX) return { primary: tabs, overflow: [] };
   return { primary: tabs.slice(0, NAV_MAX-1), overflow: tabs.slice(NAV_MAX-1) };
@@ -1369,6 +1346,7 @@ function applyServerData(data){
   S.dailyRecordMarks = data.dailyRecordMarks || {};
   S.batchReferences = data.batchReferences || {};
   S.holidays = data.holidays || {};
+  S.activeSessions = data.activeSessions || {};
   S.trackingViewLogs = mergePartitionedEntity(data, 'trackingViewLogs').filter(l=>l.at >= Date.now()-7*24*60*60*1000).sort((a,b)=>b.at-a.at);
   S.siteVisitLogs = mergePartitionedEntity(data, 'siteVisitLogs').filter(l=>l.at >= Date.now()-7*24*60*60*1000).sort((a,b)=>b.at-a.at);
   S.stockMovementLog = mergePartitionedEntity(data, 'stockMovementLog').filter(l=>l.at >= Date.now()-7*24*60*60*1000).sort((a,b)=>b.at-a.at);
@@ -1461,6 +1439,21 @@ async function loadAll(){
 
 // Poll the backend so every device stays in sync in near real time,
 // without disturbing whatever the person is doing (typing in a modal etc).
+function sendHeartbeat(){
+  if(!S.currentUser) return;
+  S.activeSessions[S.currentUser.username] = Date.now();
+  safeSet('app:activeSessions', S.activeSessions);
+}
+function startHeartbeat(){
+  sendHeartbeat(); // fire immediately so status is correct right after login, not up to 60s stale
+  setInterval(()=>{
+    if(!S.currentUser) return;
+    const messagesModalOpen = !!document.getElementById('messagesModalBody');
+    const modalOpen = !!document.getElementById('modalOverlay') && !messagesModalOpen;
+    if(modalOpen) return; // same "don't disturb active form-editing" principle as the main sync poll
+    sendHeartbeat();
+  }, 60000);
+}
 function startSyncPolling(intervalMs){
   setInterval(async ()=>{
     if(!S.currentUser) return;
@@ -1595,6 +1588,7 @@ function finalizeLogin(u){
   S.postLoginPhase = null; S.pendingUser = null;
   render();
   backfillCatalogCaseSizes();
+  sendHeartbeat();
 }
 function doLogout(){ S.currentUser = null; S.notifOpen=false; S.moreOpen=false; S.profileOpen=false; S.alertPanelOpen=null; persistSession(null); render(); }
 // Manual, on-demand backup — fetches everything fresh from the backend
@@ -1701,9 +1695,7 @@ function filterSortInventory(list, searchKey, valueFn, labelFn){
     const tierOf = v => v<0 ? 0 : v>0 ? 1 : 2; // 0: short (negative), 1: in stock, 2: empty
     const ta = tierOf(va), tb = tierOf(vb);
     if(ta!==tb) return ta-tb;
-    if(ta===0) return va-vb;      // most short first (-50 before -10)
-    if(ta===1) return vb-va;      // most stock first
-    return labelFn(a).localeCompare(labelFn(b)); // empty items: alphabetical
+    return labelFn(a).localeCompare(labelFn(b)); // alphabetical within every tier
   });
   return out;
 }
@@ -2166,7 +2158,6 @@ function bindConnectionFailedScreen(){
   });
 }
 function render(){
-  document.documentElement.setAttribute('data-theme', S.theme==='dark' ? 'dark' : 'light');
   const root = document.getElementById('root');
   if(!S.loaded){
     root.innerHTML = renderBrandedLoadingScreen();
@@ -2456,8 +2447,7 @@ function renderProfilePanel(role){
       </div>
     </div>
   </div>
-  <button class="btn btn-outline" style="width:100%;margin-top:14px;" id="themeToggleBtn">${S.theme==='dark'?'☀️ Light mode':'🌙 Dark mode'}</button>
-  <button class="btn btn-danger" style="width:100%;margin-top:10px;" id="logoutBtn">Log out</button>
+  <button class="btn btn-danger" style="width:100%;margin-top:14px;" id="logoutBtn">Log out</button>
   <p class="mono" style="text-align:center;margin-top:14px;opacity:0.5;">build ${APP_BUILD}</p>`;
 }
 
@@ -2529,12 +2519,6 @@ function bindShell(){
   if(avatarBtn) avatarBtn.addEventListener('click', ()=>{ S.profileOpen=true; S.notifOpen=false; S.moreOpen=false; S.alertPanelOpen=null; render(); });
   const logoutBtn = document.getElementById('logoutBtn');
   if(logoutBtn) logoutBtn.addEventListener('click', doLogout);
-  const themeBtn = document.getElementById('themeToggleBtn');
-  if(themeBtn) themeBtn.addEventListener('click', ()=>{
-    S.theme = S.theme==='dark' ? 'light' : 'dark';
-    try{ localStorage.setItem('app:theme', S.theme); }catch(e){}
-    render();
-  });
 
   const bell = document.getElementById('bellBtn');
   if(bell) bell.addEventListener('click', ()=>{ S.notifOpen = !S.notifOpen; S.moreOpen=false; S.profileOpen=false; S.alertPanelOpen=null; render(); });
@@ -2661,10 +2645,17 @@ function openDispatchModal(orderId){
     <div id="dispatchLRStatus" style="font-size:12px;color:var(--ink-soft);margin:-6px 0 4px;"></div>
     <div class="modal-actions" style="flex-wrap:wrap;">
       <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
-      <button type="button" class="btn btn-outline" id="dispatchWithoutLRBtn">Submit without LR</button>
-      <button type="button" class="btn btn-primary" id="dispatchBookedBtn">Submit</button>
+      <button type="button" class="btn" id="dispatchSubmitBtn" style="background:var(--warning);color:#fff;">Submit Without LR</button>
     </div>
   `);
+  const lrFileInputEl = document.getElementById('dispatchLRFile');
+  const submitBtnEl = document.getElementById('dispatchSubmitBtn');
+  const refreshDispatchSubmitBtn = ()=>{
+    const hasLR = lrFileInputEl.files && lrFileInputEl.files[0];
+    submitBtnEl.textContent = hasLR ? 'Submit with LR' : 'Submit Without LR';
+    submitBtnEl.style.background = hasLR ? 'var(--success)' : 'var(--warning)';
+  };
+  lrFileInputEl.addEventListener('change', refreshDispatchSubmitBtn);
   const finalizeDispatch = async (includeLR)=>{
     const transportName = document.getElementById('dispatchTransport').value.trim();
     if(!transportName){ showAlert('Enter a transport name.'); return; }
@@ -2672,10 +2663,9 @@ function openDispatchModal(orderId){
     const lrFile = includeLR ? document.getElementById('dispatchLRFile').files[0] : null;
     const lrNumber = includeLR ? document.getElementById('dispatchLRNumber').value.trim() : '';
     const statusEl = document.getElementById('dispatchLRStatus');
-    const bookedBtn = document.getElementById('dispatchBookedBtn');
-    const skipBtn = document.getElementById('dispatchWithoutLRBtn');
+    const bookedBtn = document.getElementById('dispatchSubmitBtn');
     if(lrFile){
-      bookedBtn.disabled = true; skipBtn.disabled = true;
+      bookedBtn.disabled = true;
       statusEl.textContent = 'Uploading LR photo…';
       try{
         const dataUrl = await resizeImageFile(lrFile, 1600, 0.8);
@@ -2704,8 +2694,10 @@ function openDispatchModal(orderId){
     closeModal(); render();
     showToast('Order Processed & Dispatched ✅');
   };
-  document.getElementById('dispatchBookedBtn').addEventListener('click', ()=>finalizeDispatch(true));
-  document.getElementById('dispatchWithoutLRBtn').addEventListener('click', ()=>finalizeDispatch(false));
+  document.getElementById('dispatchSubmitBtn').addEventListener('click', ()=>{
+    const hasLR = lrFileInputEl.files && lrFileInputEl.files[0];
+    finalizeDispatch(!!hasLR);
+  });
 }
 
 function setOrderStatus(id, status){
@@ -2819,25 +2811,15 @@ function renderDailyWork(){
         <button type="button" class="btn btn-sm btn-accent" data-book="${source}|${e.id}">✅ Book</button>
       </div>`;
 
-  return `
-  <div class="card">
-    <h2>📆 Daily Work</h2>
-    <p class="desc">Every entry for the day, in one place — book each as you update your accounting software. Editing or deleting stays available until it's booked.</p>
-    <div class="field"><label>Date</label><input type="date" id="dwDateSel" value="${date}" max="${localDateKey(Date.now())}" /></div>
-    <button type="button" class="btn btn-outline" id="dwPrintBtn" style="width:100%;margin-bottom:6px;">🖨️ Print this day</button>
-    ${totalCount>0 ? `<div style="background:${bookedCount===totalCount?'var(--success-bg)':'var(--bg)'};border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin:10px 0;font-size:12.5px;font-weight:700;">${bookedCount===totalCount?'✅':'📋'} ${bookedCount} of ${totalCount} entries booked</div>` : ''}
-    ${(totalCount>0 && bookedCount<totalCount) ? `<button type="button" class="btn btn-outline" id="dwBookAllBtn" style="width:100%;">✅ Book all remaining (${totalCount-bookedCount})</button>` : ''}
-  </div>
-
-  <div class="card">
+  const purchaseHtml = `<div class="card">
     <h2>🛢️ Purchase — ${purchaseEntries.length} entr${purchaseEntries.length===1?'y':'ies'}</h2>
     ${purchaseEntries.length===0?`<div class="empty">No purchases recorded this day.</div>`:`
     <table><thead><tr><th>Category</th><th>Qty</th><th>By</th><th>Time</th><th></th></tr></thead><tbody>
     ${purchaseEntries.map(e=>`<tr${e.booked?' style="opacity:0.55;"':''}><td>${esc(e.cat)}</td><td class="mono">${fmtMl(e.ml)}</td><td>${esc(e.by)}</td><td class="mono">${fmtTime(e.at)}</td><td>${actionCell(e,'activityLog',true)}</td></tr>`).join('')}
     </tbody></table>`}
-  </div>
+  </div>`;
 
-  <div class="card">
+  const fillingHtml = `<div class="card">
     <h2>🧴 Filling — ${fillingEntries.length} entr${fillingEntries.length===1?'y':'ies'}</h2>
     ${fillingEntries.length===0?`<div class="empty">No filling recorded this day.</div>`:`
     <table><thead><tr><th>Item</th><th>Qty</th><th>By</th><th>Time</th><th></th></tr></thead><tbody>
@@ -2847,9 +2829,9 @@ function renderDailyWork(){
       return `<tr${e.booked?' style="opacity:0.55;"':''}><td>${esc(e.itemLabel)}</td><td class="mono">${qtyDisplay}</td><td>${esc(e.by)}</td><td class="mono">${fmtTime(e.at)}</td><td>${actionCell(e,'activityLog',true)}</td></tr>`;
     }).join('')}
     </tbody></table>`}
-  </div>
+  </div>`;
 
-  <div class="card">
+  const packagingHtml = `<div class="card">
     <h2>📦 Packing — ${packagingEntries.length} entr${packagingEntries.length===1?'y':'ies'}</h2>
     ${packagingEntries.length===0?`<div class="empty">No packing recorded this day.</div>`:`
     <table><thead><tr><th>Item</th><th>Qty</th><th>By</th><th>Time</th><th></th></tr></thead><tbody>
@@ -2859,25 +2841,25 @@ function renderDailyWork(){
       return `<tr${e.booked?' style="opacity:0.55;"':''}><td>${esc(e.itemLabel)}${e.note?` <span class="mono">(${esc(e.note)})</span>`:''}</td><td class="mono">${qtyDisplay}</td><td>${esc(e.by)}</td><td class="mono">${fmtTime(e.at)}</td><td>${actionCell(e,'activityLog',true)}</td></tr>`;
     }).join('')}
     </tbody></table>`}
-  </div>
+  </div>`;
 
-  <div class="card">
+  const expensesHtml = `<div class="card">
     <h2>💰 Expenses — ${expenseEntries.length} entr${expenseEntries.length===1?'y':'ies'}${totalExpense?` · ₹${totalExpense.toLocaleString('en-IN')}`:''}</h2>
     ${expenseEntries.length===0?`<div class="empty">No expenses recorded this day.</div>`:`
     <table><thead><tr><th>To</th><th>Description</th><th>Amount</th><th>Entered by</th><th>Time</th><th></th></tr></thead><tbody>
     ${expenseEntries.map(e=>`<tr${e.booked?' style="opacity:0.55;"':''}><td><b>${esc(e.byName)}</b></td><td>${esc(e.description||e.category||'—')}</td><td class="mono">${e.type==='settlement'?'− ':''}₹${(e.amount||0).toLocaleString('en-IN')}</td><td>${esc(e.enteredByName||e.byName)}</td><td class="mono">${fmtTime(e.at)}</td><td>${actionCell(e,'expenses',true)}</td></tr>`).join('')}
     </tbody></table>`}
-  </div>
+  </div>`;
 
-  <div class="card">
+  const retailHtml = `<div class="card">
     <h2>💵 Retail Sale &amp; Samples — ${retailEntries.length} entr${retailEntries.length===1?'y':'ies'}${totalRetail?` · ₹${totalRetail.toLocaleString('en-IN')}`:''}</h2>
     ${retailEntries.length===0?`<div class="empty">No retail sales or samples this day.</div>`:`
     <table><thead><tr><th>Items</th><th>Type</th><th>Total</th><th>By</th><th>Time</th><th></th></tr></thead><tbody>
     ${retailEntries.map(e=>`<tr${e.booked?' style="opacity:0.55;"':''}><td>${(e.items||[]).map(i=>`${esc(i.itemLabel)} <span class="mono">×${i.qty}</span>`).join('<br/>')}</td><td>${e.type==='sale'?'<span class="badge badge-approved">Sale</span>':'<span class="badge badge-pending">Sample</span>'}</td><td class="mono">${e.type==='sale'?'₹'+(e.totalAmount||0).toLocaleString('en-IN'):'—'}</td><td>${esc(e.by)}</td><td class="mono">${fmtTime(e.at)}</td><td>${actionCell(e,'retailSales',true)}</td></tr>`).join('')}
     </tbody></table>`}
-  </div>
+  </div>`;
 
-  <div class="card">
+  const newOrdersHtml = `<div class="card">
     <h2>🛍️ New Orders — ${newOrderEntries.length} entr${newOrderEntries.length===1?'y':'ies'}${totalOrderValue?` · ₹${totalOrderValue.toLocaleString('en-IN')}`:''}</h2>
     <p class="desc" style="margin-top:-6px;">Delete an order from Home/Orders' Accept · Reject · Delete flow, not from here.</p>
     ${newOrderEntries.length===0?`<div class="empty">No orders created this day.</div>`:`
@@ -2885,6 +2867,30 @@ function renderDailyWork(){
     ${newOrderEntries.map(o=>{ const liveCust = liveCustomerFor(o); const disc = liveCust ? (liveCust.discountPercent||0) : 0; return `<tr${o.booked?' style="opacity:0.55;"':''}><td>${esc(orderDisplayLabel(o))}</td><td>${o.items.filter(i=>!i.cancelled).map(i=>`${esc(i.name)} ${esc(i.size)} <span class="mono">×${i.qty}</span>`).join('<br/>')}</td><td class="mono">₹${orderMrpValue(o).toLocaleString('en-IN')}${disc>0?` (${disc}% off)`:''}</td><td>${esc(o.createdBy)}</td><td class="mono">${fmtTime(o.createdAt)}</td><td>${actionCell(o,'orders',false)}</td></tr>`; }).join('')}
     </tbody></table>`}
   </div>`;
+
+  // Sections with entries surface first; empty (0-entry) sections sink to
+  // the bottom, so the day's actual activity isn't buried below a wall of
+  // "No X recorded this day" placeholders.
+  const sections = [
+    { count: purchaseEntries.length, html: purchaseHtml },
+    { count: fillingEntries.length, html: fillingHtml },
+    { count: packagingEntries.length, html: packagingHtml },
+    { count: expenseEntries.length, html: expensesHtml },
+    { count: retailEntries.length, html: retailHtml },
+    { count: newOrderEntries.length, html: newOrdersHtml },
+  ];
+  sections.sort((a,b)=> (b.count>0?1:0) - (a.count>0?1:0));
+
+  return `
+  <div class="card">
+    <h2>📆 Daily Work</h2>
+    <p class="desc">Every entry for the day, in one place — book each as you update your accounting software. Editing or deleting stays available until it's booked.</p>
+    <div class="field"><label>Date</label><input type="date" id="dwDateSel" value="${date}" max="${localDateKey(Date.now())}" /></div>
+    <button type="button" class="btn btn-outline" id="dwPrintBtn" style="width:100%;margin-bottom:6px;">🖨️ Print this day</button>
+    ${totalCount>0 ? `<div style="background:${bookedCount===totalCount?'var(--success-bg)':'var(--bg)'};border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin:10px 0;font-size:12.5px;font-weight:700;">${bookedCount===totalCount?'✅':'📋'} ${bookedCount} of ${totalCount} entries booked</div>` : ''}
+    ${(totalCount>0 && bookedCount<totalCount) ? `<button type="button" class="btn btn-outline" id="dwBookAllBtn" style="width:100%;">✅ Book all remaining (${totalCount-bookedCount})</button>` : ''}
+  </div>
+  ${sections.map(s=>s.html).join('')}`;
 }
 function editDailyEntry(source, id){
   if(source==='activityLog'){ const e = S.activityLog.find(x=>x.id===id); if(e) openEditLogModal(e); }
@@ -3756,6 +3762,7 @@ function renderOrderTile(o, showUndoDispatch){
   const tileCls = o.status==='ready' ? ' tile-ready' : o.status==='processing' ? ' tile-processing' : '';
   return `<div class="order-tile${tileCls}">
     <div class="ot-top"><span class="ot-name">${esc(orderDisplayLabel(o))}${o.source==='website'?' <span class="mono" style="font-weight:400;">🌐 Website</span>':''}</span><span class="badge badge-${o.status}">${esc(ORDER_STAGE_LABEL[o.status]||o.status)}</span></div>
+    ${isLRUploader ? (()=>{ const lc=liveCustomerFor(o); const city=(lc&&lc.city)||o.customerCity; const transport=(lc&&lc.transport)||o.transportName; const bits=[]; if(city) bits.push(`📍 ${esc(city)}`); if(transport) bits.push(`🚚 ${esc(transport)}`); return bits.length?`<div class="ot-meta" style="margin-top:-2px;">${bits.join(' · ')}</div>`:''; })() : ''}
     <div class="ot-items">${o.items.map((i,idx)=>{
       const it = findItem(i.key);
       const caseSize = it ? it.caseSize : null;
@@ -6216,7 +6223,8 @@ function computePresenceByDate(){
 }
 function renderAttendanceMap(){
   const presence = computePresenceByDate();
-  const loginSections = groupByDate(S.loginLog.slice().sort((a,b)=>b.at-a.at).slice(0,100), l=>l.at);
+  const todayKey = localDateKey(Date.now());
+  const loginSections = groupByDate(S.loginLog.filter(l=>localDateKey(l.at)===todayKey).sort((a,b)=>b.at-a.at), l=>l.at);
   return `
   <div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
@@ -6254,26 +6262,31 @@ function renderAttendanceMap(){
       }).join('')}
   </div>
   <div class="card">
-    <h2>Login activity</h2>
-    <p class="desc">Which employee logged in, and when.</p>
-    ${S.loginLog.length===0?`<div class="empty">No logins recorded yet.</div>`:
+    <h2>Login activity — Today</h2>
+    <p class="desc">Which employee logged in today, and when.</p>
+    ${loginSections.length===0?`<div class="empty">No logins today yet.</div>`:
       loginSections.map(sec=>dateGroupHeaderHtml(sec.heading)+`<table><thead><tr><th>Name</th><th>Role</th><th>Time</th></tr></thead><tbody>
       ${sec.items.map(l=>`<tr><td>${esc(l.name)}</td><td class="mono">${esc(ROLES[l.role]?ROLES[l.role].label:l.role)}</td><td class="mono">${fmtTime(l.at)}</td></tr>`).join('')}
       </tbody></table>`).join('')}
   </div>
   <div class="card">
-    <h2>Raw activity log</h2>
-    <p class="desc">Every attendance stamp with GPS location.</p>
-    ${S.attendance.length===0?`<div class="empty">No attendance activity yet.</div>`:
-      groupByDate(S.attendance.slice().sort((a,b)=>b.timestamp-a.timestamp), a=>a.timestamp).map(s=>dateGroupHeaderHtml(s.heading)+`<table><thead><tr><th>Name</th><th>Time</th><th>Location</th></tr></thead><tbody>
-      ${s.items.map(a=>{
-        const hasLoc = a.lat||a.lng;
-        const locCell = a.markedByAdmin ? `<span class="mono">Marked by Admin</span>` : (hasLoc ? `<a href="https://www.google.com/maps?q=${a.lat},${a.lng}" target="_blank" rel="noopener" class="mono" style="color:var(--primary);">📍 ${a.lat.toFixed(4)}, ${a.lng.toFixed(4)}</a>` : `<span class="mono">no location</span>`);
-        const flLine = a.fieldLocation ? `<div class="mono" style="font-size:12px;color:var(--ink-soft);margin-top:2px;">Field Location - ${esc(a.fieldLocation)}</div>` : '';
-        const timeCell = (a.type==='present' && !a.markedByAdmin) ? fmtTime(a.timestamp) : '—';
-        return `<tr><td>${esc(a.name)}${a.type==='absent'?' <span class="badge badge-rejected" style="font-size:12px;">Absent</span>':''}</td><td class="mono">${timeCell}</td><td>${locCell}${flLine}</td></tr>`;
-      }).join('')}
-      </tbody></table>`).join('')}
+    <h2>Active Sessions</h2>
+    <p class="desc">Who's currently in the app.</p>
+    ${(() => {
+      const employees = S.users.filter(u=>u.role!=='admin' || u.username===S.currentUser.username);
+      const ACTIVE_WINDOW = 3*60*1000; // heartbeat fires every 60s — 3 minutes is a generous margin before calling someone offline
+      const rows = employees.map(u=>{
+        const lastSeen = S.activeSessions[u.username];
+        const isActive = lastSeen && (Date.now()-lastSeen) < ACTIVE_WINDOW;
+        const statusHtml = isActive
+          ? `<span style="color:var(--success);">●</span> Active now`
+          : lastSeen ? `<span style="color:var(--ink-soft);">●</span> Last seen ${fmtAgo(lastSeen)}` : `<span style="color:var(--ink-soft);">●</span> Never logged in`;
+        return { name:u.name, role: ROLES[u.role]?ROLES[u.role].label:u.role, isActive, lastSeen, statusHtml };
+      }).sort((a,b)=> (b.isActive?1:0)-(a.isActive?1:0) || (b.lastSeen||0)-(a.lastSeen||0));
+      return `<table><thead><tr><th>Name</th><th>Role</th><th>Status</th></tr></thead><tbody>
+        ${rows.map(r=>`<tr><td>${esc(r.name)}</td><td class="mono">${esc(r.role)}</td><td>${r.statusHtml}</td></tr>`).join('')}
+      </tbody></table>`;
+    })()}
   </div>`;
 }
 function bindAttendanceMap(){
@@ -6590,6 +6603,7 @@ let loadAllPromise = null;
   window.addEventListener('online', ()=>{ showToast('Back online — syncing…'); flushOfflineQueue(); });
   window.addEventListener('offline', ()=>{ showToast('No connection — changes will be saved and synced automatically', true); });
   startSyncPolling(4000);
+  startHeartbeat();
   startSessionExpiryWatch();
   setInterval(checkForNewNotifRing, 5000);
 })();
