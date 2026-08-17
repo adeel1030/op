@@ -29,6 +29,10 @@
     --success-bg:#E6F5EE;
     --danger:#D8483B;
     --danger-bg:#FBEAE8;
+    --warning:#9A6B0B;
+    --warning-bg:#FEF2DC;
+    --info:#2E5FA3;
+    --info-bg:#E6EEFA;
     --border:#DCE8DF;
     --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -39,6 +43,28 @@
     --sat:env(safe-area-inset-top,0px);
     --sab:env(safe-area-inset-bottom,0px);
   }
+  [data-theme="dark"]{
+    --bg:#12171A;
+    --surface:#1B2226;
+    --ink:#EAF1EC;
+    --ink-soft:#8FA398;
+    --primary:#3FA073;
+    --primary-dark:#2A7A56;
+    --accent:#F2A93B;
+    --accent-ink:#2A1D06;
+    --gold:#D9B84A;
+    --gold-dark:#B4952F;
+    --success:#3FBE87;
+    --success-bg:#173328;
+    --danger:#E5695C;
+    --danger-bg:#3A1E1B;
+    --warning:#E0A63C;
+    --warning-bg:#3A2F14;
+    --info:#5B8FD9;
+    --info-bg:#182A3F;
+    --border:#2B3438;
+  }
+  [data-theme="dark"] body{ background:#0B0E10; }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
   html,body{margin:0;padding:0;height:100%;overscroll-behavior:none;}
   body{
@@ -102,7 +128,7 @@
     border:2px solid var(--gold);box-shadow:0 3px 8px -3px rgba(18,74,46,0.5);
   }
   .overview-col .n{font-family:var(--font-mono);font-size:18px;font-weight:800;color:var(--primary-dark);}
-  .overview-col .l{font-size:10px;color:var(--ink-soft);text-align:center;line-height:1.25;}
+  .overview-col .l{font-size:11.5px;color:var(--ink-soft);text-align:center;line-height:1.25;}
 
   .stat-grid-v2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;}
   .stat-card-v2{border:none;border-radius:16px;padding:14px;cursor:pointer;box-shadow:0 3px 10px -6px rgba(14,36,71,0.18);transition:transform .08s ease;}
@@ -117,7 +143,7 @@
   .stat-card-v2 .chev{color:var(--gold-dark);background:rgba(255,255,255,0.55);width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;margin-top:8px;}
   .stat-card-v2 .n{font-family:var(--font-mono);font-size:22px;font-weight:800;color:var(--primary-dark);margin-top:10px;}
   .stat-card-v2 .title{font-size:12.5px;font-weight:700;margin-top:3px;color:var(--ink);}
-  .stat-card-v2 .sub{font-size:10.5px;color:var(--ink-soft);margin-top:1px;}
+  .stat-card-v2 .sub{font-size:12px;color:var(--ink-soft);margin-top:1px;}
 
   .qa-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px;}
   .qa-head h2{margin:0;padding-left:10px;border-left:3px solid var(--gold);}
@@ -127,7 +153,7 @@
   .qa-tile{flex:0 1 auto;min-width:60px;max-width:78px;background:rgba(255,255,255,0.55);border:1px solid rgba(255,255,255,0.7);border-radius:14px;padding:10px 4px;text-align:center;cursor:pointer;transition:transform .08s ease;}
   .qa-tile:active{transform:scale(0.94);}
   .qa-tile .icon-badge{margin:0 auto 6px;background:rgba(255,255,255,0.85);width:38px;height:38px;font-size:18px;}
-  .qa-tile .title{font-size:10.5px;font-weight:800;color:var(--ink);}
+  .qa-tile .title{font-size:12px;font-weight:800;color:var(--ink);}
   .qa-tile .sub{display:none;}
 
   .promo-banner{background:linear-gradient(120deg, #0E1F14, var(--primary-dark));border-radius:16px;padding:16px;display:flex;align-items:center;gap:12px;color:#fff;margin-bottom:12px;box-shadow:0 8px 20px -10px rgba(18,74,46,0.5);}
@@ -175,6 +201,18 @@
   @keyframes postloginSpin{ to{ transform:rotate(360deg); } }
   .loading-msg-fade{animation:loadingMsgFade .35s ease;}
   @keyframes loadingMsgFade{ from{opacity:0;transform:translateY(6px);} to{opacity:1;transform:translateY(0);} }
+  /* ---------- Skeleton loading (initial load only — the app loads all
+     data upfront, then renders every other view instantly from memory,
+     so this is the one place a shimmer placeholder actually adds value) ---------- */
+  .skel-block{
+    background:linear-gradient(90deg, rgba(255,255,255,0.06) 25%, rgba(255,255,255,0.14) 37%, rgba(255,255,255,0.06) 63%);
+    background-size:400% 100%; animation:skelShimmer 1.4s ease infinite; border-radius:10px;
+  }
+  @keyframes skelShimmer{ 0%{background-position:100% 50%;} 100%{background-position:0% 50%;} }
+  .skel-nav{display:flex;gap:8px;justify-content:center;margin:26px 0 18px;}
+  .skel-nav .skel-block{width:42px;height:42px;border-radius:50%;}
+  .skel-cards{display:grid;grid-template-columns:1fr 1fr;gap:10px;width:100%;max-width:280px;margin:0 auto;}
+  .skel-cards .skel-block{height:64px;}
   .welcome-fade{opacity:0;animation:welcomeFadeIn .6s ease forwards;}
   .welcome-fade.d1{animation-delay:.05s;font-size:16px;font-weight:600;}
   .welcome-fade.d2{animation-delay:.22s;}
@@ -245,14 +283,14 @@
   .topbar-left .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex:0 0 auto;}
   .topbar-left .titles{min-width:0;}
   .topbar-left b{letter-spacing:0.01em;font-size:17px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .topbar-left .screen-label{font-size:10.5px;opacity:0.8;text-transform:uppercase;letter-spacing:0.04em;}
+  .topbar-left .screen-label{font-size:12px;opacity:0.8;text-transform:uppercase;letter-spacing:0.04em;}
   .sync-dot{width:6px;height:6px;border-radius:50%;background:#7CDDB0;display:inline-block;margin-right:5px;}
   .sync-dot.syncing{background:var(--accent);animation:syncPulse 0.9s ease-in-out infinite;}
   .sync-dot.pending{background:#FF8A73;animation:syncPulse 1.4s ease-in-out infinite;}
   @keyframes syncPulse{0%,100%{opacity:1;}50%{opacity:0.35;}}
   .topbar-right{display:flex;align-items:center;gap:10px;flex:0 0 auto;overflow:visible;}
   .role-pill{
-    font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;
+    font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;
     padding:3px 8px;border-radius:20px;display:inline-block;
   }
   .bell, .avatar-btn{
@@ -305,7 +343,7 @@
 
   /* Tables: no forced min-width -> no right-swipe needed. Everything fits the screen. */
   table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:13.5px;}
-  th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.03em;color:var(--ink-soft);padding:7px 4px;border-bottom:1.5px solid var(--border);word-break:break-word;}
+  th{text-align:left;font-size:11.5px;text-transform:uppercase;letter-spacing:0.03em;color:var(--ink-soft);padding:7px 4px;border-bottom:1.5px solid var(--border);word-break:break-word;}
   td{padding:10px 4px;border-bottom:1px solid var(--border);vertical-align:top;word-break:break-word;overflow-wrap:anywhere;}
   tr:last-child td{border-bottom:none;}
   .mono{font-family:var(--font-mono);font-size:12px;color:var(--ink-soft);}
@@ -341,14 +379,14 @@
   .alert-tile .at-detail{font-size:11.5px;color:var(--ink-soft);margin-bottom:8px;}
 
 
-  .badge{display:inline-block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.03em;padding:3px 8px;border-radius:20px;transition:background-color .3s ease, color .3s ease;}
-  .badge-pending{background:#FEF2DC;color:#9A6B0B;}
-  .badge-processing{background:#E6EEFA;color:var(--primary);}
-  .badge-ready{background:#FDEFD9;color:#B15B00;}
+  .badge{display:inline-block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.03em;padding:3px 8px;border-radius:20px;transition:background-color .3s ease, color .3s ease;}
+  .badge-pending{background:var(--warning-bg);color:var(--warning);}
+  .badge-processing{background:var(--info-bg);color:var(--info);}
+  .badge-ready{background:rgba(242,169,59,0.18);color:var(--accent-ink);}
   .badge-processed{background:var(--success-bg);color:var(--success);}
   .badge-approved{background:var(--success-bg);color:var(--success);}
   .badge-rejected{background:var(--danger-bg);color:var(--danger);}
-  .badge-progress{background:#E6EEFA;color:var(--primary);}
+  .badge-progress{background:var(--info-bg);color:var(--info);}
   .badge-done{background:var(--success-bg);color:var(--success);}
   .badge-expense{background:#F3E8FF;color:#6B2FB3;}
   .badge-settlement{background:#E6F5EE;color:var(--success);}
@@ -378,7 +416,7 @@
     transition:background-color .2s ease, color .2s ease;
   }
   .navitem .ico{font-size:19px;line-height:1;}
-  .navitem .lbl{font-size:9.5px;font-weight:700;letter-spacing:0.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:64px;}
+  .navitem .lbl{font-size:11px;font-weight:700;letter-spacing:0.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:64px;}
   .navitem.active{color:var(--gold);background-color:rgba(201,162,39,0.14);}
   .navitem.active .ico{filter:drop-shadow(0 0 6px rgba(201,162,39,0.5));}
   .navitem.just-activated{animation:navPop .3s cubic-bezier(.3,1.5,.5,1);}
@@ -398,7 +436,7 @@
     background:rgba(0,0,0,0.15);
   }
   .id-card-company{font-weight:800;font-size:14px;letter-spacing:0.03em;}
-  .id-card-title{font-size:9.5px;color:var(--gold);text-transform:uppercase;letter-spacing:0.12em;font-weight:700;margin-top:2px;}
+  .id-card-title{font-size:11px;color:var(--gold);text-transform:uppercase;letter-spacing:0.12em;font-weight:700;margin-top:2px;}
   .id-card-body{padding:20px 18px 18px;text-align:center;}
   .id-card-photo-wrap{margin-bottom:12px;}
   .id-card-photo{
@@ -412,7 +450,7 @@
   .id-card-name{font-size:17px;font-weight:800;margin-bottom:6px;}
   .id-card-role-pill{
     display:inline-block;background:var(--gold);color:var(--primary-dark);
-    font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;
+    font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;
     padding:3px 10px;border-radius:20px;margin-bottom:16px;
   }
   .id-card-rows{text-align:left;border-top:1px dashed rgba(255,255,255,0.25);padding-top:14px;}
@@ -467,9 +505,21 @@
   }
   .more-item .ico{font-size:22px;}
   .more-item .lbl{font-size:11px;font-weight:700;color:var(--ink);text-align:center;}
+  #printArea{display:none;}
+  @media print{
+    body *{visibility:hidden;}
+    #printArea, #printArea *{visibility:visible;}
+    #printArea{display:block;position:absolute;top:0;left:0;width:100%;padding:20px;}
+    #printArea table{width:100%;border-collapse:collapse;margin-bottom:16px;}
+    #printArea th, #printArea td{border:1px solid #999;padding:5px 8px;font-size:11px;text-align:left;}
+    #printArea th{background:#eee;}
+    #printArea h2{font-size:15px;margin:16px 0 6px;}
+    #printArea h1{font-size:18px;margin-bottom:2px;}
+  }
 </style>
 </head>
 <body>
+<div id="printArea"></div>
 <div class="device-wrap">
   <div class="device">
     <div class="device-screen">
@@ -485,7 +535,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-16-lr-upload1";
+const APP_BUILD = "2026-08-16-ui-refresh1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -753,6 +803,7 @@ const S = {
   lowStock:{raw:{}, filled:{}, ready:{}}, watchStock:{raw:{}, filled:{}, ready:{}}, rolePermissions:{}, customRoles:[], catalogItems:[], transports:[], dailyRecordMarks:{}, dailyWorkDate:null, batchReferences:{}, holidays:{},
   _partitionKeysSeen:{orders:new Set(), activityLog:new Set(), attendance:new Set(), expenses:new Set(), dominoPrints:new Set(), loginLog:new Set(), chatMessages:new Set(), retailSales:new Set(), trackingViewLogs:new Set(), siteVisitLogs:new Set(), stockMovementLog:new Set()},
   currentUser:null, view:'home', stockView:'raw', notifOpen:false, moreOpen:false, profileOpen:false, alertPanelOpen:null, toast:null,
+  theme: (()=>{ try{ return localStorage.getItem('app:theme')||'light'; }catch(e){ return 'light'; } })(),
   chatModalOpen:false, chatView:'announcements', chatActiveThread:null,
   postLoginPhase:null, pendingUser:null, postLoginLoadingStep:0,
   search:{}, // per-view search text
@@ -869,9 +920,10 @@ const TAB_SHORT = {
   tasks:'Tasks', checkin:'Attend', stock:'Stock',
   expenses:'Expense', log:'Log', domino:'Domino', dailywork:'Daily'
 };
-const NAV_MAX = 999; // nav is horizontally scrollable now — show every tab, no hidden "More"
+const NAV_MAX = 5; // 4 primary tabs + the "More" button, once a role has more than this many tabs
 function navSplit(tabs){
-  return { primary: tabs, overflow: [] };
+  if(tabs.length <= NAV_MAX) return { primary: tabs, overflow: [] };
+  return { primary: tabs.slice(0, NAV_MAX-1), overflow: tabs.slice(NAV_MAX-1) };
 }
 
 function uid(){ return (crypto.randomUUID ? crypto.randomUUID() : (Date.now()+'-'+Math.random().toString(36).slice(2))); }
@@ -952,6 +1004,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbzGTJDC1jXEb15S2QQl_G5e
 const SECRET = "MyOrderOps2026Secret";
 const KEY_MAP = { users:'users', orders:'orders', customers:'customers', attendance:'attendance', tasks:'tasks', rawMaterial:'rawMaterial', filledStock:'filledStock', readyStock:'readyStock' };
 let lastServerUpdatedAt = 0;
+let lastSuccessfulSyncAt = null;
+let systemHealth = { lastBackupAt: null, lastBackupError: null };
 let syncing = false;
 let syncBusyCount = 0;
 
@@ -1189,67 +1243,80 @@ function openUploadLRModal(orderId){
   const o = S.orders.find(x=>x.id===orderId); if(!o) return;
   showModal(`
     <h3>📄 Upload LR (Lorry Receipt)</h3>
-    <p class="desc" style="margin-top:-6px;">${esc(orderDisplayLabel(o))} — kept for 30 days, then auto-removed.</p>
-    <div class="field"><label>Photo</label><input id="lrFileInput" type="file" accept="image/*" capture="environment" /></div>
+    <p class="desc" style="margin-top:-6px;">${esc(orderDisplayLabel(o))} — photo kept for 30 days, then auto-removed.</p>
+    <div class="field"><label>Photo (optional)</label><input id="lrFileInput" type="file" accept="image/*" capture="environment" /></div>
+    <div class="field"><label>LR Number (optional)</label><input id="lrNumberInput" value="${esc(o.lrNumber||'')}" placeholder="e.g. LR-4821" /></div>
     <div id="lrUploadStatus" style="font-size:12.5px;color:var(--ink-soft);margin-top:6px;"></div>
     <div class="modal-actions">
       <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
-      <button type="button" class="btn btn-primary" id="confirmUploadLRBtn" disabled>Upload</button>
+      <button type="button" class="btn btn-primary" id="confirmUploadLRBtn">Save</button>
     </div>
   `);
   const fileInput = document.getElementById('lrFileInput');
   const uploadBtn = document.getElementById('confirmUploadLRBtn');
   const statusEl = document.getElementById('lrUploadStatus');
-  fileInput.addEventListener('change', ()=>{ uploadBtn.disabled = !fileInput.files[0]; });
   uploadBtn.addEventListener('click', async ()=>{
     const file = fileInput.files[0];
-    if(!file) return;
+    const lrNumber = document.getElementById('lrNumberInput').value.trim();
+    if(!file && !lrNumber){ showAlert('Add a photo, an LR number, or both.'); return; }
     uploadBtn.disabled = true;
-    statusEl.textContent = 'Uploading…';
-    try{
-      // Kept large enough to stay legible (this is a document, not a
-      // thumbnail) — Drive's storage isn't the tight ~50,000-char-per-cell
-      // squeeze that Sheets-stored data (like profile photos) is under.
-      const dataUrl = await resizeImageFile(file, 1600, 0.8);
-      const base64Data = dataUrl.split(',')[1];
-      const result = await apiUploadLR(base64Data, 'image/jpeg', `LR-${o.id}.jpg`);
-      if(result && result.ok){
-        o.lrPhotoUrl = result.url;
-        o.lrFileId = result.fileId;
-        o.lrUploadedAt = Date.now();
-        o.lrUploadedBy = S.currentUser.name;
-        savePartitionForItem('orders', o);
-        closeModal(); render();
-        showToast('LR uploaded');
-      } else {
-        statusEl.textContent = 'Upload failed — try again.';
+    if(file){
+      statusEl.textContent = 'Uploading…';
+      try{
+        // Kept large enough to stay legible (this is a document, not a
+        // thumbnail) — Drive's storage isn't the tight ~50,000-char-per-cell
+        // squeeze that Sheets-stored data (like profile photos) is under.
+        const dataUrl = await resizeImageFile(file, 1600, 0.8);
+        const base64Data = dataUrl.split(',')[1];
+        const result = await apiUploadLR(base64Data, 'image/jpeg', `LR-${o.id}.jpg`);
+        if(result && result.ok){
+          o.lrPhotoUrl = result.url;
+          o.lrFileId = result.fileId;
+          o.lrUploadedAt = Date.now();
+          o.lrUploadedBy = S.currentUser.name;
+        } else {
+          statusEl.textContent = 'Photo upload failed — try again.';
+          uploadBtn.disabled = false;
+          return;
+        }
+      }catch(err){
+        statusEl.textContent = 'Photo upload failed — try again.';
         uploadBtn.disabled = false;
+        return;
       }
-    }catch(err){
-      statusEl.textContent = 'Upload failed — try again.';
-      uploadBtn.disabled = false;
     }
+    if(lrNumber) o.lrNumber = lrNumber; else delete o.lrNumber;
+    savePartitionForItem('orders', o);
+    closeModal(); render();
+    showToast('LR saved');
   });
 }
 function openViewLRModal(orderId){
   const o = S.orders.find(x=>x.id===orderId); if(!o) return;
-  const daysLeft = Math.max(0, 30 - Math.floor((Date.now()-o.lrUploadedAt)/(24*60*60*1000)));
+  const hasFreshPhoto = o.lrPhotoUrl && (Date.now()-o.lrUploadedAt)<30*24*60*60*1000;
+  const daysLeft = hasFreshPhoto ? Math.max(0, 30 - Math.floor((Date.now()-o.lrUploadedAt)/(24*60*60*1000))) : null;
   showModal(`
     <h3>📄 LR — ${esc(orderDisplayLabel(o))}</h3>
-    <p class="desc" style="margin-top:-6px;">Uploaded by ${esc(o.lrUploadedBy||'—')} on ${fmtDate(o.lrUploadedAt)} · auto-removed in ${daysLeft} day${daysLeft===1?'':'s'}.</p>
-    <a href="${esc(o.lrPhotoUrl)}" target="_blank" rel="noopener"><img src="${esc(o.lrPhotoUrl)}" style="width:100%;border-radius:10px;border:1px solid var(--border);margin:10px 0;" /></a>
+    ${hasFreshPhoto ? `
+      <p class="desc" style="margin-top:-6px;">Uploaded by ${esc(o.lrUploadedBy||'—')} on ${fmtDate(o.lrUploadedAt)} · photo auto-removed in ${daysLeft} day${daysLeft===1?'':'s'}.</p>
+      <a href="${esc(o.lrPhotoUrl)}" target="_blank" rel="noopener"><img src="${esc(o.lrPhotoUrl)}" style="width:100%;border-radius:10px;border:1px solid var(--border);margin:10px 0;" /></a>
+    ` : `<div class="empty" style="margin:10px 0;">No photo on file.</div>`}
+    ${o.lrNumber ? `<div class="field"><label>LR Number</label><div style="font-weight:700;font-size:15px;">${esc(o.lrNumber)}</div></div>` : ''}
     <div class="modal-actions">
-      <button type="button" class="btn btn-danger" id="removeLRBtn">Remove</button>
+      ${hasFreshPhoto?`<button type="button" class="btn btn-danger" id="removeLRBtn">Remove photo</button>`:''}
+      <button type="button" class="btn btn-outline" id="editLRBtn">Edit</button>
       <button type="button" class="btn btn-outline" id="cancelModal">Close</button>
     </div>
   `);
-  document.getElementById('removeLRBtn').addEventListener('click', ()=>{
-    showConfirm('Remove this LR photo?', async ()=>{
+  document.getElementById('editLRBtn').addEventListener('click', ()=>openUploadLRModal(orderId));
+  const removeBtn = document.getElementById('removeLRBtn');
+  if(removeBtn) removeBtn.addEventListener('click', ()=>{
+    showConfirm('Remove this LR photo? (LR number, if any, stays.)', async ()=>{
       const fileId = o.lrFileId;
       delete o.lrPhotoUrl; delete o.lrFileId; delete o.lrUploadedAt; delete o.lrUploadedBy;
       savePartitionForItem('orders', o);
       closeModal(); render();
-      showToast('LR removed');
+      showToast('LR photo removed');
       if(fileId) apiDeleteLR(fileId).catch(()=>{}); // fire-and-forget — the daily cleanup would catch it anyway even if this fails
     });
   });
@@ -1354,8 +1421,9 @@ async function loadAll(){
   let lastErr = null;
   for(let attempt=1; attempt<=MAX_ATTEMPTS; attempt++){
     try{
-      const { data, updatedAt } = await apiFetchAll();
+      const { data, updatedAt, systemHealth: sh } = await apiFetchAll();
       lastServerUpdatedAt = updatedAt || 0;
+      if(sh) systemHealth = sh;
       applyServerData(data || {});
 
       if(S.users.length === 0){
@@ -1403,15 +1471,23 @@ function startSyncPolling(intervalMs){
     if(modalOpen) return;
     try{
       const serverUpdatedAt = await apiFetchVersion();
+      lastSuccessfulSyncAt = Date.now();
       if(serverUpdatedAt && serverUpdatedAt > lastServerUpdatedAt){
         setSyncLabel('Updating…');
-        const { data, updatedAt } = await apiFetchAll();
+        const { data, updatedAt, systemHealth: sh } = await apiFetchAll();
         lastServerUpdatedAt = updatedAt || serverUpdatedAt;
+        if(sh) systemHealth = sh;
         applyServerData(data || {});
         autoAdvanceOrders();
         syncStockTasksFromAlerts();
         setSyncLabel(null);
         if(messagesModalOpen) refreshMessagesModal(); else render();
+      } else if(S.currentUser.role==='admin' && S.view==='home' && !messagesModalOpen){
+        // Nothing changed server-side, but the "last synced Xs ago" text on
+        // the System Health panel still needs to tick forward — render()'s
+        // own diff-check keeps this cheap (skips the actual DOM write on
+        // every OTHER tab where this text isn't even shown).
+        render();
       }
     }catch(e){ /* transient network hiccup — try again next tick */ }
   }, intervalMs || 4000);
@@ -1901,7 +1977,7 @@ function renderAlertTiles(alerts, kind, stacked){
       const badgeText = a.level==='recommended' ? 'Recommended' : a.level==='low' ? 'Low' : 'Short';
       return `<div class="alert-tile ${a.level==='low'?'mild':''}${a.level==='recommended'?' recommended':''}">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;margin-bottom:2px;">
-          <span class="mono" style="text-transform:uppercase;letter-spacing:0.03em;font-size:9.5px;">${esc(STOCK_KIND_LABEL[kind])}</span>
+          <span class="mono" style="text-transform:uppercase;letter-spacing:0.03em;font-size:11px;">${esc(STOCK_KIND_LABEL[kind])}</span>
           <span class="badge badge-${badgeCls}">${badgeText}</span>
         </div>
         <div class="at-label">${esc(a.label)}</div>
@@ -2063,6 +2139,8 @@ function renderBrandedLoadingScreen(){
       <img src="${COMPANY_LOGO}" alt="M A Products India" class="welcome-logo" style="margin-bottom:22px;" />
       <div class="postlogin-spinner"></div>
       <div class="loading-msg-fade" style="margin-top:18px;font-size:14px;font-weight:700;letter-spacing:0.02em;">Loading Order Management System<br/>by M A Products INDIA</div>
+      <div class="skel-nav">${[1,2,3,4].map(()=>`<div class="skel-block"></div>`).join('')}</div>
+      <div class="skel-cards">${[1,2,3,4].map(()=>`<div class="skel-block"></div>`).join('')}</div>
     </div>
   </div>`;
 }
@@ -2088,6 +2166,7 @@ function bindConnectionFailedScreen(){
   });
 }
 function render(){
+  document.documentElement.setAttribute('data-theme', S.theme==='dark' ? 'dark' : 'light');
   const root = document.getElementById('root');
   if(!S.loaded){
     root.innerHTML = renderBrandedLoadingScreen();
@@ -2377,7 +2456,8 @@ function renderProfilePanel(role){
       </div>
     </div>
   </div>
-  <button class="btn btn-danger" style="width:100%;margin-top:14px;" id="logoutBtn">Log out</button>
+  <button class="btn btn-outline" style="width:100%;margin-top:14px;" id="themeToggleBtn">${S.theme==='dark'?'☀️ Light mode':'🌙 Dark mode'}</button>
+  <button class="btn btn-danger" style="width:100%;margin-top:10px;" id="logoutBtn">Log out</button>
   <p class="mono" style="text-align:center;margin-top:14px;opacity:0.5;">build ${APP_BUILD}</p>`;
 }
 
@@ -2449,6 +2529,12 @@ function bindShell(){
   if(avatarBtn) avatarBtn.addEventListener('click', ()=>{ S.profileOpen=true; S.notifOpen=false; S.moreOpen=false; S.alertPanelOpen=null; render(); });
   const logoutBtn = document.getElementById('logoutBtn');
   if(logoutBtn) logoutBtn.addEventListener('click', doLogout);
+  const themeBtn = document.getElementById('themeToggleBtn');
+  if(themeBtn) themeBtn.addEventListener('click', ()=>{
+    S.theme = S.theme==='dark' ? 'light' : 'dark';
+    try{ localStorage.setItem('app:theme', S.theme); }catch(e){}
+    render();
+  });
 
   const bell = document.getElementById('bellBtn');
   if(bell) bell.addEventListener('click', ()=>{ S.notifOpen = !S.notifOpen; S.moreOpen=false; S.profileOpen=false; S.alertPanelOpen=null; render(); });
@@ -2570,15 +2656,44 @@ function openDispatchModal(orderId){
       <datalist id="dispatchTransportList">${S.transports.map(t=>`<option value="${esc(t)}"></option>`).join('')}</datalist>
     </div>
     <div class="field"><label>Total No. of Cases</label><input id="dispatchCases" type="number" min="0" placeholder="e.g. 12" /></div>
-    <div class="modal-actions">
+    <div class="field"><label>LR Photo (optional)</label><input id="dispatchLRFile" type="file" accept="image/*" capture="environment" /></div>
+    <div class="field"><label>LR Number (optional)</label><input id="dispatchLRNumber" placeholder="e.g. LR-4821" /></div>
+    <div id="dispatchLRStatus" style="font-size:12px;color:var(--ink-soft);margin:-6px 0 4px;"></div>
+    <div class="modal-actions" style="flex-wrap:wrap;">
       <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
-      <button type="button" class="btn btn-primary" id="dispatchBookedBtn">Booked</button>
+      <button type="button" class="btn btn-outline" id="dispatchWithoutLRBtn">Submit without LR</button>
+      <button type="button" class="btn btn-primary" id="dispatchBookedBtn">Submit</button>
     </div>
   `);
-  document.getElementById('dispatchBookedBtn').addEventListener('click', ()=>{
+  const finalizeDispatch = async (includeLR)=>{
     const transportName = document.getElementById('dispatchTransport').value.trim();
-    const casesVal = document.getElementById('dispatchCases').value.trim();
     if(!transportName){ showAlert('Enter a transport name.'); return; }
+    const casesVal = document.getElementById('dispatchCases').value.trim();
+    const lrFile = includeLR ? document.getElementById('dispatchLRFile').files[0] : null;
+    const lrNumber = includeLR ? document.getElementById('dispatchLRNumber').value.trim() : '';
+    const statusEl = document.getElementById('dispatchLRStatus');
+    const bookedBtn = document.getElementById('dispatchBookedBtn');
+    const skipBtn = document.getElementById('dispatchWithoutLRBtn');
+    if(lrFile){
+      bookedBtn.disabled = true; skipBtn.disabled = true;
+      statusEl.textContent = 'Uploading LR photo…';
+      try{
+        const dataUrl = await resizeImageFile(lrFile, 1600, 0.8);
+        const base64Data = dataUrl.split(',')[1];
+        const result = await apiUploadLR(base64Data, 'image/jpeg', `LR-${o.id}.jpg`);
+        if(result && result.ok){
+          o.lrPhotoUrl = result.url; o.lrFileId = result.fileId;
+          o.lrUploadedAt = Date.now(); o.lrUploadedBy = S.currentUser.name;
+        } else {
+          statusEl.textContent = 'LR photo upload failed — dispatching without it.';
+          await new Promise(r=>setTimeout(r, 900));
+        }
+      }catch(err){
+        statusEl.textContent = 'LR photo upload failed — dispatching without it.';
+        await new Promise(r=>setTimeout(r, 900));
+      }
+    }
+    if(lrNumber) o.lrNumber = lrNumber;
     rememberTransport(transportName);
     o.transportName = transportName;
     o.totalCases = casesVal ? parseInt(casesVal) : null;
@@ -2588,7 +2703,9 @@ function openDispatchModal(orderId){
     savePartitionForItem('orders', o);
     closeModal(); render();
     showToast('Order Processed & Dispatched ✅');
-  });
+  };
+  document.getElementById('dispatchBookedBtn').addEventListener('click', ()=>finalizeDispatch(true));
+  document.getElementById('dispatchWithoutLRBtn').addEventListener('click', ()=>finalizeDispatch(false));
 }
 
 function setOrderStatus(id, status){
@@ -2707,6 +2824,7 @@ function renderDailyWork(){
     <h2>📆 Daily Work</h2>
     <p class="desc">Every entry for the day, in one place — book each as you update your accounting software. Editing or deleting stays available until it's booked.</p>
     <div class="field"><label>Date</label><input type="date" id="dwDateSel" value="${date}" max="${localDateKey(Date.now())}" /></div>
+    <button type="button" class="btn btn-outline" id="dwPrintBtn" style="width:100%;margin-bottom:6px;">🖨️ Print this day</button>
     ${totalCount>0 ? `<div style="background:${bookedCount===totalCount?'var(--success-bg)':'var(--bg)'};border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin:10px 0;font-size:12.5px;font-weight:700;">${bookedCount===totalCount?'✅':'📋'} ${bookedCount} of ${totalCount} entries booked</div>` : ''}
     ${(totalCount>0 && bookedCount<totalCount) ? `<button type="button" class="btn btn-outline" id="dwBookAllBtn" style="width:100%;">✅ Book all remaining (${totalCount-bookedCount})</button>` : ''}
   </div>
@@ -2803,7 +2921,48 @@ function toggleEntryBooked(source, id){
   render();
   showToast(e.booked ? 'Booked ✅' : 'Unbooked');
 }
+function printDailyWork(){
+  const date = S.dailyWorkDate || localDateKey(Date.now());
+  const purchaseEntries = S.activityLog.filter(e=>e.kind==='purchase' && localDateKey(e.at)===date).sort((a,b)=>a.at-b.at);
+  const fillingEntries = S.activityLog.filter(e=>e.kind==='filling' && localDateKey(e.at)===date).sort((a,b)=>a.at-b.at);
+  const packagingEntries = S.activityLog.filter(e=>e.kind==='packaging' && localDateKey(e.at)===date).sort((a,b)=>a.at-b.at);
+  const expenseEntries = S.expenses.filter(e=>localDateKey(e.at)===date).sort((a,b)=>a.at-b.at);
+  const totalExpense = expenseEntries.filter(e=>e.type!=='settlement').reduce((s,e)=>s+(e.amount||0),0);
+  const retailEntries = S.retailSales.filter(e=>localDateKey(e.at)===date).sort((a,b)=>a.at-b.at);
+  const totalRetail = retailEntries.filter(e=>e.type==='sale').reduce((s,e)=>s+(e.totalAmount||0),0);
+  const newOrderEntries = S.orders.filter(o=>localDateKey(o.createdAt)===date).sort((a,b)=>a.createdAt-b.createdAt);
+  const totalOrderValue = newOrderEntries.reduce((s,o)=>s+orderMrpValue(o),0);
+
+  const table = (headers, rows) => rows.length===0 ? `<p style="font-size:11px;color:#777;">None</p>` :
+    `<table><thead><tr>${headers.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>`;
+
+  let html = `<h1>${esc(COMPANY_NAME)}</h1><div style="font-size:11px;color:#555;margin-bottom:10px;">Daily Work — ${esc(fmtDateOnly(dateKeyToTs(date)))}</div>`;
+
+  html += `<h2>🛢️ Purchase</h2>` + table(['Category','Qty','By','Time'],
+    purchaseEntries.map(e=>`<tr><td>${esc(e.cat)}</td><td>${fmtMl(e.ml)}</td><td>${esc(e.by)}</td><td>${fmtTime(e.at)}</td></tr>`).join(''));
+
+  html += `<h2>🧴 Filling</h2>` + table(['Item','Qty','By','Time'],
+    fillingEntries.map(e=>`<tr><td>${esc(e.itemLabel)}</td><td>${e.qty} pc</td><td>${esc(e.by)}</td><td>${fmtTime(e.at)}</td></tr>`).join(''));
+
+  html += `<h2>📦 Packing</h2>` + table(['Item','Qty','By','Time'],
+    packagingEntries.map(e=>`<tr><td>${esc(e.itemLabel)}${e.note?` (${esc(e.note)})`:''}</td><td>${e.qty} pc</td><td>${esc(e.by)}</td><td>${fmtTime(e.at)}</td></tr>`).join(''));
+
+  html += `<h2>💰 Expenses ${totalExpense?`— Total ₹${totalExpense.toLocaleString('en-IN')}`:''}</h2>` + table(['To','Description','Amount','Time'],
+    expenseEntries.map(e=>`<tr><td>${esc(e.byName)}</td><td>${esc(e.description||e.category||'—')}</td><td>${e.type==='settlement'?'− ':''}₹${(e.amount||0).toLocaleString('en-IN')}</td><td>${fmtTime(e.at)}</td></tr>`).join(''));
+
+  html += `<h2>💵 Retail Sale &amp; Samples ${totalRetail?`— Total ₹${totalRetail.toLocaleString('en-IN')}`:''}</h2>` + table(['Items','Type','Total','Time'],
+    retailEntries.map(e=>`<tr><td>${(e.items||[]).map(i=>`${esc(i.itemLabel)} ×${i.qty}`).join(', ')}</td><td>${e.type==='sale'?'Sale':'Sample'}</td><td>${e.type==='sale'?'₹'+(e.totalAmount||0).toLocaleString('en-IN'):'—'}</td><td>${fmtTime(e.at)}</td></tr>`).join(''));
+
+  html += `<h2>🛍️ New Orders ${totalOrderValue?`— Total ₹${totalOrderValue.toLocaleString('en-IN')}`:''}</h2>` + table(['Party','Items','MRP Value','By','Time'],
+    newOrderEntries.map(o=>`<tr><td>${esc(orderDisplayLabel(o))}</td><td>${o.items.filter(i=>!i.cancelled).map(i=>`${esc(i.name)} ${esc(i.size)} ×${i.qty}`).join(', ')}</td><td>₹${orderMrpValue(o).toLocaleString('en-IN')}</td><td>${esc(o.createdBy)}</td><td>${fmtTime(o.createdAt)}</td></tr>`).join(''));
+
+  const printArea = document.getElementById('printArea');
+  printArea.innerHTML = html;
+  window.print();
+}
 function bindDailyWork(){
+  const printBtn = document.getElementById('dwPrintBtn');
+  if(printBtn) printBtn.addEventListener('click', printDailyWork);
   const dateSel = document.getElementById('dwDateSel');
   if(dateSel) dateSel.addEventListener('change', ()=>{ S.dailyWorkDate = dateSel.value; render(); });
   document.querySelectorAll('[data-book]').forEach(b=>b.addEventListener('click', ()=>{
@@ -3281,6 +3440,33 @@ function bindHomeGeneric(){
   document.querySelectorAll('[data-more-tab]').forEach(t=>{ t.addEventListener('click', ()=>{ S.view = t.dataset.moreTab; render(); }); });
   document.querySelectorAll('[data-stat]').forEach(t=>{ t.addEventListener('click', ()=>openStatModal(t.dataset.stat)); });
 }
+function fmtAgo(ts){
+  if(!ts) return null;
+  const diffMs = Date.now() - ts;
+  if(diffMs < 60000) return 'just now';
+  if(diffMs < 3600000) return `${Math.floor(diffMs/60000)}m ago`;
+  if(diffMs < 86400000) return `${Math.floor(diffMs/3600000)}h ago`;
+  return `${Math.floor(diffMs/86400000)}d ago`;
+}
+function renderSystemHealthPanel(){
+  const pending = pendingSaveCount();
+  const backupAt = systemHealth.lastBackupAt ? parseInt(systemHealth.lastBackupAt) : null;
+  const backupStale = !backupAt || (Date.now()-backupAt) > 36*60*60*1000; // backup runs daily -- 36h gives some trigger-delay tolerance before flagging it
+  const backupHasError = systemHealth.lastBackupError && (!backupAt || parseInt(systemHealth.lastBackupError.split('@')[1]) > backupAt);
+  const syncAgo = fmtAgo(lastSuccessfulSyncAt);
+  const syncOk = lastSuccessfulSyncAt && (Date.now()-lastSuccessfulSyncAt) < 30000; // should tick every ~4s — 30s without one means something's actually stuck
+  const items = [
+    { label:'Backup', ok: !backupStale && !backupHasError, text: backupHasError ? 'failed — check Apps Script logs' : (backupAt ? fmtAgo(backupAt) : 'never run yet') },
+    { label:'Sync', ok: syncOk, text: syncAgo || 'not yet synced' },
+    { label:'Pending saves', ok: pending===0, text: pending===0 ? 'all saved' : `${pending} waiting` },
+  ];
+  return `<div class="card" style="padding:12px 14px;margin-bottom:12px;">
+    <div style="font-size:11px;font-weight:800;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px;">⚙️ System Health</div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;">
+      ${items.map(it=>`<div style="font-size:12px;"><span style="color:${it.ok?'var(--success)':'var(--danger)'};">${it.ok?'●':'●'}</span> <b>${esc(it.label)}</b>: <span style="color:var(--ink-soft);">${esc(it.text)}</span></div>`).join('')}
+    </div>
+  </div>`;
+}
 function renderHomeAdmin(){
   const pending = S.orders.filter(o=>o.status==='pending').length;
   const processing = S.orders.filter(o=>o.status==='processing').length;
@@ -3291,6 +3477,7 @@ function renderHomeAdmin(){
   const isAdmin = S.currentUser.role==='admin';
   const todayLabel = new Date().toLocaleDateString(undefined,{day:'2-digit', month:'short', year:'numeric'});
   return `
+  ${renderSystemHealthPanel()}
   ${isAdmin && isLastWorkingDayOfMonth() ? `<div class="alert-banner" style="margin-bottom:12px;"><b>📅 Last working day of the month</b>Export this month's data before it rolls over.</div>` : ''}
   ${quickActionIcons(S.currentUser.role)}
   <div class="stat-grid-v2">
@@ -3600,7 +3787,7 @@ function renderOrderTile(o, showUndoDispatch){
       ${o.status==='ready'?`<button class="btn btn-sm btn-success" data-dispatch-order="${o.id}">Processed &amp; Dispatched</button>`:''}
       ${(o.status==='pending'||o.status==='processing'||o.status==='ready')?`<button class="btn btn-sm btn-outline" data-edit-order="${o.id}">Edit</button>`:''}
       ${o.status==='processed' && showUndoDispatch?`<button class="btn btn-sm btn-outline" data-undo-dispatch="${o.id}">↩ Undo Dispatch</button>`:''}
-      ${(isLRUploader && (o.status==='ready'||o.status==='processed'))?((o.lrPhotoUrl && (Date.now()-o.lrUploadedAt)<30*24*60*60*1000)?`<button class="btn btn-sm btn-outline" data-view-lr="${o.id}">📄 LR</button>`:`<button class="btn btn-sm btn-outline" data-upload-lr="${o.id}">📄 Upload LR</button>`):''}
+      ${(isLRUploader && (o.status==='ready'||o.status==='processed'))?(((o.lrPhotoUrl && (Date.now()-o.lrUploadedAt)<30*24*60*60*1000) || o.lrNumber)?`<button class="btn btn-sm btn-outline" data-view-lr="${o.id}">📄 LR</button>`:`<button class="btn btn-sm btn-outline" data-upload-lr="${o.id}">📄 Upload LR</button>`):''}
       <button class="btn btn-sm btn-outline" data-del-order="${o.id}">Delete</button>
       `:''}
     </div>
@@ -3797,6 +3984,16 @@ Regards
 
 let orderDraft = [];
 let editingOrderId = null;
+function findRecentDuplicateOrder(customerName, draftItems){
+  const cutoff = Date.now() - 10*60*1000; // 10-minute window
+  const normName = customerName.trim().toLowerCase();
+  return S.orders.find(o=>{
+    if(o.createdAt < cutoff) return false;
+    if(o.status==='rejected') return false;
+    if((o.customerName||'').trim().toLowerCase() !== normName) return false;
+    return o.items.some(existingItem => draftItems.some(d => d.key===existingItem.key && d.qty===existingItem.qty));
+  }) || null;
+}
 function openOrderModal(existingOrder){
   editingOrderId = existingOrder ? existingOrder.id : null;
   orderDraft = existingOrder ? existingOrder.items.map(x=>({...x})) : [];
@@ -3854,6 +4051,7 @@ function openOrderModal(existingOrder){
     const nameInput = document.getElementById('ordCustomer');
     const typedName = nameInput.value.trim();
     if(!typedName){ showAlert('Enter the party name.'); return; }
+    const proceedWithSubmit = ()=>{
     const existingCust = S.customers.find(c=>c.name.trim().toLowerCase()===typedName.toLowerCase());
     let custId = existingCust ? existingCust.id : null;
     let custName = existingCust ? existingCust.name : typedName;
@@ -3919,6 +4117,16 @@ function openOrderModal(existingOrder){
     } else {
       finish();
     }
+    }; // closes proceedWithSubmit
+    if(!existingOrder){
+      const dup = findRecentDuplicateOrder(typedName, orderDraft);
+      if(dup){
+        const itemsSummary = dup.items.map(i=>`${i.name} ${i.size} ×${i.qty}`).join(', ');
+        showConfirm(`A very similar order for "${typedName}" was just created ${fmtAgo(dup.createdAt)} (${itemsSummary}). Submit this one too?`, proceedWithSubmit, {danger:false, confirmLabel:'Yes, submit anyway'});
+        return;
+      }
+    }
+    proceedWithSubmit();
   });
 }
 let editingDraftIndex = null;
@@ -4095,6 +4303,7 @@ function openChatOrderModal(){
     const typedName = nameInput ? nameInput.value.trim() : '';
     if(!typedName){ showAlert('Enter the party name.'); return; }
     if(!parsed || parsed.items.length===0){ showAlert('No items to order.'); return; }
+    const proceedWithSubmit = ()=>{
     const existingCust = S.customers.find(c=>c.name.trim().toLowerCase()===typedName.toLowerCase());
     let custId = existingCust ? existingCust.id : null;
     let custName = existingCust ? existingCust.name : typedName;
@@ -4131,6 +4340,14 @@ function openChatOrderModal(){
     } else {
       finish();
     }
+    }; // closes proceedWithSubmit
+    const dup = findRecentDuplicateOrder(typedName, parsed.items);
+    if(dup){
+      const itemsSummary = dup.items.map(i=>`${i.name} ${i.size} ×${i.qty}`).join(', ');
+      showConfirm(`A very similar order for "${typedName}" was just created ${fmtAgo(dup.createdAt)} (${itemsSummary}). Submit this one too?`, proceedWithSubmit, {danger:false, confirmLabel:'Yes, submit anyway'});
+      return;
+    }
+    proceedWithSubmit();
   });
 }
 
@@ -4435,19 +4652,19 @@ function openTeamPermissionDialog(role){
   showModal(`
     <h3>${esc(ROLES[role].label)}</h3>
     <p class="desc" style="margin-top:-6px;">Choose exactly what this team can view and enter.</p>
-    <div style="font-size:10px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.03em;font-weight:700;margin-bottom:6px;">Can view</div>
+    <div style="font-size:11.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.03em;font-weight:700;margin-bottom:6px;">Can view</div>
     <div class="more-grid" style="grid-template-columns:repeat(2,1fr);margin-bottom:14px;">
     ${CHECKLIST_MODULES.map(m=>`<label style="display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:9px 10px;font-size:12.5px;cursor:pointer;">
       <input type="checkbox" data-teamperm-view="${m.key}" ${perm[m.key]?'checked':''} style="width:16px;height:16px;flex:0 0 auto;" /> ${esc(m.label)}
     </label>`).join('')}
     </div>
-    <div style="font-size:10px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.03em;font-weight:700;margin-bottom:6px;">Home page tiles</div>
+    <div style="font-size:11.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.03em;font-weight:700;margin-bottom:6px;">Home page tiles</div>
     <div class="more-grid" style="grid-template-columns:repeat(2,1fr);margin-bottom:14px;">
     ${TILE_MODULES.map(m=>`<label style="display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:9px 10px;font-size:12.5px;cursor:pointer;">
       <input type="checkbox" data-teamperm-view="${m.key}" ${perm[m.key]?'checked':''} style="width:16px;height:16px;flex:0 0 auto;" /> ${esc(m.label)}
     </label>`).join('')}
     </div>
-    <div style="font-size:10px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.03em;font-weight:700;margin-bottom:6px;">Can enter / record data</div>
+    <div style="font-size:11.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.03em;font-weight:700;margin-bottom:6px;">Can enter / record data</div>
     <div class="more-grid" style="grid-template-columns:repeat(2,1fr);">
     ${ENTRY_MODULES.map(m=>`<label style="display:flex;align-items:center;gap:8px;background:var(--success-bg);border:1px solid var(--border);border-radius:10px;padding:9px 10px;font-size:12.5px;cursor:pointer;">
       <input type="checkbox" data-teamperm-entry="${m.key}" ${(S.rolePermissions[role] ? !!S.rolePermissions[role][m.key] : !!entryDefaults[m.key])?'checked':''} style="width:16px;height:16px;flex:0 0 auto;" /> ${esc(m.label)}
@@ -4854,7 +5071,7 @@ function renderThreadView(otherUsername){
   const sections = groupByDate(msgs, m=>m.at);
   let bubblesHtml = '';
   sections.forEach(sec=>{
-    bubblesHtml += `<div style="text-align:center;margin:10px 0 8px;"><span style="background:var(--bg);color:var(--ink-soft);font-size:10.5px;font-weight:700;padding:3px 10px;border-radius:20px;">${esc(sec.heading)}</span></div>`;
+    bubblesHtml += `<div style="text-align:center;margin:10px 0 8px;"><span style="background:var(--bg);color:var(--ink-soft);font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;">${esc(sec.heading)}</span></div>`;
     sec.items.forEach((m,i)=>{
       const mine = m.fromUsername===myUsername;
       // Consecutive messages from the same sender sit closer together —
@@ -4865,7 +5082,7 @@ function renderThreadView(otherUsername){
       const tick = mine ? (m.read ? `<span style="color:#4FC3F7;">✓✓</span>` : `<span style="opacity:0.7;">✓</span>`) : '';
       bubblesHtml += `<div style="text-align:${mine?'right':'left'};margin-bottom:${isLastInGroup?8:2}px;">
         <span style="display:inline-block;background:${mine?'var(--primary)':'var(--bg)'};color:${mine?'#fff':'var(--ink)'};padding:7px 11px;border-radius:12px;font-size:13px;max-width:80%;white-space:pre-wrap;text-align:left;">${esc(m.text)}</span>
-        <div style="font-size:9.5px;color:var(--ink-soft);margin-top:2px;">${fmtTime(m.at)} ${tick}</div>
+        <div style="font-size:11px;color:var(--ink-soft);margin-top:2px;">${fmtTime(m.at)} ${tick}</div>
       </div>`;
     });
   });
@@ -5728,7 +5945,7 @@ function openBulkStockModal(kind){
   showModal(`
     <h3>Bulk edit — ${title}</h3>
     <p class="desc" style="margin-top:-6px;">Update quantity and/or low-stock alert for as many items as you like, then save once. Leave a box blank to skip that field.</p>
-    <div style="display:flex;gap:8px;padding:0 0 6px;font-size:10px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.03em;font-weight:700;">
+    <div style="display:flex;gap:8px;padding:0 0 6px;font-size:11.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.03em;font-weight:700;">
       <div style="flex:1;">Item</div><div style="width:82px;">Qty (${unit})</div><div style="width:74px;">Alert (${unit})</div>
     </div>
     <div style="max-height:48vh;overflow-y:auto;margin-bottom:10px;">
@@ -6019,10 +6236,10 @@ function renderAttendanceMap(){
         ${p.entries.map(e=>{
           let statusCell, locCell;
           if(e.status==='present'){
-            statusCell = `<span class="badge badge-approved">Present</span>${e.record.markedByAdmin?' <span class="mono" style="font-size:9.5px;">(by admin)</span>':''}`;
+            statusCell = `<span class="badge badge-approved">Present</span>${e.record.markedByAdmin?' <span class="mono" style="font-size:11px;">(by admin)</span>':''}`;
             const hasLoc = e.record.lat||e.record.lng;
             const gpsLine = e.record.markedByAdmin ? `<span class="mono">Marked by Admin</span>` : (hasLoc ? `<a href="https://www.google.com/maps?q=${e.record.lat},${e.record.lng}" target="_blank" rel="noopener" class="mono" style="color:var(--primary);">📍 view</a>` : `<span class="mono">no location</span>`);
-            const flLine = e.record.fieldLocation ? `<div class="mono" style="font-size:10.5px;color:var(--ink-soft);margin-top:2px;">Field Location - ${esc(e.record.fieldLocation)}</div>` : '';
+            const flLine = e.record.fieldLocation ? `<div class="mono" style="font-size:12px;color:var(--ink-soft);margin-top:2px;">Field Location - ${esc(e.record.fieldLocation)}</div>` : '';
             locCell = gpsLine + flLine;
           } else if(e.status==='absent'){
             statusCell = `<span class="badge badge-rejected">Absent</span>`;
@@ -6052,9 +6269,9 @@ function renderAttendanceMap(){
       ${s.items.map(a=>{
         const hasLoc = a.lat||a.lng;
         const locCell = a.markedByAdmin ? `<span class="mono">Marked by Admin</span>` : (hasLoc ? `<a href="https://www.google.com/maps?q=${a.lat},${a.lng}" target="_blank" rel="noopener" class="mono" style="color:var(--primary);">📍 ${a.lat.toFixed(4)}, ${a.lng.toFixed(4)}</a>` : `<span class="mono">no location</span>`);
-        const flLine = a.fieldLocation ? `<div class="mono" style="font-size:10.5px;color:var(--ink-soft);margin-top:2px;">Field Location - ${esc(a.fieldLocation)}</div>` : '';
+        const flLine = a.fieldLocation ? `<div class="mono" style="font-size:12px;color:var(--ink-soft);margin-top:2px;">Field Location - ${esc(a.fieldLocation)}</div>` : '';
         const timeCell = (a.type==='present' && !a.markedByAdmin) ? fmtTime(a.timestamp) : '—';
-        return `<tr><td>${esc(a.name)}${a.type==='absent'?' <span class="badge badge-rejected" style="font-size:9px;">Absent</span>':''}</td><td class="mono">${timeCell}</td><td>${locCell}${flLine}</td></tr>`;
+        return `<tr><td>${esc(a.name)}${a.type==='absent'?' <span class="badge badge-rejected" style="font-size:12px;">Absent</span>':''}</td><td class="mono">${timeCell}</td><td>${locCell}${flLine}</td></tr>`;
       }).join('')}
       </tbody></table>`).join('')}
   </div>`;
@@ -6174,7 +6391,7 @@ function renderMonthlySummary(year, month1based){
   box.innerHTML = workingDaysCount===0 ? `<div class="empty">No working days yet this month.</div>` : `
     <table><thead><tr><th>Employee</th><th>Working days</th><th>Present</th><th>Absent</th></tr></thead><tbody>
     ${rows.map(r=>`<tr><td>${esc(r.name)}</td><td class="mono">${workingDaysCount}</td><td class="mono" style="color:var(--success);font-weight:700;">${r.present}</td><td class="mono" style="color:var(--danger);font-weight:700;">${r.absent}</td></tr>
-    ${r.absentDates.length?`<tr><td colspan="4" style="font-size:10.5px;color:var(--ink-soft);padding-top:0;padding-bottom:10px;">Absent: ${r.absentDates.map(dk=>fmtDateOnly(dateKeyToTs(dk))).join(', ')}</td></tr>`:''}`).join('')}
+    ${r.absentDates.length?`<tr><td colspan="4" style="font-size:12px;color:var(--ink-soft);padding-top:0;padding-bottom:10px;">Absent: ${r.absentDates.map(dk=>fmtDateOnly(dateKeyToTs(dk))).join(', ')}</td></tr>`:''}`).join('')}
     </tbody></table>`;
 }
 
