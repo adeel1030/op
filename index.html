@@ -513,7 +513,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-17-manager-restrict-selfedit1";
+const APP_BUILD = "2026-08-18-manager-alert-tiles-dispatch-fix1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -3436,7 +3436,9 @@ function renderHomeGeneric(role){
     ${canViewTile(role,'tile_ready')?`<div class="stat-card-v2" data-stat="ready"><div class="row-top"><div class="icon-badge blue">🚚</div><span class="chev">›</span></div><div class="n">${ready}</div><div class="title">Ready to Dispatch</div><div class="sub">Ready to ship</div></div>`:''}
     ${extraCard}
   </div>
-  ${myAlerts.length ? `<div class="card"><h2>Alerts for you</h2><p class="desc">Relevant to your work.</p>${alertBanner(myAlerts)}</div>` : ''}
+  ${role==='manager'
+    ? (alerts.total ? `<div class="card"><h2>Stock alerts</h2><p class="desc">Auto-sent to the relevant team.</p>${renderAlertSection('raw',alerts.raw)}${renderAlertSection('filled',alerts.filled)}${renderAlertSection('ready',alerts.ready)}</div>` : '')
+    : (myAlerts.length ? `<div class="card"><h2>Alerts for you</h2><p class="desc">Relevant to your work.</p>${alertBanner(myAlerts)}</div>` : '')}
   ${role==='manager' ? `
   <div class="promo-banner">
     <div class="pico">📦</div>
@@ -4002,7 +4004,7 @@ Regards
   document.querySelectorAll('[data-reject-order]').forEach(b=>b.addEventListener('click', ()=>{ setOrderStatus(b.dataset.rejectOrder,'rejected'); if(closeAfter) closeModal(); render(); }));
   document.querySelectorAll('[data-mark-ready-now]').forEach(b=>b.addEventListener('click', ()=>{ markOrderReadyNow(b.dataset.markReadyNow); }));
   document.querySelectorAll('[data-undo-ready]').forEach(b=>b.addEventListener('click', ()=>{ undoMarkOrderReady(b.dataset.undoReady); }));
-  document.querySelectorAll('[data-dispatch-order]').forEach(b=>b.addEventListener('click', ()=>{ openDispatchModal(b.dataset.dispatchOrder); if(closeAfter) closeModal(); }));
+  document.querySelectorAll('[data-dispatch-order]').forEach(b=>b.addEventListener('click', ()=>{ openDispatchModal(b.dataset.dispatchOrder); }));
   document.querySelectorAll('[data-edit-order]').forEach(b=>b.addEventListener('click', ()=>{
     const o = S.orders.find(x=>x.id===b.dataset.editOrder); if(o) openOrderModal(o);
   }));
