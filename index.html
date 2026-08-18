@@ -513,7 +513,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-18-manager-alert-tiles-dispatch-fix1";
+const APP_BUILD = "2026-08-18-lr-embed-fix1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -1268,6 +1268,21 @@ function openUploadLRModal(orderId){
     showToast('LR saved');
   });
 }
+// o.lrPhotoUrl is Drive's "uc?export=download&id=..." link — reliable when used
+// as-is for a real navigation (the <a href> download link), but Drive does not
+// reliably serve raw image bytes on that same endpoint when hotlinked as an
+// <img src> — it can redirect to an interstitial instead, which shows up as a
+// broken-image icon. Drive's "thumbnail" endpoint is the one meant for inline
+// embedding, so the preview <img> uses that instead (built from lrFileId if
+// present, else parsed back out of lrPhotoUrl for older records).
+function lrEmbedUrl(o){
+  let fileId = o.lrFileId;
+  if(!fileId && o.lrPhotoUrl){
+    const m = String(o.lrPhotoUrl).match(/[?&]id=([^&]+)/);
+    if(m) fileId = m[1];
+  }
+  return fileId ? `https://drive.google.com/thumbnail?id=${encodeURIComponent(fileId)}&sz=w1600` : o.lrPhotoUrl;
+}
 function openViewLRModal(orderId){
   const o = S.orders.find(x=>x.id===orderId); if(!o) return;
   const hasFreshPhoto = o.lrPhotoUrl && (Date.now()-o.lrUploadedAt)<30*24*60*60*1000;
@@ -1276,7 +1291,7 @@ function openViewLRModal(orderId){
     <h3>📄 LR — ${esc(orderDisplayLabel(o))}</h3>
     ${hasFreshPhoto ? `
       <p class="desc" style="margin-top:-6px;">Uploaded by ${esc(o.lrUploadedBy||'—')} on ${fmtDate(o.lrUploadedAt)} · photo auto-removed in ${daysLeft} day${daysLeft===1?'':'s'}.</p>
-      <a href="${esc(o.lrPhotoUrl)}" target="_blank" rel="noopener"><img src="${esc(o.lrPhotoUrl)}" style="width:100%;border-radius:10px;border:1px solid var(--border);margin:10px 0;" /></a>
+      <a href="${esc(o.lrPhotoUrl)}" target="_blank" rel="noopener"><img src="${esc(lrEmbedUrl(o))}" id="lrModalImg" style="width:100%;border-radius:10px;border:1px solid var(--border);margin:10px 0;" /></a>
     ` : `<div class="empty" style="margin:10px 0;">No photo on file.</div>`}
     ${o.lrNumber ? `<div class="field"><label>LR Number</label><div style="font-weight:700;font-size:15px;">${esc(o.lrNumber)}</div></div>` : ''}
     <div class="modal-actions">
@@ -1285,6 +1300,16 @@ function openViewLRModal(orderId){
       <button type="button" class="btn btn-outline" id="cancelModal">Close</button>
     </div>
   `);
+  if(hasFreshPhoto){
+    const imgEl = document.getElementById('lrModalImg');
+    if(imgEl) imgEl.addEventListener('error', function(){
+      const msg = document.createElement('div');
+      msg.className = 'desc';
+      msg.style.margin = '10px 0';
+      msg.textContent = 'Preview unavailable — tap to open/download instead.';
+      imgEl.replaceWith(msg);
+    }, { once: true });
+  }
   document.getElementById('editLRBtn').addEventListener('click', ()=>openUploadLRModal(orderId));
   const removeBtn = document.getElementById('removeLRBtn');
   if(removeBtn) removeBtn.addEventListener('click', ()=>{
