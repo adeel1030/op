@@ -513,7 +513,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-17-stocklog-poolfix1";
+const APP_BUILD = "2026-08-17-manager-restrict-selfedit1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -1475,11 +1475,15 @@ function startSyncPolling(intervalMs){
         syncStockTasksFromAlerts();
         setSyncLabel(null);
         if(messagesModalOpen) refreshMessagesModal(); else render();
-      } else if(S.currentUser.role==='admin' && S.view==='home' && !messagesModalOpen){
-        // Nothing changed server-side, but the "last synced Xs ago" text on
-        // the System Health panel still needs to tick forward — render()'s
-        // own diff-check keeps this cheap (skips the actual DOM write on
-        // every OTHER tab where this text isn't even shown).
+      } else if(S.view==='home' && !messagesModalOpen){
+        // Nothing changed server-side, but time-sensitive things on Home
+        // still need to tick forward on their own: the System Health
+        // panel's "last synced Xs ago" text (admin), and the 5-minute
+        // self-edit window on "Your recent activity" (everyone else) —
+        // an Edit button must actually disappear once the window closes,
+        // not just whenever the next real data change happens to arrive.
+        // render()'s own diff-check keeps this cheap (skips the actual DOM
+        // write on every OTHER tab where none of this is even shown).
         render();
       }
     }catch(e){ /* transient network hiccup — try again next tick */ }
@@ -2088,6 +2092,10 @@ function openEditLogModal(e){
     </div>
   `);
   document.getElementById('editLogSave').addEventListener('click', ()=>{
+    if(!withinSelfEditWindow(e) || (S.currentUser.role!=='admin' && e.byUsername!==S.currentUser.username)){
+      showAlert('This entry can no longer be edited (past the 5-minute window).');
+      closeModal(); render(); return;
+    }
     let val = parseFloat(document.getElementById('editLogVal').value)||0;
     const cap = isPurchase ? MAX_PURCHASE_L : MAX_PC_ENTRY;
     if(val>cap){ showAlert(`Max allowed is ${cap} ${isPurchase?'L':'pc'} per entry.`); return; }
@@ -2585,6 +2593,7 @@ function autoAdvanceOrders(){
 // Undoable: reverses only the items THIS action cancelled, and puts the
 // order back to Processing.
 function markOrderReadyNow(orderId){
+  if(S.currentUser.role!=='admin') return; // admin-only
   const o = S.orders.find(x=>x.id===orderId); if(!o) return;
   showConfirm('Mark this order Ready now? Any item still short in stock will be marked Cancelled.', ()=>{
     let stockChanged = false;
@@ -2702,6 +2711,7 @@ function openDispatchModal(orderId){
 }
 
 function setOrderStatus(id, status){
+  if((status==='processing' || status==='rejected') && S.currentUser.role!=='admin') return; // Accept/Reject are admin-only
   const o = S.orders.find(x=>x.id===id); if(!o) return;
   let shortItems = [];
   if(status==='processing' && !o.stockDeducted){
@@ -3427,11 +3437,22 @@ function renderHomeGeneric(role){
     ${extraCard}
   </div>
   ${myAlerts.length ? `<div class="card"><h2>Alerts for you</h2><p class="desc">Relevant to your work.</p>${alertBanner(myAlerts)}</div>` : ''}
+  ${role==='manager' ? `
+  <div class="promo-banner">
+    <div class="pico">📦</div>
+    <div class="txt"><b>Keep Your Stock Updated</b><span>Accurate stock helps you plan ahead and avoid shortages.</span></div>
+    <button type="button" data-more-tab="stock">Update ›</button>
+  </div>
+  <div class="card">
+    <h2>Recent orders</h2>
+    <p class="desc">New, ready, and processing — grouped by stage.</p>
+    ${renderOrdersSegregated(5)}
+  </div>` : ''}
   <div class="card">
     <h2>Your recent activity</h2>
     ${myEntries.length===0?`<div class="empty">Nothing logged yet.</div>`:`
-    <table><thead><tr><th>Entry</th><th>Detail</th><th>When</th></tr></thead><tbody>
-    ${myEntries.map(e=>`<tr><td>${esc(e.label)}</td><td class="mono">${esc(e.detail)}</td><td class="mono">${fmtDate(e.at)}</td></tr>`).join('')}
+    <table><thead><tr><th>Entry</th><th>Detail</th><th>When</th><th></th></tr></thead><tbody>
+    ${myEntries.map(e=>`<tr><td>${esc(e.label)}</td><td class="mono">${esc(e.detail)}</td><td class="mono">${fmtDate(e.at)}</td><td>${(e.refType && withinSelfEditWindow(e))?`<button type="button" class="btn btn-sm btn-outline" data-self-edit-type="${e.refType}" data-self-edit-id="${e.refId}">Edit</button>`:''}</td></tr>`).join('')}
     </tbody></table>`}
   </div>
   <div class="card">
@@ -3446,6 +3467,18 @@ function bindHomeGeneric(){
   bindQuickActionIcons();
   document.querySelectorAll('[data-more-tab]').forEach(t=>{ t.addEventListener('click', ()=>{ S.view = t.dataset.moreTab; render(); }); });
   document.querySelectorAll('[data-stat]').forEach(t=>{ t.addEventListener('click', ()=>openStatModal(t.dataset.stat)); });
+  document.querySelectorAll('[data-self-edit-type]').forEach(b=>b.addEventListener('click', ()=>openSelfEditModal(b.dataset.selfEditType, b.dataset.selfEditId)));
+}
+function openSelfEditModal(refType, refId){
+  if(refType==='activityLog'){
+    const e = S.activityLog.find(x=>x.id===refId); if(!e) return;
+    if(e.byUsername!==S.currentUser.username || !withinSelfEditWindow(e)){ showAlert('This entry can no longer be edited (past the 5-minute window).'); render(); return; }
+    openEditLogModal(e);
+  } else if(refType==='retailSales'){
+    const e = S.retailSales.find(x=>x.id===refId); if(!e) return;
+    if(e.byUsername!==S.currentUser.username || !withinSelfEditWindow(e)){ showAlert('This entry can no longer be edited (past the 5-minute window).'); render(); return; }
+    openRetailModal(e.type, e);
+  }
 }
 function fmtAgo(ts){
   if(!ts) return null;
@@ -3792,12 +3825,14 @@ function renderOrderTile(o, showUndoDispatch){
       ${o.status==='pending'?`<button class="btn btn-sm btn-success" data-approve-order="${o.id}">Accept</button><button class="btn btn-sm btn-danger" data-reject-order="${o.id}">Reject</button>`:''}
       ${o.status==='processing'?`<button class="btn btn-sm btn-outline" data-mark-ready-now="${o.id}">Mark Ready</button>`:''}
       ${o.status==='ready' && o.items.some(it=>it.autoCancelledByReady)?`<button class="btn btn-sm btn-outline" data-undo-ready="${o.id}">↩ Undo Ready</button>`:''}
-      ${o.status==='ready'?`<button class="btn btn-sm btn-success" data-dispatch-order="${o.id}">Processed &amp; Dispatched</button>`:''}
-      ${(o.status==='pending'||o.status==='processing'||o.status==='ready')?`<button class="btn btn-sm btn-outline" data-edit-order="${o.id}">Edit</button>`:''}
-      ${o.status==='processed' && showUndoDispatch?`<button class="btn btn-sm btn-outline" data-undo-dispatch="${o.id}">↩ Undo Dispatch</button>`:''}
-      ${(isLRUploader && (o.status==='ready'||o.status==='processed'))?(((o.lrPhotoUrl && (Date.now()-o.lrUploadedAt)<30*24*60*60*1000) || o.lrNumber)?`<button class="btn btn-sm btn-outline" data-view-lr="${o.id}">📄 LR</button>`:`<button class="btn btn-sm btn-outline" data-upload-lr="${o.id}">📄 Upload LR</button>`):''}
-      <button class="btn btn-sm btn-outline" data-del-order="${o.id}">Delete</button>
       `:''}
+      ${(isAdmin || S.currentUser.role==='manager')?`
+      ${o.status==='ready'?`<button class="btn btn-sm btn-success" data-dispatch-order="${o.id}">Processed &amp; Dispatched</button>`:''}
+      ${o.status==='processed' && showUndoDispatch?`<button class="btn btn-sm btn-outline" data-undo-dispatch="${o.id}">↩ Undo Dispatch</button>`:''}
+      `:''}
+      ${isAdmin?`<button class="btn btn-sm btn-outline" data-edit-order="${o.id}">Edit</button>`:''}
+      ${(isLRUploader && (o.status==='ready'||o.status==='processed'))?(((o.lrPhotoUrl && (Date.now()-o.lrUploadedAt)<30*24*60*60*1000) || o.lrNumber)?`<button class="btn btn-sm btn-outline" data-view-lr="${o.id}">📄 LR</button>`:`<button class="btn btn-sm btn-outline" data-upload-lr="${o.id}">📄 Upload LR</button>`):''}
+      ${isAdmin?`<button class="btn btn-sm btn-outline" data-del-order="${o.id}">Delete</button>`:''}
     </div>
   </div>`;
 }
@@ -4003,6 +4038,7 @@ function findRecentDuplicateOrder(customerName, draftItems){
   }) || null;
 }
 function openOrderModal(existingOrder){
+  if(existingOrder && S.currentUser.role!=='admin') return; // editing an existing order is admin-only
   editingOrderId = existingOrder ? existingOrder.id : null;
   orderDraft = existingOrder ? existingOrder.items.map(x=>({...x})) : [];
   editingDraftIndex = null;
@@ -4911,11 +4947,21 @@ function openUserModal(id){
 function getMyEntries(username){
   const items = [];
   S.orders.forEach(o=>{ if(o.createdByUsername===username) items.push({label:`Order — ${o.customerName}`, detail:o.items.map(i=>`${i.name} ${i.size} ×${i.qty}`).join(', '), at:o.createdAt, tag:ORDER_STAGE_LABEL[o.status]||o.status}); });
-  S.activityLog.forEach(e=>{ if(e.byUsername===username) items.push({label:activityLabel(e), detail:activityAmount(e), at:e.at, tag:e.kind}); });
+  S.activityLog.forEach(e=>{ if(e.byUsername===username) items.push({label:activityLabel(e), detail:activityAmount(e), at:e.at, tag:e.kind, refType:'activityLog', refId:e.id}); });
   S.expenses.forEach(x=>{ if(x.byUsername===username || x.enteredByUsername===username) items.push({label:x.description||(x.type==='settlement'?'Settlement paid':'Expense'), detail:`₹${x.amount.toLocaleString('en-IN')}`, at:x.at, tag:x.type||'expense'}); });
   S.customers.forEach(c=>{ if(c.addedByUsername===username) items.push({label:`New party — ${c.name}`, detail:c.phone||'', at:c.addedAt, tag:'party'}); });
   S.dominoPrints.forEach(x=>{ if(x.byUsername===username) items.push({label:'Domino printing', detail:`${x.impressions.toLocaleString('en-IN')} impressions`, at:x.at, tag:'domino'}); });
+  S.retailSales.forEach(x=>{ if(x.byUsername===username) items.push({label:(x.items||[]).map(i=>i.itemLabel).join(', ')||(x.type==='sale'?'Retail sale':'Sample'), detail:x.type==='sale'?`₹${(x.totalAmount||0).toLocaleString('en-IN')}`:'Sample', at:x.at, tag:x.type, refType:'retailSales', refId:x.id}); });
   return items.sort((a,b)=>b.at-a.at).slice(0,10);
+}
+// Non-admin can correct a typo in their OWN recent entry, but only for a
+// short window right after creating it — not indefinitely, and never
+// someone else's entry. Admin is exempt (unlimited, as always).
+const SELF_EDIT_WINDOW_MS = 5*60*1000;
+function withinSelfEditWindow(entry){
+  if(!entry) return false;
+  if(S.currentUser.role==='admin') return true;
+  return (Date.now() - entry.at) < SELF_EDIT_WINDOW_MS;
 }
 // Sales can only message admin/manager, and only admin/manager can message
 // sales — everyone else (filling, packaging, manager, admin) can message
@@ -5836,6 +5882,10 @@ function openRetailModal(type, existingEntry){
     itemSel.value=''; document.getElementById('retailItemQty').value='0';
   });
   document.getElementById('submitRetailBtn').addEventListener('click', ()=>{
+    if(existingEntry && (!withinSelfEditWindow(existingEntry) || (S.currentUser.role!=='admin' && existingEntry.byUsername!==S.currentUser.username))){
+      showAlert('This entry can no longer be edited (past the 5-minute window).');
+      closeModal(); render(); return;
+    }
     if(retailDraft.length===0){ showAlert('Add at least one item.'); return; }
     // When editing, this entry's OWN current quantities are already
     // deducted from readyStock — add them back in before checking
