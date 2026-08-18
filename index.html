@@ -339,6 +339,7 @@
   .order-tile{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:13px 14px;margin-bottom:10px;box-shadow:0 1px 2px rgba(14,36,71,0.03);}
   .order-tile.tile-ready{background:#E6F5EE;border-color:#B8E3CC;}
   .order-tile.tile-processing{background:#FEF6DC;border-color:#F0DDA0;}
+  .order-tile.tile-packed{background:#F1EBFB;border-color:#D7C7F2;}
   .order-tile .ot-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px;}
   .order-tile .ot-name{font-weight:800;font-size:15px;}
   .order-tile .ot-items{font-size:13px;color:var(--ink-soft);line-height:1.65;margin-bottom:8px;}
@@ -361,6 +362,7 @@
   .badge-pending{background:var(--warning-bg);color:var(--warning);}
   .badge-processing{background:var(--info-bg);color:var(--info);}
   .badge-ready{background:rgba(242,169,59,0.18);color:var(--accent-ink);}
+  .badge-packed{background:#EBE1FA;color:#5B3A9E;}
   .badge-processed{background:var(--success-bg);color:var(--success);}
   .badge-approved{background:var(--success-bg);color:var(--success);}
   .badge-rejected{background:var(--danger-bg);color:var(--danger);}
@@ -513,7 +515,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-18-lr-embed-fix1";
+const APP_BUILD = "2026-08-18-packed-stage1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -2516,7 +2518,7 @@ function renderNotifPanel(stockAlerts){
   const role = S.currentUser.role;
   const isAdmin = role==='admin';
   const pendingOrders = isAdmin ? S.orders.filter(o=>o.status==='pending') : [];
-  const readyOrders = isAdmin ? S.orders.filter(o=>o.status==='ready') : [];
+  const packedOrders = isAdmin ? S.orders.filter(o=>o.status==='packed') : [];
   const reviewTasks = isAdmin ? S.orders.filter(o => o.fillingStatus==='review' || o.packagingStatus==='review') : [];
   let myWork = [];
   if(role==='filling') myWork = S.orders.filter(o=>o.status==='processing' && o.fillingStatus!=='done' && orderNeedsRoleWork(o,'filling',stockAlerts));
@@ -2524,7 +2526,7 @@ function renderNotifPanel(stockAlerts){
   if(role==='manager') myWork = S.orders.filter(o=>o.status==='processing' && (o.fillingStatus!=='done'||o.packagingStatus!=='done'));
   return `<h3>${isAdmin?'Pending your approval':'Your alerts'}</h3>
     <p class="desc" style="margin-top:-8px;">${isAdmin?'Waiting on you.':'Your alerts.'}</p>
-    ${pendingOrders.length===0 && readyOrders.length===0 && reviewTasks.length===0 && myWork.length===0 ? `<div class="empty">Nothing waiting on you right now.</div>` : ''}
+    ${pendingOrders.length===0 && packedOrders.length===0 && reviewTasks.length===0 && myWork.length===0 ? `<div class="empty">Nothing waiting on you right now.</div>` : ''}
     ${pendingOrders.map(o=>`
       <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);gap:10px;flex-wrap:wrap;">
         <div style="font-size:13px;"><b>${esc(o.customerName)}</b> — ${o.items.map(i=>`${esc(i.name)} ${esc(i.size)} ×${i.qty}`).join(', ')} <span class="mono">(by ${esc(o.createdBy)})</span></div>
@@ -2533,10 +2535,10 @@ function renderNotifPanel(stockAlerts){
           <button class="btn btn-sm btn-danger" data-reject-order="${o.id}">Reject</button>
         </div>
       </div>`).join('')}
-    ${readyOrders.map(o=>`
+    ${packedOrders.map(o=>`
       <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);gap:10px;flex-wrap:wrap;">
-        <div style="font-size:13px;"><b>${esc(o.customerName)}</b> — fully stocked, ready to dispatch</div>
-        <div class="row-actions"><button class="btn btn-sm btn-success" data-process-order="${o.id}">Mark processed</button></div>
+        <div style="font-size:13px;"><b>${esc(o.customerName)}</b> — packed, ready to dispatch</div>
+        <div class="row-actions"><button class="btn btn-sm btn-success" data-notif-dispatch="${o.id}">Dispatch</button></div>
       </div>`).join('')}
     ${reviewTasks.map(o=>`
       <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);flex-wrap:wrap;gap:8px;">
@@ -2582,7 +2584,12 @@ function bindShell(){
 
   document.querySelectorAll('[data-approve-order]').forEach(b=>b.addEventListener('click', ()=>{ setOrderStatus(b.dataset.approveOrder, 'processing'); render(); }));
   document.querySelectorAll('[data-reject-order]').forEach(b=>b.addEventListener('click', ()=>{ setOrderStatus(b.dataset.rejectOrder, 'rejected'); render(); }));
-  document.querySelectorAll('[data-process-order]').forEach(b=>b.addEventListener('click', ()=>{ setOrderStatus(b.dataset.processOrder, 'processed'); render(); }));
+  // Notif-panel "Dispatch" quick action — opens the same dispatch/LR modal
+  // as the Orders tab. Deliberately a separate data-attribute (not
+  // data-dispatch-order) so this querySelectorAll — which runs against the
+  // WHOLE page, not just the notif sheet — can never double-bind against
+  // the dispatch buttons bindOrderRowActions already wires up elsewhere.
+  document.querySelectorAll('[data-notif-dispatch]').forEach(b=>b.addEventListener('click', ()=>{ openDispatchModal(b.dataset.notifDispatch); }));
   document.querySelectorAll('[data-ack-task]').forEach(b=>b.addEventListener('click', ()=>{
     const [id, kind] = b.dataset.ackTask.split('|');
     ackTask(id, kind); render();
@@ -2661,6 +2668,31 @@ function undoMarkOrderReady(orderId){
   if(stockChanged){ safeSet('app:readyStock', S.readyStock); syncStockTasksFromAlerts(); }
   render();
   showToast('Undone — back to Processing');
+}
+// Ready -> Packed is a manual physical-packing checkpoint (admin/manager
+// only) that sits between the order being fully stocked (Ready) and the
+// actual dispatch booking (Processed & Dispatched, which opens the LR/
+// transport modal). No stock side-effects — purely a status + audit trail.
+function markOrderPacked(orderId){
+  if(S.currentUser.role!=='admin' && S.currentUser.role!=='manager') return;
+  const o = S.orders.find(x=>x.id===orderId); if(!o) return;
+  if(o.status!=='ready') return;
+  o.status = 'packed';
+  o.packedAt = Date.now();
+  o.packedBy = S.currentUser.name;
+  savePartitionForItem('orders', o);
+  render();
+  showToast('Order marked Packed — ready to dispatch');
+}
+function undoMarkOrderPacked(orderId){
+  if(S.currentUser.role!=='admin' && S.currentUser.role!=='manager') return;
+  const o = S.orders.find(x=>x.id===orderId); if(!o) return;
+  if(o.status!=='packed') return;
+  o.status = 'ready';
+  delete o.packedAt; delete o.packedBy;
+  savePartitionForItem('orders', o);
+  render();
+  showToast('Undone — back to Ready');
 }
 
 function openDispatchModal(orderId){
@@ -3430,6 +3462,7 @@ function renderHomeGeneric(role){
   const pending = S.orders.filter(o=>o.status==='pending').length;
   const processing = S.orders.filter(o=>o.status==='processing').length;
   const ready = S.orders.filter(o=>o.status==='ready').length;
+  const packed = S.orders.filter(o=>o.status==='packed').length;
   let extraCard = '';
   if(role==='filling'){
     const need = S.orders.filter(o=>o.status==='processing' && o.fillingStatus!=='done' && orderNeedsRoleWork(o,'filling',alerts)).length;
@@ -3459,6 +3492,7 @@ function renderHomeGeneric(role){
   <div class="stat-grid-v2">
     ${canViewTile(role,'tile_pending')?`<div class="stat-card-v2" data-stat="pending"><div class="row-top"><div class="icon-badge green">🛍️</div><span class="chev">›</span></div><div class="n">${pending}</div><div class="title">New Orders</div><div class="sub">Pending orders</div></div>`:''}
     ${canViewTile(role,'tile_ready')?`<div class="stat-card-v2" data-stat="ready"><div class="row-top"><div class="icon-badge blue">🚚</div><span class="chev">›</span></div><div class="n">${ready}</div><div class="title">Ready to Dispatch</div><div class="sub">Ready to ship</div></div>`:''}
+    ${canViewTile(role,'tile_packed')?`<div class="stat-card-v2" data-stat="packed"><div class="row-top"><div class="icon-badge purple">📦</div><span class="chev">›</span></div><div class="n">${packed}</div><div class="title">Packed</div><div class="sub">Packed & ready to ship</div></div>`:''}
     ${extraCard}
   </div>
   ${role==='manager'
@@ -3538,8 +3572,8 @@ function renderHomeAdmin(){
   const pending = S.orders.filter(o=>o.status==='pending').length;
   const processing = S.orders.filter(o=>o.status==='processing').length;
   const ready = S.orders.filter(o=>o.status==='ready').length;
+  const packed = S.orders.filter(o=>o.status==='packed').length;
   const processed = S.orders.filter(o=>o.status==='processed').length;
-  const checkedInNow = countPresentToday();
   const alerts = getStockAlerts();
   const isAdmin = S.currentUser.role==='admin';
   const todayLabel = new Date().toLocaleDateString(undefined,{day:'2-digit', month:'short', year:'numeric'});
@@ -3560,9 +3594,9 @@ function renderHomeAdmin(){
       <div class="row-top"><div class="icon-badge blue">🚚</div><span class="chev">›</span></div>
       <div class="n">${ready}</div><div class="title">Ready to Dispatch</div><div class="sub">Orders ready to ship</div>
     </div>
-    <div class="stat-card-v2" data-stat="checkedin">
-      <div class="row-top"><div class="icon-badge purple">📋</div><span class="chev">›</span></div>
-      <div class="n">${checkedInNow}</div><div class="title">Present Today</div><div class="sub">Marked attendance</div>
+    <div class="stat-card-v2" data-stat="packed">
+      <div class="row-top"><div class="icon-badge purple">📦</div><span class="chev">›</span></div>
+      <div class="n">${packed}</div><div class="title">Packed</div><div class="sub">Packed & ready to ship</div>
     </div>
   </div>
   <div class="promo-banner">
@@ -3798,7 +3832,7 @@ function countPresentToday(){
 }
 
 /* ============================= ORDERS ============================= */
-const ORDER_STAGE_LABEL = {pending:'New', processing:'Processing', ready:'Ready', processed:'Processed & Dispatched', rejected:'Rejected'};
+const ORDER_STAGE_LABEL = {pending:'New', processing:'Processing', ready:'Ready', packed:'Packed', processed:'Processed & Dispatched', rejected:'Rejected'};
 function orderDisplayLabel(o){
   const role = S.currentUser.role;
   if(role==='admin' || role==='manager') return o.customerName;
@@ -3820,7 +3854,7 @@ function orderMrpValue(o){
 function renderOrderTile(o, showUndoDispatch){
   const isAdmin = S.currentUser.role==='admin';
   const isLRUploader = S.currentUser.role==='admin' || S.currentUser.role==='manager';
-  const tileCls = o.status==='ready' ? ' tile-ready' : o.status==='processing' ? ' tile-processing' : '';
+  const tileCls = o.status==='ready' ? ' tile-ready' : o.status==='processing' ? ' tile-processing' : o.status==='packed' ? ' tile-packed' : '';
   return `<div class="order-tile${tileCls}">
     <div class="ot-top"><span class="ot-name">${esc(orderDisplayLabel(o))}${o.source==='website'?' <span class="mono" style="font-weight:400;">🌐 Website</span>':''}</span><span class="badge badge-${o.status}">${esc(ORDER_STAGE_LABEL[o.status]||o.status)}</span></div>
     ${isLRUploader ? (()=>{ const lc=liveCustomerFor(o); const city=(lc&&lc.city)||o.customerCity; const transport=(lc&&lc.transport)||o.transportName; const bits=[]; if(city) bits.push(`📍 ${esc(city)}`); if(transport) bits.push(`🚚 ${esc(transport)}`); return bits.length?`<div class="ot-meta" style="margin-top:-2px;">${bits.join(' · ')}</div>`:''; })() : ''}
@@ -3854,11 +3888,13 @@ function renderOrderTile(o, showUndoDispatch){
       ${o.status==='ready' && o.items.some(it=>it.autoCancelledByReady)?`<button class="btn btn-sm btn-outline" data-undo-ready="${o.id}">↩ Undo Ready</button>`:''}
       `:''}
       ${(isAdmin || S.currentUser.role==='manager')?`
-      ${o.status==='ready'?`<button class="btn btn-sm btn-success" data-dispatch-order="${o.id}">Processed &amp; Dispatched</button>`:''}
+      ${o.status==='ready'?`<button class="btn btn-sm btn-success" data-mark-packed="${o.id}">📦 Mark Packed &amp; Ready to Dispatch</button>`:''}
+      ${o.status==='packed'?`<button class="btn btn-sm btn-outline" data-undo-packed="${o.id}">↩ Undo Packed</button>`:''}
+      ${o.status==='packed'?`<button class="btn btn-sm btn-success" data-dispatch-order="${o.id}">Processed &amp; Dispatched</button>`:''}
       ${o.status==='processed' && showUndoDispatch?`<button class="btn btn-sm btn-outline" data-undo-dispatch="${o.id}">↩ Undo Dispatch</button>`:''}
       `:''}
       ${isAdmin?`<button class="btn btn-sm btn-outline" data-edit-order="${o.id}">Edit</button>`:''}
-      ${(isLRUploader && (o.status==='ready'||o.status==='processed'))?(((o.lrPhotoUrl && (Date.now()-o.lrUploadedAt)<30*24*60*60*1000) || o.lrNumber)?`<button class="btn btn-sm btn-outline" data-view-lr="${o.id}">📄 LR</button>`:`<button class="btn btn-sm btn-outline" data-upload-lr="${o.id}">📄 Upload LR</button>`):''}
+      ${(isLRUploader && (o.status==='packed'||o.status==='processed'))?(((o.lrPhotoUrl && (Date.now()-o.lrUploadedAt)<30*24*60*60*1000) || o.lrNumber)?`<button class="btn btn-sm btn-outline" data-view-lr="${o.id}">📄 LR</button>`:`<button class="btn btn-sm btn-outline" data-upload-lr="${o.id}">📄 Upload LR</button>`):''}
       ${isAdmin?`<button class="btn btn-sm btn-outline" data-del-order="${o.id}">Delete</button>`:''}
     </div>
   </div>`;
@@ -3877,12 +3913,12 @@ function renderOrdersSegregated(limit){
     const list = relevant.filter(o=>o.status===status).sort((a,b)=>b.createdAt-a.createdAt);
     return limit ? list.slice(0,limit) : list;
   };
-  const pending = byStage('pending'), ready = byStage('ready'), processing = byStage('processing');
+  const pending = byStage('pending'), ready = byStage('ready'), packed = byStage('packed'), processing = byStage('processing');
   const section = (title, icon, list)=> list.length ? `<div style="margin-bottom:14px;">
     <div style="font-weight:800;font-size:11.5px;text-transform:uppercase;letter-spacing:0.03em;margin-bottom:8px;color:var(--ink-soft);">${icon} ${esc(title)} (${list.length})</div>
     ${list.map(renderOrderTile).join('')}
   </div>` : '';
-  const html = section('New', '🛍️', pending) + section('Ready to dispatch', '🚚', ready) + section('Processing', '🔧', processing);
+  const html = section('New', '🛍️', pending) + section('Ready to dispatch', '🚚', ready) + section('Packed', '📦', packed) + section('Processing', '🔧', processing);
   return html || `<div class="empty"><div class="big">📦</div>No active orders right now.</div>`;
 }
 function renderOrderTilesGrouped(list, showUndoDispatch){
@@ -3914,6 +3950,7 @@ function renderOrders(){
   const canCreate = canDoEntry(S.currentUser.role, 'entry_order');
   const processingCount = S.orders.filter(o=>o.status==='processing').length;
   const readyCount = S.orders.filter(o=>o.status==='ready').length;
+  const packedCount = S.orders.filter(o=>o.status==='packed').length;
   const processedCount = S.orders.filter(o=>o.status==='processed').length;
   return `
   <div class="card">
@@ -3924,6 +3961,7 @@ function renderOrders(){
     <div class="row-actions" style="margin-top:10px;flex-wrap:wrap;gap:8px;">
       <span class="badge badge-processing" style="font-size:11.5px;padding:5px 10px;">🔧 Processing: ${processingCount}</span>
       <span class="badge badge-approved" style="font-size:11.5px;padding:5px 10px;">🚚 Ready: ${readyCount}</span>
+      <button type="button" class="btn btn-sm btn-outline" data-stat="packed" style="padding:4px 10px;font-size:11.5px;">📦 Packed: ${packedCount}</button>
       <button type="button" class="btn btn-sm btn-outline" data-stat="processed" style="padding:4px 10px;font-size:11.5px;">✅ Processed: ${processedCount}</button>
       ${S.currentUser.role==='admin' ? `<button type="button" class="btn btn-sm btn-outline" id="siteVisitLogsBtn" style="padding:4px 10px;font-size:11.5px;">🌐 Order Form Logs (${S.siteVisitLogs.length})</button>` : ''}
     </div>
@@ -3962,7 +4000,7 @@ function openStatModal(key){
     const alerts = getStockAlerts();
     bodyHtml = alerts.total ? (renderAlertSection('raw',alerts.raw)+renderAlertSection('filled',alerts.filled)+renderAlertSection('ready',alerts.ready)) : `<div class="empty">No alerts right now 🎉</div>`;
   } else {
-    const titles = {pending:'New orders', processing:'Processing orders', ready:'Ready to dispatch', processed:'Processed orders'};
+    const titles = {pending:'New orders', processing:'Processing orders', ready:'Ready to dispatch', packed:'Packed orders', processed:'Processed orders'};
     title = titles[key] || key;
     const list = S.orders.filter(o=>o.status===key).sort((a,b)=>b.createdAt-a.createdAt);
     bodyHtml = renderOrderTilesGrouped(list, key==='processed');
@@ -4029,6 +4067,8 @@ Regards
   document.querySelectorAll('[data-reject-order]').forEach(b=>b.addEventListener('click', ()=>{ setOrderStatus(b.dataset.rejectOrder,'rejected'); if(closeAfter) closeModal(); render(); }));
   document.querySelectorAll('[data-mark-ready-now]').forEach(b=>b.addEventListener('click', ()=>{ markOrderReadyNow(b.dataset.markReadyNow); }));
   document.querySelectorAll('[data-undo-ready]').forEach(b=>b.addEventListener('click', ()=>{ undoMarkOrderReady(b.dataset.undoReady); }));
+  document.querySelectorAll('[data-mark-packed]').forEach(b=>b.addEventListener('click', ()=>{ markOrderPacked(b.dataset.markPacked); }));
+  document.querySelectorAll('[data-undo-packed]').forEach(b=>b.addEventListener('click', ()=>{ undoMarkOrderPacked(b.dataset.undoPacked); }));
   document.querySelectorAll('[data-dispatch-order]').forEach(b=>b.addEventListener('click', ()=>{ openDispatchModal(b.dataset.dispatchOrder); }));
   document.querySelectorAll('[data-edit-order]').forEach(b=>b.addEventListener('click', ()=>{
     const o = S.orders.find(x=>x.id===b.dataset.editOrder); if(o) openOrderModal(o);
@@ -4621,6 +4661,7 @@ const TILE_MODULES = [
   {key:'tile_pending', label:'Home tile: New Orders'},
   {key:'tile_processing', label:'Home tile: Processing'},
   {key:'tile_ready', label:'Home tile: Ready to Dispatch'},
+  {key:'tile_packed', label:'Home tile: Packed'},
 ];
 function canViewTile(role, tileKey){
   if(role==='admin') return true;
