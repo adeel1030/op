@@ -515,7 +515,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-19-delta-sync1";
+const APP_BUILD = "2026-08-19-retention1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -1453,15 +1453,28 @@ function applyServerData(data, isFullSync){
   if(has('rawMaterial')) S.rawMaterial = data.rawMaterial || {};
   if(has('filledStock')) S.filledStock = data.filledStock || {};
   if(has('readyStock')) S.readyStock = data.readyStock || {};
-  S.expenses = mergeAndFilterPartition('expenses', data, S.expenses, null, (a,b)=>a.at-b.at);
-  S.activityLog = mergeAndFilterPartition('activityLog', data, S.activityLog, null, (a,b)=>a.at-b.at);
+  // expenses/retailSales are financial records — a longer, accounting-scale
+  // retention window (1 year / 6 months) rather than the short log windows
+  // below. activityLog/dominoPrints/loginLog are pure logs, so they get the
+  // same 7-day window as chatMessages/trackingViewLogs. Until this change
+  // all 5 of these had NO age filter at all (filterFn was null) and NO
+  // backend cleanup — they'd grown, unbounded, one row per calendar day,
+  // since the app's very first use, and every one of those rows was
+  // included in every FULL sync. That was the main reason a fresh/first
+  // fetch (a new device, a cleared cache, or the periodic full-resync
+  // safety net) kept getting slower over time, hitting older/slower
+  // hardware hardest — see cleanupOldFinancialData/cleanupOldMiscLogs below
+  // for the matching backend-side cleanup that keeps this bounded going
+  // forward, including a one-time sweep of the already-accumulated backlog.
+  S.expenses = mergeAndFilterPartition('expenses', data, S.expenses, e=>e.at >= Date.now()-365*24*60*60*1000, (a,b)=>a.at-b.at);
+  S.activityLog = mergeAndFilterPartition('activityLog', data, S.activityLog, l=>l.at >= Date.now()-7*24*60*60*1000, (a,b)=>a.at-b.at);
   if(has('lowStock')) S.lowStock = data.lowStock || {raw:{}, filled:{}, ready:{}};
   if(has('watchStock')) S.watchStock = data.watchStock || {raw:{}, filled:{}, ready:{}};
   if(has('stockTasks')) S.stockTasks = data.stockTasks || [];
-  S.dominoPrints = mergeAndFilterPartition('dominoPrints', data, S.dominoPrints, null, (a,b)=>a.at-b.at);
-  S.loginLog = mergeAndFilterPartition('loginLog', data, S.loginLog, null, (a,b)=>a.at-b.at);
+  S.dominoPrints = mergeAndFilterPartition('dominoPrints', data, S.dominoPrints, p=>p.at >= Date.now()-7*24*60*60*1000, (a,b)=>a.at-b.at);
+  S.loginLog = mergeAndFilterPartition('loginLog', data, S.loginLog, l=>l.at >= Date.now()-7*24*60*60*1000, (a,b)=>a.at-b.at);
   S.chatMessages = mergeAndFilterPartition('chatMessages', data, S.chatMessages, m=>m.at >= Date.now()-7*24*60*60*1000, (a,b)=>a.at-b.at);
-  S.retailSales = mergeAndFilterPartition('retailSales', data, S.retailSales, null, (a,b)=>a.at-b.at, normalizeRetailEntry);
+  S.retailSales = mergeAndFilterPartition('retailSales', data, S.retailSales, r=>r.at >= Date.now()-180*24*60*60*1000, (a,b)=>a.at-b.at, normalizeRetailEntry);
   if(isFullSync) trackPartitionKeys(data); else trackPartitionKeysDelta(data);
   if(has('customRoles')) S.customRoles = data.customRoles || [];
   if(has('rolePermissions')) S.rolePermissions = data.rolePermissions || {};
@@ -1480,6 +1493,8 @@ function applyServerData(data, isFullSync){
   cleanupOldChatDays();
   cleanupOldLogDays();
   cleanupOldBusinessData();
+  cleanupOldMiscLogs();
+  cleanupOldFinancialData();
 }
 // Chat messages are only meant to live 7 days — reconcile the backend to
 // match (admin-only, mirrors how "Reset all data" already deletes
@@ -1517,6 +1532,54 @@ function cleanupOldBusinessData(){
     [...seen].filter(dk=>dk < cutoff).forEach(dk=>stale.push(entity+'_'+dk));
   });
   if(stale.length) apiDeleteKeys(stale).catch(()=>{});
+}
+// Deletes a (possibly large) list of stale keys in small chunks instead of
+// one single call. The backend's deleteKeys handler does one real
+// Sheets deleteRow() per key while holding the write lock for the whole
+// batch — a single huge call (months/years of never-before-cleaned
+// backlog, see cleanupOldMiscLogs/cleanupOldFinancialData below) would hold
+// that lock long enough to fail other people's concurrent saves. Chunking
+// keeps every individual lock hold short; each chunk is awaited before the
+// next fires, so the natural request/response latency also gives other
+// pending writers room to get in between chunks. Fire-and-forget at the
+// call site — errors are swallowed per-chunk and whatever's left just gets
+// retried on the next sync tick, same as the existing cleanup functions.
+async function deleteKeysBatched(keys, batchSize){
+  batchSize = batchSize || 20;
+  for(let i=0; i<keys.length; i+=batchSize){
+    try{ await apiDeleteKeys(keys.slice(i, i+batchSize)); }catch(e){ /* rest retried next tick */ }
+  }
+}
+// activityLog/dominoPrints/loginLog are pure logs — same 7-day window as
+// chatMessages/trackingViewLogs/siteVisitLogs/stockMovementLog. Unlike
+// those, these 3 had NO cleanup at all until now, so the first run after
+// this ships can have a large backlog to clear — hence the batched delete.
+function cleanupOldMiscLogs(){
+  if(!S.currentUser || S.currentUser.role!=='admin') return;
+  const cutoff = localDateKey(Date.now() - 7*24*60*60*1000);
+  const stale = [];
+  ['activityLog','dominoPrints','loginLog'].forEach(entity=>{
+    const seen = S._partitionKeysSeen[entity];
+    if(!seen || !seen.size) return;
+    [...seen].filter(dk=>dk < cutoff).forEach(dk=>stale.push(entity+'_'+dk));
+  });
+  if(stale.length) deleteKeysBatched(stale);
+}
+// expenses/retailSales are real financial/business records, so they get a
+// longer, accounting-scale retention window than the plain logs above
+// instead of sharing the 7-day cutoff: expenses 1 year, retailSales 6
+// months. Same "no cleanup ever existed before" backlog concern as above.
+function cleanupOldFinancialData(){
+  if(!S.currentUser || S.currentUser.role!=='admin') return;
+  const stale = [];
+  const windows = { expenses: 365, retailSales: 180 };
+  Object.keys(windows).forEach(entity=>{
+    const seen = S._partitionKeysSeen[entity];
+    if(!seen || !seen.size) return;
+    const cutoff = localDateKey(Date.now() - windows[entity]*24*60*60*1000);
+    [...seen].filter(dk=>dk < cutoff).forEach(dk=>stale.push(entity+'_'+dk));
+  });
+  if(stale.length) deleteKeysBatched(stale);
 }
 
 async function loadAll(){
