@@ -515,7 +515,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-18-packed-stage1";
+const APP_BUILD = "2026-08-19-fetch-timeout1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -981,6 +981,21 @@ function computeDailySummaries(records){
 /* ============================= STORAGE (Google Apps Script backend) ============================= */
 const API_URL = "https://script.google.com/macros/s/AKfycbzGTJDC1jXEb15S2QQl_G5e-RBlRhiEfsC9rJwaXYiJTfB5mUJ8BX6aOQFGqTUKWIht/exec";
 const SECRET = "MyOrderOps2026Secret";
+// A raw fetch() has NO timeout of its own — on a slow/unreliable connection
+// (mobile data especially), a request that never gets a response just hangs
+// forever with no error and no retry, which is exactly what "stuck on the
+// loading spinner forever, works on laptop/WiFi but not on mobile" looks
+// like. This wraps every backend call with an AbortController so a stalled
+// request is treated as a normal failure after a bounded wait — existing
+// retry (loadAll's 3 attempts) and offline-queue logic already handle that
+// correctly, they just never used to get the chance to.
+const DEFAULT_FETCH_TIMEOUT_MS = 25000;
+function fetchWithTimeout(url, options, timeoutMs){
+  const controller = new AbortController();
+  const timer = setTimeout(()=>controller.abort(), timeoutMs || DEFAULT_FETCH_TIMEOUT_MS);
+  return fetch(url, Object.assign({}, options||{}, { signal: controller.signal }))
+    .finally(()=>clearTimeout(timer));
+}
 const KEY_MAP = { users:'users', orders:'orders', customers:'customers', attendance:'attendance', tasks:'tasks', rawMaterial:'rawMaterial', filledStock:'filledStock', readyStock:'readyStock' };
 let lastServerUpdatedAt = 0;
 let lastSuccessfulSyncAt = null;
@@ -1067,7 +1082,7 @@ async function flushOfflineQueue(){
     });
   };
   try{
-    const res = await fetch(API_URL, {
+    const res = await fetchWithTimeout(API_URL, {
       method:'POST',
       headers:{'Content-Type':'text/plain;charset=utf-8'},
       body: JSON.stringify({ secret:SECRET, action:'batchSave', items })
@@ -1097,13 +1112,13 @@ function setSyncing(on){
 }
 
 async function apiFetchAll(){
-  const res = await fetch(`${API_URL}?secret=${encodeURIComponent(SECRET)}&_=${Date.now()}`);
+  const res = await fetchWithTimeout(`${API_URL}?secret=${encodeURIComponent(SECRET)}&_=${Date.now()}`);
   const json = await res.json();
   if(json.error) throw new Error(json.error);
   return json; // {data:{...}, updatedAt}
 }
 async function apiFetchVersion(){
-  const res = await fetch(`${API_URL}?action=version&secret=${encodeURIComponent(SECRET)}&_=${Date.now()}`);
+  const res = await fetchWithTimeout(`${API_URL}?action=version&secret=${encodeURIComponent(SECRET)}&_=${Date.now()}`);
   const json = await res.json();
   if(json.error) throw new Error(json.error);
   return json.updatedAt || 0;
@@ -1111,7 +1126,7 @@ async function apiFetchVersion(){
 async function apiSave(key, value){
   setSyncLabel(`Saving ${friendlySyncLabel(key)}…`);
   try{
-    const res = await fetch(API_URL, {
+    const res = await fetchWithTimeout(API_URL, {
       method:'POST',
       headers:{'Content-Type':'text/plain;charset=utf-8'},
       body: JSON.stringify({ secret:SECRET, action:'save', key, value })
@@ -1198,21 +1213,24 @@ function savePartitionAllDays(entity){
 }
 async function apiDeleteKeys(keys){
   if(!keys.length) return;
-  const res = await fetch(API_URL, {
+  const res = await fetchWithTimeout(API_URL, {
     method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
     body: JSON.stringify({ secret:SECRET, action:'deleteKeys', keys })
   });
   return res.json();
 }
 async function apiUploadLR(base64Data, mimeType, filename){
-  const res = await fetch(API_URL, {
+  // Photo uploads are a much larger payload than any other call here, and
+  // legitimately take longer on a slow mobile connection — a longer timeout
+  // avoids aborting a real (just slow) upload while it's still in flight.
+  const res = await fetchWithTimeout(API_URL, {
     method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
     body: JSON.stringify({ secret:SECRET, action:'uploadLR', base64Data, mimeType, filename })
-  });
+  }, 60000);
   return res.json();
 }
 async function apiDeleteLR(fileId){
-  const res = await fetch(API_URL, {
+  const res = await fetchWithTimeout(API_URL, {
     method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
     body: JSON.stringify({ secret:SECRET, action:'deleteLR', fileId })
   });
@@ -2360,12 +2378,13 @@ function bindPostLoginSequence(){
 
 /* ============================= APP SHELL ============================= */
 function myRoleAlerts(stockAlerts){
-  // Each role only sees alerts relevant to their own job.
+  // Each role only sees alerts relevant to their own job. Sales doesn't
+  // handle stock at all, so they get none — no "Alerts for you" card, no
+  // alert bells (see myRoleAlertKinds below, which drives those bells).
   const role = S.currentUser.role;
   if(role==='admin' || role==='manager') return [...stockAlerts.raw, ...stockAlerts.filled, ...stockAlerts.ready];
   if(role==='filling') return stockAlerts.filled;   // filled stock short -> filling team fills more
   if(role==='packaging') return stockAlerts.ready;  // ready stock short -> packaging team packs more
-  if(role==='sales') return stockAlerts.ready;
   return [];
 }
 // Splits this role's relevant stock alerts into the 3 severity tiers,
@@ -2502,8 +2521,8 @@ function renderPulse(stockAlerts){
 function myRoleAlertKinds(role){
   if(role==='admin' || role==='manager') return ['raw','filled','ready'];
   if(role==='filling') return ['filled'];
-  if(role==='packaging' || role==='sales') return ['ready'];
-  return [];
+  if(role==='packaging') return ['ready'];
+  return []; // sales doesn't handle stock — no alert bells for them
 }
 function renderAlertTierPanel(tier, tiers){
   const titleMap = { urgent:'🚨 Urgent — Short Stock', low:'⚠️ Low Stock', recommended:'💡 Recommended' };
