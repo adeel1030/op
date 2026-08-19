@@ -515,7 +515,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-19-fetch-timeout1";
+const APP_BUILD = "2026-08-19-delta-sync1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -999,6 +999,13 @@ function fetchWithTimeout(url, options, timeoutMs){
 const KEY_MAP = { users:'users', orders:'orders', customers:'customers', attendance:'attendance', tasks:'tasks', rawMaterial:'rawMaterial', filledStock:'filledStock', readyStock:'readyStock' };
 let lastServerUpdatedAt = 0;
 let lastSuccessfulSyncAt = null;
+// Delta sync's safety net: a delta never reports DELETIONS (an aged-out
+// partition day just silently stops appearing, rather than being flagged
+// as removed) — see apiFetchDelta / trackPartitionKeysDelta. A periodic
+// full resync bounds how long that gap can ever persist, without giving
+// up delta sync's bandwidth savings on every routine 4-second poll.
+let lastFullResyncAt = 0;
+const FULL_RESYNC_INTERVAL_MS = 20*60*1000; // 20 minutes
 let systemHealth = { lastBackupAt: null, lastBackupError: null };
 let syncing = false;
 let syncBusyCount = 0;
@@ -1117,6 +1124,17 @@ async function apiFetchAll(){
   if(json.error) throw new Error(json.error);
   return json; // {data:{...}, updatedAt}
 }
+// Only the keys that actually changed since `since` (normally
+// lastServerUpdatedAt) — a key simply absent from the response means
+// "unchanged", not "empty". Used by the routine sync poll instead of a
+// full apiFetchAll() on every detected change; see applyServerData's
+// isFullSync parameter for how the client safely merges a partial result.
+async function apiFetchDelta(since){
+  const res = await fetchWithTimeout(`${API_URL}?action=deltaSince&since=${since}&secret=${encodeURIComponent(SECRET)}&_=${Date.now()}`);
+  const json = await res.json();
+  if(json.error) throw new Error(json.error);
+  return json; // {data:{...partial...}, updatedAt}
+}
 async function apiFetchVersion(){
   const res = await fetchWithTimeout(`${API_URL}?action=version&secret=${encodeURIComponent(SECRET)}&_=${Date.now()}`);
   const json = await res.json();
@@ -1176,16 +1194,50 @@ function safeSet(oldKey, value){
 // character per-cell limit no matter how much history accumulates.
 const PARTITIONED_TS_FIELD = { orders:'createdAt', activityLog:'at', attendance:'timestamp', expenses:'at', dominoPrints:'at', loginLog:'at', chatMessages:'at', retailSales:'at', trackingViewLogs:'at', siteVisitLogs:'at', stockMovementLog:'at' };
 const PARTITIONED_ENTITIES = Object.keys(PARTITIONED_TS_FIELD);
-function mergePartitionedEntity(rawData, entity){
-  const merged = [];
+// Merges whatever day-partition arrays are present in `rawData` for this
+// entity into `existing` (the entity's current in-memory array) — replaces
+// ONLY the days actually present in `rawData`, leaving every other day's
+// already-loaded data untouched. On a FULL sync, `rawData` contains every
+// day that exists server-side, so this produces exactly the same result a
+// plain rebuild-from-scratch always did. On a DELTA sync (rawData only has
+// the days that changed since last sync), this is what makes it safe — a
+// delta that only touches today's orders can never cause yesterday's
+// (unchanged) orders to silently vanish from the view. Returns `existing`
+// itself (same reference, unchanged) when this entity has nothing at all
+// in this payload, so callers can cheaply skip re-filtering/re-sorting an
+// array that didn't change.
+function mergePartitionedEntity(rawData, entity, existing){
+  const touchedDays = new Set();
   Object.keys(rawData).forEach(k=>{
-    if(k.indexOf(entity+'_')===0 && Array.isArray(rawData[k])) merged.push(...rawData[k]);
+    if(k.indexOf(entity+'_')===0) touchedDays.add(k.substring(entity.length+1));
   });
-  return merged;
+  if(!touchedDays.size) return existing || [];
+  const tsField = PARTITIONED_TS_FIELD[entity];
+  const kept = (existing||[]).filter(item=>!touchedDays.has(localDateKey(item[tsField])));
+  const fresh = [];
+  touchedDays.forEach(day=>{
+    const arr = rawData[entity+'_'+day];
+    if(Array.isArray(arr)) fresh.push(...arr);
+  });
+  return kept.concat(fresh);
+}
+// Merge + map(optional) + filter(optional) + sort in one call, and skips
+// all of that work entirely when this entity had nothing in this payload
+// (mergePartitionedEntity returns the SAME array reference in that case).
+function mergeAndFilterPartition(entity, rawData, existing, filterFn, sortFn, mapFn){
+  const merged = mergePartitionedEntity(rawData, entity, existing);
+  if(merged === existing) return existing; // nothing for this entity in this payload — already correctly processed from last time
+  let result = mapFn ? merged.map(mapFn) : merged;
+  if(filterFn) result = result.filter(filterFn);
+  return result.sort(sortFn);
 }
 // Which day-partition keys currently exist on the backend for each entity —
 // tracked so "Reset all data" knows exactly what to delete (including days
 // that might otherwise be left orphaned once S[entity] is cleared locally).
+// Full-replace: only correct to call after a FULL sync, since it treats
+// "day not present in rawData" as "day doesn't exist" — exactly right when
+// rawData is everything, wrong when it's only a delta (see
+// trackPartitionKeysDelta for that case).
 function trackPartitionKeys(rawData){
   PARTITIONED_ENTITIES.forEach(entity=>{
     const days = new Set();
@@ -1193,6 +1245,23 @@ function trackPartitionKeys(rawData){
       if(k.indexOf(entity+'_')===0) days.add(k.substring(entity.length+1));
     });
     S._partitionKeysSeen[entity] = days;
+  });
+}
+// Additive version for a DELTA sync — a day NOT present in this delta might
+// just be unchanged (not deleted), so unlike trackPartitionKeys this must
+// never DROP an already-known day, only ever add newly-seen ones. A day
+// that server-side cleanup actually deleted will naturally drop off the
+// next FULL resync (see FULL_RESYNC_INTERVAL_MS in startSyncPolling) —
+// harmless in the meantime since the app's own display filters already
+// hide anything past its normal retention age regardless of what
+// _partitionKeysSeen still remembers.
+function trackPartitionKeysDelta(rawData){
+  PARTITIONED_ENTITIES.forEach(entity=>{
+    Object.keys(rawData).forEach(k=>{
+      if(k.indexOf(entity+'_')===0){
+        (S._partitionKeysSeen[entity] = S._partitionKeysSeen[entity] || new Set()).add(k.substring(entity.length+1));
+      }
+    });
   });
 }
 function savePartitionDay(entity, dateKey){
@@ -1362,39 +1431,52 @@ function normalizeRetailEntry(e){
   }
   return e;
 }
-function applyServerData(data){
-  S.users = data.users || [];
-  S.orders = mergePartitionedEntity(data, 'orders').filter(o=>o.createdAt >= Date.now()-60*24*60*60*1000).sort((a,b)=>a.createdAt-b.createdAt);
-  S.customers = data.customers || [];
-  S.attendance = mergePartitionedEntity(data, 'attendance').filter(a=>a.timestamp >= Date.now()-60*24*60*60*1000).sort((a,b)=>a.timestamp-b.timestamp);
-  S.tasks = data.tasks || [];
-  S.rawMaterial = data.rawMaterial || {};
-  S.filledStock = data.filledStock || {};
-  S.readyStock = data.readyStock || {};
-  S.expenses = mergePartitionedEntity(data, 'expenses').sort((a,b)=>a.at-b.at);
-  S.activityLog = mergePartitionedEntity(data, 'activityLog').sort((a,b)=>a.at-b.at);
-  S.lowStock = data.lowStock || {raw:{}, filled:{}, ready:{}};
-  S.watchStock = data.watchStock || {raw:{}, filled:{}, ready:{}};
-  S.stockTasks = data.stockTasks || [];
-  S.dominoPrints = mergePartitionedEntity(data, 'dominoPrints').sort((a,b)=>a.at-b.at);
-  S.loginLog = mergePartitionedEntity(data, 'loginLog').sort((a,b)=>a.at-b.at);
-  S.chatMessages = mergePartitionedEntity(data, 'chatMessages').filter(m=>m.at >= Date.now()-7*24*60*60*1000).sort((a,b)=>a.at-b.at);
-  S.retailSales = mergePartitionedEntity(data, 'retailSales').map(normalizeRetailEntry).sort((a,b)=>a.at-b.at);
-  trackPartitionKeys(data);
-  S.customRoles = data.customRoles || [];
-  S.rolePermissions = data.rolePermissions || {};
+// isFullSync=true means `data` is the ENTIRE dataset (initial load, or a
+// periodic safety-net resync) — every S.* field gets set from it exactly
+// as before. isFullSync=false means `data` may be a DELTA (only the keys
+// that changed since the last sync) — any key simply absent from `data`
+// is left completely untouched in S, instead of being wiped to a default.
+// This single function safely handles both cases so there's only ever one
+// place that needs to know about every field order-ops syncs — a delta
+// merge bug here would mean a field silently stops updating, so every
+// static key uses the same "only touch it if it's actually present"
+// pattern, and every partitioned entity goes through
+// mergeAndFilterPartition (which has that exact same guarantee for
+// day-partitioned data).
+function applyServerData(data, isFullSync){
+  const has = k => Object.prototype.hasOwnProperty.call(data, k);
+  if(has('users')) S.users = data.users || [];
+  S.orders = mergeAndFilterPartition('orders', data, S.orders, o=>o.createdAt >= Date.now()-60*24*60*60*1000, (a,b)=>a.createdAt-b.createdAt);
+  if(has('customers')) S.customers = data.customers || [];
+  S.attendance = mergeAndFilterPartition('attendance', data, S.attendance, a=>a.timestamp >= Date.now()-60*24*60*60*1000, (a,b)=>a.timestamp-b.timestamp);
+  if(has('tasks')) S.tasks = data.tasks || [];
+  if(has('rawMaterial')) S.rawMaterial = data.rawMaterial || {};
+  if(has('filledStock')) S.filledStock = data.filledStock || {};
+  if(has('readyStock')) S.readyStock = data.readyStock || {};
+  S.expenses = mergeAndFilterPartition('expenses', data, S.expenses, null, (a,b)=>a.at-b.at);
+  S.activityLog = mergeAndFilterPartition('activityLog', data, S.activityLog, null, (a,b)=>a.at-b.at);
+  if(has('lowStock')) S.lowStock = data.lowStock || {raw:{}, filled:{}, ready:{}};
+  if(has('watchStock')) S.watchStock = data.watchStock || {raw:{}, filled:{}, ready:{}};
+  if(has('stockTasks')) S.stockTasks = data.stockTasks || [];
+  S.dominoPrints = mergeAndFilterPartition('dominoPrints', data, S.dominoPrints, null, (a,b)=>a.at-b.at);
+  S.loginLog = mergeAndFilterPartition('loginLog', data, S.loginLog, null, (a,b)=>a.at-b.at);
+  S.chatMessages = mergeAndFilterPartition('chatMessages', data, S.chatMessages, m=>m.at >= Date.now()-7*24*60*60*1000, (a,b)=>a.at-b.at);
+  S.retailSales = mergeAndFilterPartition('retailSales', data, S.retailSales, null, (a,b)=>a.at-b.at, normalizeRetailEntry);
+  if(isFullSync) trackPartitionKeys(data); else trackPartitionKeysDelta(data);
+  if(has('customRoles')) S.customRoles = data.customRoles || [];
+  if(has('rolePermissions')) S.rolePermissions = data.rolePermissions || {};
   rebuildRolesRegistry();
   applyRolePermissionsToROLES();
-  S.catalogItems = (data.catalogItems && data.catalogItems.length) ? data.catalogItems : flattenDefaultCatalog();
+  if(has('catalogItems')) S.catalogItems = (data.catalogItems && data.catalogItems.length) ? data.catalogItems : flattenDefaultCatalog();
   rebuildCatalogFlat();
-  S.transports = data.transports || [];
-  S.dailyRecordMarks = data.dailyRecordMarks || {};
-  S.batchReferences = data.batchReferences || {};
-  S.holidays = data.holidays || {};
-  S.activeSessions = data.activeSessions || {};
-  S.trackingViewLogs = mergePartitionedEntity(data, 'trackingViewLogs').filter(l=>l.at >= Date.now()-7*24*60*60*1000).sort((a,b)=>b.at-a.at);
-  S.siteVisitLogs = mergePartitionedEntity(data, 'siteVisitLogs').filter(l=>l.at >= Date.now()-7*24*60*60*1000).sort((a,b)=>b.at-a.at);
-  S.stockMovementLog = mergePartitionedEntity(data, 'stockMovementLog').filter(l=>l.at >= Date.now()-7*24*60*60*1000).sort((a,b)=>b.at-a.at);
+  if(has('transports')) S.transports = data.transports || [];
+  if(has('dailyRecordMarks')) S.dailyRecordMarks = data.dailyRecordMarks || {};
+  if(has('batchReferences')) S.batchReferences = data.batchReferences || {};
+  if(has('holidays')) S.holidays = data.holidays || {};
+  if(has('activeSessions')) S.activeSessions = data.activeSessions || {};
+  S.trackingViewLogs = mergeAndFilterPartition('trackingViewLogs', data, S.trackingViewLogs, l=>l.at >= Date.now()-7*24*60*60*1000, (a,b)=>b.at-a.at);
+  S.siteVisitLogs = mergeAndFilterPartition('siteVisitLogs', data, S.siteVisitLogs, l=>l.at >= Date.now()-7*24*60*60*1000, (a,b)=>b.at-a.at);
+  S.stockMovementLog = mergeAndFilterPartition('stockMovementLog', data, S.stockMovementLog, l=>l.at >= Date.now()-7*24*60*60*1000, (a,b)=>b.at-a.at);
   cleanupOldChatDays();
   cleanupOldLogDays();
   cleanupOldBusinessData();
@@ -1447,7 +1529,8 @@ async function loadAll(){
       const { data, updatedAt, systemHealth: sh } = await apiFetchAll();
       lastServerUpdatedAt = updatedAt || 0;
       if(sh) systemHealth = sh;
-      applyServerData(data || {});
+      applyServerData(data || {}, true);
+      lastFullResyncAt = Date.now();
 
       if(S.users.length === 0){
         S.users.push({id:uid(), username:'admin', password:'admin123', name:'Admin', role:'admin'});
@@ -1499,40 +1582,49 @@ function startHeartbeat(){
     sendHeartbeat();
   }, 60000);
 }
+// One sync-poll tick, pulled out of the setInterval below so it can be
+// tested directly. Whenever the server version has advanced, this fetches
+// either a DELTA (only what changed since lastServerUpdatedAt — the normal
+// case) or, once every FULL_RESYNC_INTERVAL_MS, a FULL resync — the safety
+// net that catches deletions a delta can never report (see
+// FULL_RESYNC_INTERVAL_MS's own comment).
+async function doSyncTick(){
+  if(!S.currentUser) return;
+  flushOfflineQueue(); // fire-and-forget; retries any saves that failed while offline
+  if(syncing) return;
+  const messagesModalOpen = !!document.getElementById('messagesModalBody');
+  const modalOpen = !!document.getElementById('modalOverlay') && !messagesModalOpen;
+  if(modalOpen) return;
+  try{
+    const serverUpdatedAt = await apiFetchVersion();
+    lastSuccessfulSyncAt = Date.now();
+    if(serverUpdatedAt && serverUpdatedAt > lastServerUpdatedAt){
+      setSyncLabel('Updating…');
+      const needsFullResync = (Date.now() - lastFullResyncAt) > FULL_RESYNC_INTERVAL_MS;
+      const { data, updatedAt, systemHealth: sh } = needsFullResync ? await apiFetchAll() : await apiFetchDelta(lastServerUpdatedAt);
+      lastServerUpdatedAt = updatedAt || serverUpdatedAt;
+      if(sh) systemHealth = sh;
+      applyServerData(data || {}, needsFullResync);
+      if(needsFullResync) lastFullResyncAt = Date.now();
+      autoAdvanceOrders();
+      syncStockTasksFromAlerts();
+      setSyncLabel(null);
+      if(messagesModalOpen) refreshMessagesModal(); else render();
+    } else if(S.view==='home' && !messagesModalOpen){
+      // Nothing changed server-side, but time-sensitive things on Home
+      // still need to tick forward on their own: the System Health
+      // panel's "last synced Xs ago" text (admin), and the 5-minute
+      // self-edit window on "Your recent activity" (everyone else) —
+      // an Edit button must actually disappear once the window closes,
+      // not just whenever the next real data change happens to arrive.
+      // render()'s own diff-check keeps this cheap (skips the actual DOM
+      // write on every OTHER tab where none of this is even shown).
+      render();
+    }
+  }catch(e){ /* transient network hiccup — try again next tick */ }
+}
 function startSyncPolling(intervalMs){
-  setInterval(async ()=>{
-    if(!S.currentUser) return;
-    flushOfflineQueue(); // fire-and-forget; retries any saves that failed while offline
-    if(syncing) return;
-    const messagesModalOpen = !!document.getElementById('messagesModalBody');
-    const modalOpen = !!document.getElementById('modalOverlay') && !messagesModalOpen;
-    if(modalOpen) return;
-    try{
-      const serverUpdatedAt = await apiFetchVersion();
-      lastSuccessfulSyncAt = Date.now();
-      if(serverUpdatedAt && serverUpdatedAt > lastServerUpdatedAt){
-        setSyncLabel('Updating…');
-        const { data, updatedAt, systemHealth: sh } = await apiFetchAll();
-        lastServerUpdatedAt = updatedAt || serverUpdatedAt;
-        if(sh) systemHealth = sh;
-        applyServerData(data || {});
-        autoAdvanceOrders();
-        syncStockTasksFromAlerts();
-        setSyncLabel(null);
-        if(messagesModalOpen) refreshMessagesModal(); else render();
-      } else if(S.view==='home' && !messagesModalOpen){
-        // Nothing changed server-side, but time-sensitive things on Home
-        // still need to tick forward on their own: the System Health
-        // panel's "last synced Xs ago" text (admin), and the 5-minute
-        // self-edit window on "Your recent activity" (everyone else) —
-        // an Edit button must actually disappear once the window closes,
-        // not just whenever the next real data change happens to arrive.
-        // render()'s own diff-check keeps this cheap (skips the actual DOM
-        // write on every OTHER tab where none of this is even shown).
-        render();
-      }
-    }catch(e){ /* transient network hiccup — try again next tick */ }
-  }, intervalMs || 4000);
+  setInterval(doSyncTick, intervalMs || 4000);
 }
 
 /* ============================= TOAST ============================= */
