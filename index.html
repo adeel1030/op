@@ -533,7 +533,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-20-push4";
+const APP_BUILD = "2026-08-20-push5-notifperms";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -798,7 +798,7 @@ const S = {
   loadFailed:false,
   users:[], orders:[], customers:[], attendance:[], tasks:[], loginLog:[],
   rawMaterial:{}, filledStock:{}, readyStock:{}, expenses:[], activityLog:[], stockTasks:[], dominoPrints:[], chatMessages:[], retailSales:[], trackingViewLogs:[], siteVisitLogs:[], stockMovementLog:[],
-  lowStock:{raw:{}, filled:{}, ready:{}}, watchStock:{raw:{}, filled:{}, ready:{}}, rolePermissions:{}, customRoles:[], catalogItems:[], transports:[], dailyRecordMarks:{}, dailyWorkDate:null, batchReferences:{}, holidays:{}, activeSessions:{},
+  lowStock:{raw:{}, filled:{}, ready:{}}, watchStock:{raw:{}, filled:{}, ready:{}}, rolePermissions:{}, customRoles:[], catalogItems:[], transports:[], dailyRecordMarks:{}, dailyWorkDate:null, batchReferences:{}, holidays:{}, activeSessions:{}, notificationPrefs:{},
   _partitionKeysSeen:{orders:new Set(), activityLog:new Set(), attendance:new Set(), expenses:new Set(), dominoPrints:new Set(), loginLog:new Set(), chatMessages:new Set(), retailSales:new Set(), trackingViewLogs:new Set(), siteVisitLogs:new Set(), stockMovementLog:new Set()},
   currentUser:null, view:'home', stockView:'raw', notifOpen:false, moreOpen:false, profileOpen:false, alertPanelOpen:null, toast:null,
   chatModalOpen:false, chatView:'announcements', chatActiveThread:null,
@@ -1120,7 +1120,7 @@ function friendlySyncLabel(key){
       return map2[p] || p;
     }
   }
-  const map = { users:'users', customers:'customers', rawMaterial:'raw material', filledStock:'filled stock', readyStock:'ready stock', lowStock:'low-stock alerts', stockTasks:'stock tasks', rolePermissions:'permissions', customRoles:'teams', catalogItems:'catalog', tasks:'tasks' };
+  const map = { users:'users', customers:'customers', rawMaterial:'raw material', filledStock:'filled stock', readyStock:'ready stock', lowStock:'low-stock alerts', stockTasks:'stock tasks', rolePermissions:'permissions', notificationPrefs:'notification permissions', customRoles:'teams', catalogItems:'catalog', tasks:'tasks' };
   return map[key] || key;
 }
 let currentSyncLabel = null;
@@ -1166,7 +1166,7 @@ async function flushOfflineQueue(){
     const res = await fetchWithTimeout(API_URL, {
       method:'POST',
       headers:{'Content-Type':'text/plain;charset=utf-8'},
-      body: JSON.stringify({ secret:SECRET, action:'batchSave', items })
+      body: JSON.stringify({ secret:SECRET, action:'batchSave', items, actingUsername: S.currentUser && S.currentUser.username })
     });
     const json = await res.json();
     if(json.error) throw new Error(json.error);
@@ -1221,7 +1221,7 @@ async function apiSave(key, value){
     const res = await fetchWithTimeout(API_URL, {
       method:'POST',
       headers:{'Content-Type':'text/plain;charset=utf-8'},
-      body: JSON.stringify({ secret:SECRET, action:'save', key, value })
+      body: JSON.stringify({ secret:SECRET, action:'save', key, value, actingUsername: S.currentUser && S.currentUser.username })
     });
     const json = await res.json();
     if(json.error) throw new Error(json.error);
@@ -1552,6 +1552,7 @@ function applyServerData(data, isFullSync){
   if(isFullSync) trackPartitionKeys(data); else trackPartitionKeysDelta(data);
   if(has('customRoles')) S.customRoles = data.customRoles || [];
   if(has('rolePermissions')) S.rolePermissions = data.rolePermissions || {};
+  if(has('notificationPrefs')) S.notificationPrefs = data.notificationPrefs || {};
   rebuildRolesRegistry();
   applyRolePermissionsToROLES();
   if(has('catalogItems')) S.catalogItems = (data.catalogItems && data.catalogItems.length) ? data.catalogItems : flattenDefaultCatalog();
@@ -4874,6 +4875,7 @@ function renderUsers(){
       <div><h2>Team &amp; access</h2><p class="desc">Create logins &amp; assign roles.</p></div>
       <div class="row-actions">
         <button class="btn btn-outline btn-sm" id="openPermsBtn">🔐 Permission Manager</button>
+        <button class="btn btn-outline btn-sm" id="openNotifPermsBtn">🔔 Notification Permissions</button>
         <button class="btn btn-primary btn-sm" id="newUserBtn">+ Add user</button>
       </div>
     </div>
@@ -5077,6 +5079,100 @@ function openPermissionConfirm(role, viewChecked, entryChecked){
     closeModal(); render(); showToast(`${ROLES[role].label} permissions updated`);
   });
 }
+
+/* ============================= NOTIFICATION PERMISSION MANAGER (admin only) ============================= */
+// Mirrors the backend's NOTIFICATION_KINDS list (order-ops-backend.gs) --
+// keep both in sync. Each kind maps to exactly one of the 4 push triggers
+// there (notifyOrderEvents_'s two event types, notifyNewChatMessages_,
+// notifyLowStockCrossings_). A kind not yet present in S.notificationPrefs
+// means "everyone" (default, backward compatible with installs that never
+// open this manager) -- notifKindRecipients() reflects that as every
+// current user being checked.
+const NOTIFICATION_KINDS = [
+  {key:'newOrder', label:'New Order', desc:'Jab koi naya order aaye.'},
+  {key:'statusChange', label:'Order Status Change', desc:'Jab order Accept/Ready/Packed/Dispatched/Reject ho.'},
+  {key:'chatMessage', label:'Chat Message', desc:'Jab koi announcement ya personal message bheje.'},
+  {key:'lowStock', label:'Low Stock Alert', desc:'Jab koi item apni low-stock limit se neeche jaaye.'},
+];
+function notifKindRecipients(kind){
+  const configured = S.notificationPrefs[kind];
+  return Array.isArray(configured) ? configured : S.users.map(u=>u.username);
+}
+/* ---- Step 1: notification-type list ---- */
+function openNotificationPermissionManager(){
+  showModal(renderNotifKindListBody());
+  bindNotifKindListModal();
+}
+function renderNotifKindListBody(){
+  return `
+    <h3>🔔 Notification Permissions</h3>
+    <p class="desc" style="margin-top:-6px;">Tap a notification type to choose exactly which staff get it. Jo khud koi action kare, usse uska apna notification kabhi nahi aata — ye hamesha lagu hota hai, neeche jo bhi chuno.</p>
+    <div style="margin-bottom:4px;">
+    ${NOTIFICATION_KINDS.map(k=>{
+      const recipients = notifKindRecipients(k.key);
+      return `<div class="order-tile" data-select-notif-kind="${k.key}" style="cursor:pointer;">
+        <div class="ot-top">
+          <span class="ot-name">${esc(k.label)}</span>
+          <span style="color:var(--ink-soft);font-size:16px;">›</span>
+        </div>
+        <div class="ot-meta">${esc(k.desc)}</div>
+        <div class="ot-meta">${recipients.length} of ${S.users.length} staff will get this</div>
+      </div>`;
+    }).join('')}
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-outline" id="cancelModal">Close</button>
+    </div>
+  `;
+}
+function bindNotifKindListModal(){
+  document.querySelectorAll('[data-select-notif-kind]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const kind = el.dataset.selectNotifKind;
+      closeModal();
+      openNotifKindDialog(kind);
+    });
+  });
+}
+/* ---- Step 2: one notification type's recipient checklist ---- */
+function openNotifKindDialog(kind){
+  const meta = NOTIFICATION_KINDS.find(k=>k.key===kind);
+  const recipients = new Set(notifKindRecipients(kind));
+  showModal(`
+    <h3>${esc(meta.label)}</h3>
+    <p class="desc" style="margin-top:-6px;">${esc(meta.desc)} Choose exactly who should get this notification.</p>
+    <div class="row-actions" style="margin-bottom:10px;">
+      <button type="button" class="btn btn-sm btn-outline" id="notifSelectAllBtn">Select all</button>
+      <button type="button" class="btn btn-sm btn-outline" id="notifSelectNoneBtn">Select none</button>
+    </div>
+    <div class="more-grid" style="grid-template-columns:repeat(2,1fr);">
+    ${S.users.map(u=>`<label style="display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:9px 10px;font-size:12.5px;cursor:pointer;">
+      <input type="checkbox" data-notif-recipient="${esc(u.username)}" ${recipients.has(u.username)?'checked':''} style="width:16px;height:16px;flex:0 0 auto;" /> ${esc(u.name)} <span class="mono" style="font-size:10.5px;color:var(--ink-soft);">(${esc(ROLES[u.role].label)})</span>
+    </label>`).join('')}
+    </div>
+    <p class="desc" style="margin-top:10px;">Note: jo khud is event ka action kare (order accept/pack kare, message bheje, stock update kare), usko apna khud ka notification kabhi nahi aayega — chahe upar wo checked ho.</p>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-outline" id="backToNotifKindsBtn">‹ Back</button>
+      <button type="button" class="btn btn-primary" id="saveNotifKindBtn">Save</button>
+    </div>
+  `);
+  document.getElementById('backToNotifKindsBtn').addEventListener('click', ()=>{ closeModal(); openNotificationPermissionManager(); });
+  document.getElementById('notifSelectAllBtn').addEventListener('click', ()=>{
+    document.querySelectorAll('[data-notif-recipient]').forEach(cb=>cb.checked=true);
+  });
+  document.getElementById('notifSelectNoneBtn').addEventListener('click', ()=>{
+    document.querySelectorAll('[data-notif-recipient]').forEach(cb=>cb.checked=false);
+  });
+  document.getElementById('saveNotifKindBtn').addEventListener('click', ()=>{
+    const checked = [...document.querySelectorAll('[data-notif-recipient]')].filter(cb=>cb.checked).map(cb=>cb.dataset.notifRecipient);
+    S.notificationPrefs[kind] = checked;
+    safeSet('app:notificationPrefs', S.notificationPrefs);
+    closeModal();
+    showToast(`${meta.label} notification list updated`);
+    openNotificationPermissionManager();
+  });
+}
+
 function resetAllDataExceptUsers(){
   showPrompt('Enter your admin password to confirm — this wipes everything except Users:', '', async (pwd)=>{
     if(!pwd) return;
@@ -5114,6 +5210,8 @@ function bindUsers(){
   document.getElementById('newUserBtn').addEventListener('click', ()=>openUserModal(null));
   const permsBtn = document.getElementById('openPermsBtn');
   if(permsBtn) permsBtn.addEventListener('click', openPermissionManager);
+  const notifPermsBtn = document.getElementById('openNotifPermsBtn');
+  if(notifPermsBtn) notifPermsBtn.addEventListener('click', openNotificationPermissionManager);
   const resetBtn = document.getElementById('resetAllBtn');
   if(resetBtn) resetBtn.addEventListener('click', resetAllDataExceptUsers);
   document.querySelectorAll('[data-edit-user]').forEach(b=>b.addEventListener('click', ()=>openUserModal(b.dataset.editUser)));
