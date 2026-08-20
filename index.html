@@ -504,7 +504,16 @@
   step: paste your real OneSignal App ID in place of the placeholder.
   Until that's done, initPushNotifications() below simply does nothing --
   the app works exactly as before, no functionality depends on this.
+
+  window.OneSignalDeferred is pre-declared here as an empty array, per
+  OneSignal's own documented integration pattern -- this is REQUIRED, not
+  optional: anything pushed onto it before the (deferred) SDK script below
+  finishes loading is queued and run automatically once it does; without
+  this line, code that runs before the SDK finishes loading would find
+  window.OneSignalDeferred simply undefined and silently give up, and
+  push notifications would never actually initialize.
 -->
+<script>window.OneSignalDeferred = window.OneSignalDeferred || [];</script>
 <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
 </head>
 <body>
@@ -524,7 +533,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-20-push3";
+const APP_BUILD = "2026-08-20-push4";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -1003,11 +1012,38 @@ let pushInitStarted = false;
 async function initPushNotifications(){
   if(pushInitStarted) return; // never start twice in one session (e.g. logout -> login again)
   if(!ONESIGNAL_APP_ID || ONESIGNAL_APP_ID.indexOf('PASTE_')===0) return; // not configured yet
-  if(typeof OneSignalDeferred === 'undefined' || !window.OneSignalDeferred) return; // SDK script didn't load (offline, blocked, etc.) -- fail silently
+  // The SDK script tag has `defer`, so it may genuinely not have finished
+  // loading/self-initializing window.OneSignalDeferred yet by the time
+  // this runs (e.g. slow network, or this runs very early). Instead of
+  // giving up permanently on that one check, retry for a few seconds --
+  // window.OneSignalDeferred is pre-declared as a plain array in <head>
+  // (see the script tag above), so pushing onto it is always safe even
+  // before the real SDK has taken over; the SDK drains the queue once it
+  // loads. This only bails for good if the SDK never shows up at all
+  // (script blocked by an ad-blocker, offline, CDN down, etc).
+  if(!window.OneSignalDeferred){
+    setTimeout(initPushNotifications, 1000);
+    return;
+  }
   pushInitStarted = true;
   try{
+    // order-ops.html can be hosted at the site root (a GitHub user/org
+    // Pages site) OR under a subpath (a normal GitHub project Pages site,
+    // e.g. https://username.github.io/reponame/order-ops.html). OneSignal
+    // defaults to looking for the worker file at the SITE ROOT
+    // (/OneSignalSDKWorker.js) -- on a project-site subpath that 404s and
+    // push subscription silently never completes (permission may still
+    // show as granted, but no device ever actually subscribes, so nothing
+    // is ever delivered). OneSignalSDKWorker.js is meant to sit in the
+    // SAME folder as this file (see that file's own header comment), so
+    // point the SDK there explicitly instead of assuming root.
+    var swDir = location.pathname.substring(0, location.pathname.lastIndexOf('/')+1) || '/';
     window.OneSignalDeferred.push(async function(OneSignal){
-      await OneSignal.init({ appId: ONESIGNAL_APP_ID });
+      await OneSignal.init({
+        appId: ONESIGNAL_APP_ID,
+        serviceWorkerPath: swDir.replace(/^\//,'') + 'OneSignalSDKWorker.js',
+        serviceWorkerParam: { scope: swDir },
+      });
       // Tags this browser/device with the logged-in staff username, so a
       // future refinement (e.g. "don't notify the person who made the
       // change") can target/exclude specific people -- current triggers
