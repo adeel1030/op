@@ -497,6 +497,15 @@
     #printArea h1{font-size:18px;margin-bottom:2px;}
   }
 </style>
+<!--
+  OneSignal Web Push SDK -- staff-only push notifications (new order,
+  order status change, new chat message, low stock). Loaded here so it's
+  ready before login. See ONESIGNAL_APP_ID below for the one-time setup
+  step: paste your real OneSignal App ID in place of the placeholder.
+  Until that's done, initPushNotifications() below simply does nothing --
+  the app works exactly as before, no functionality depends on this.
+-->
+<script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
 </head>
 <body>
 <div id="printArea"></div>
@@ -515,7 +524,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-19-retention1";
+const APP_BUILD = "2026-08-20-push2";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -981,6 +990,35 @@ function computeDailySummaries(records){
 /* ============================= STORAGE (Google Apps Script backend) ============================= */
 const API_URL = "https://script.google.com/macros/s/AKfycbzGTJDC1jXEb15S2QQl_G5e-RBlRhiEfsC9rJwaXYiJTfB5mUJ8BX6aOQFGqTUKWIht/exec";
 const SECRET = "MyOrderOps2026Secret";
+// ---- Push notifications (OneSignal) ----
+// Paste your real App ID from the OneSignal dashboard (Settings -> Keys &
+// IDs) here. This value is PUBLIC (it's meant to be embedded in frontend
+// code, same as e.g. a Google Analytics ID) -- the secret one (REST API
+// Key) goes ONLY in order-ops-backend.gs, never here.
+const ONESIGNAL_APP_ID = "493b21c4-fd98-4d9e-a1a9-79c9f5e87e7e";
+// One-time init + permission prompt, called right after a staff member
+// logs in. Safe no-op until ONESIGNAL_APP_ID above is filled in -- nothing
+// else in the app depends on this succeeding.
+let pushInitStarted = false;
+async function initPushNotifications(){
+  if(pushInitStarted) return; // never start twice in one session (e.g. logout -> login again)
+  if(!ONESIGNAL_APP_ID || ONESIGNAL_APP_ID.indexOf('PASTE_')===0) return; // not configured yet
+  if(typeof OneSignalDeferred === 'undefined' || !window.OneSignalDeferred) return; // SDK script didn't load (offline, blocked, etc.) -- fail silently
+  pushInitStarted = true;
+  try{
+    window.OneSignalDeferred.push(async function(OneSignal){
+      await OneSignal.init({ appId: ONESIGNAL_APP_ID });
+      // Tags this browser/device with the logged-in staff username, so a
+      // future refinement (e.g. "don't notify the person who made the
+      // change") can target/exclude specific people -- current triggers
+      // broadcast to every subscribed staff device.
+      if(S.currentUser && S.currentUser.username){
+        try{ await OneSignal.login(S.currentUser.username); }catch(e){}
+      }
+      try{ await OneSignal.Notifications.requestPermission(); }catch(e){}
+    });
+  }catch(e){ /* push setup must never break the app itself */ }
+}
 // A raw fetch() has NO timeout of its own — on a slow/unreliable connection
 // (mobile data especially), a request that never gets a response just hangs
 // forever with no error and no retry, which is exactly what "stuck on the
@@ -1603,6 +1641,7 @@ async function loadAll(){
         safeSet('app:catalogItems', S.catalogItems); // first run ever — seed the backend so the order form can read it too
       }
       restoreSession();
+      if(S.currentUser) initPushNotifications(); // page refresh with an already-active session -- finalizeLogin() won't run again, so this is the only other place a session actually "starts"
       backfillCatalogCaseSizes(); // resolve any legacy items missing a saved case size
       S.loadFailed = false;
       lastErr = null;
@@ -1793,6 +1832,7 @@ function finalizeLogin(u){
   render();
   backfillCatalogCaseSizes();
   sendHeartbeat();
+  initPushNotifications();
 }
 function doLogout(){ S.currentUser = null; S.notifOpen=false; S.moreOpen=false; S.profileOpen=false; S.alertPanelOpen=null; persistSession(null); render(); }
 // Manual, on-demand backup — fetches everything fresh from the backend
