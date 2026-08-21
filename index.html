@@ -295,7 +295,16 @@
     z-index:30;box-shadow:0 0 0 2px #fff;line-height:1.5;
     -webkit-text-size-adjust:100%;text-size-adjust:100%;
   }
-  .notif-dot.pulse{animation:bellBadgePulse .4s cubic-bezier(.3,1.5,.5,1);}
+  /* BUGFIX (2026-08-21): was ".notif-dot.pulse" -- but a totally unrelated
+     ".pulse" class (the mono-font ticker bar below) also matches any
+     element carrying class="pulse", and since it's declared LATER with
+     the same specificity it silently won the cascade, inflating every
+     notification badge in the app (padding:7px 16px + display:flex
+     instead of the tiny padding:1.5px 5.5px it was supposed to have).
+     Renamed to ".notif-pulse" so it can never collide with ".pulse"
+     again -- see the class="notif-dot pulse" -> "notif-dot notif-pulse"
+     updates at every badge call site below. */
+  .notif-dot.notif-pulse{animation:bellBadgePulse .4s cubic-bezier(.3,1.5,.5,1);}
   .bell-sm{width:30px;height:30px;font-size:13px;}
   .bell-urgent{border-color:rgba(255,255,255,0.5);}
   .bell-urgent .badge{background:var(--danger);color:#fff;}
@@ -477,6 +486,68 @@
 
   #map{height:300px;border-radius:14px;margin-top:10px;}
 
+  /* ---------- Chat / Messages (WhatsApp-style) ---------- */
+  .modal.modal-chat{display:flex;flex-direction:column;height:86%;max-height:86%;overflow:hidden;}
+  .msg-modal-body{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;}
+  .msg-modal-body>h3{flex:0 0 auto;}
+  .chat-tabs{flex:0 0 auto;}
+  .chat-panel{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;}
+  .chat-scroll{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;}
+  .chat-composer{flex:0 0 auto;display:flex;align-items:flex-end;gap:8px;padding-top:10px;}
+  .chat-input{
+    flex:1;padding:10px 16px;border-radius:22px;border:1.5px solid var(--border);background:var(--bg);
+    color:var(--ink);font-family:inherit;font-size:14px;resize:none;max-height:120px;overflow-y:auto;line-height:1.35;
+  }
+  .chat-input:focus{outline:none;border-color:var(--primary);}
+  .chat-send-btn{
+    flex:0 0 auto;width:40px;height:40px;border-radius:50%;border:none;background:var(--primary);color:#fff;
+    display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer;transition:opacity .15s,transform .1s;
+  }
+  .chat-send-btn:active{transform:scale(0.92);}
+  .chat-send-btn:disabled{opacity:0.4;cursor:default;transform:none;}
+  .chat-avatar{border-radius:50%;flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;overflow:hidden;}
+  .thread-header{display:flex;align-items:center;gap:10px;flex:0 0 auto;padding-bottom:10px;border-bottom:1px solid var(--border);margin-bottom:10px;}
+  .thread-back-btn{
+    flex:0 0 auto;width:32px;height:32px;border-radius:50%;border:none;background:transparent;color:var(--ink);
+    font-size:20px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;
+  }
+  .thread-back-btn:active{background:var(--bg);}
+  .bubble-row{display:flex;margin-bottom:2px;}
+  .bubble-row.mine{justify-content:flex-end;}
+  .bubble-row.theirs{justify-content:flex-start;}
+  .bubble-row.group-end{margin-bottom:10px;}
+  .chat-bubble{
+    position:relative;max-width:78%;padding:7px 12px 6px;border-radius:14px;font-size:13.5px;
+    word-break:break-word;text-align:left;box-shadow:0 1px 1px rgba(0,0,0,0.06);
+  }
+  .chat-bubble.mine{background:var(--primary);color:#fff;}
+  .chat-bubble.theirs{background:var(--surface);color:var(--ink);border:1px solid var(--border);}
+  /* pre-wrap lives on the text node ONLY, not the bubble itself -- the
+     bubble's own template-literal indentation/newlines around the text+meta
+     child divs would otherwise be preserved as visible blank space too. */
+  .bubble-text{white-space:pre-wrap;}
+  .bubble-meta{font-size:10.5px;margin-top:3px;display:flex;align-items:center;gap:3px;justify-content:flex-end;}
+  .chat-bubble.mine .bubble-meta{color:rgba(255,255,255,0.75);}
+  .chat-bubble.theirs .bubble-meta{color:var(--ink-soft);justify-content:flex-start;}
+  /* BUGFIX (2026-08-21): this sits in a flex row next to the "+ New" button
+     (see renderChatsListTab). "width:100%" + "flex:0 0 auto" is self-
+     contradictory as a flex child -- it demanded the FULL row width while
+     also refusing to shrink for its sibling button, so the row overflowed
+     by exactly the button's width, and Chrome auto-scrolled the whole
+     .chat-panel sideways to keep the focused "+ New" button in view --
+     clipping the search box and every contact/thread row on the left edge.
+     "flex:1;min-width:0" lets it correctly share the row with the button
+     instead of overflowing it. */
+  .chat-search{
+    flex:1;min-width:0;padding:9px 14px;border-radius:20px;border:1.5px solid var(--border);background:var(--bg);
+    color:var(--ink);font-family:inherit;font-size:13px;margin-bottom:10px;
+  }
+  .chat-search:focus{outline:none;border-color:var(--primary);}
+  .thread-row{display:flex;align-items:center;gap:10px;padding:9px 4px;border-radius:12px;cursor:pointer;}
+  .thread-row:active{background:var(--bg);}
+  .contact-row{display:flex;align-items:center;gap:10px;padding:9px 4px;border-radius:12px;cursor:pointer;}
+  .contact-row:active{background:var(--bg);}
+
   /* ---------- More sheet grid ---------- */
   .more-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:4px;}
   .more-item{
@@ -533,7 +604,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-20-push5-notifperms";
+const APP_BUILD = "2026-08-21-chat-ui-whatsapp";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -801,7 +872,7 @@ const S = {
   lowStock:{raw:{}, filled:{}, ready:{}}, watchStock:{raw:{}, filled:{}, ready:{}}, rolePermissions:{}, customRoles:[], catalogItems:[], transports:[], dailyRecordMarks:{}, dailyWorkDate:null, batchReferences:{}, holidays:{}, activeSessions:{}, notificationPrefs:{},
   _partitionKeysSeen:{orders:new Set(), activityLog:new Set(), attendance:new Set(), expenses:new Set(), dominoPrints:new Set(), loginLog:new Set(), chatMessages:new Set(), retailSales:new Set(), trackingViewLogs:new Set(), siteVisitLogs:new Set(), stockMovementLog:new Set()},
   currentUser:null, view:'home', stockView:'raw', notifOpen:false, moreOpen:false, profileOpen:false, alertPanelOpen:null, toast:null,
-  chatModalOpen:false, chatView:'announcements', chatActiveThread:null,
+  chatModalOpen:false, chatView:'announcements', chatActiveThread:null, chatSearch:'',
   postLoginPhase:null, pendingUser:null, postLoginLoadingStep:0,
   search:{}, // per-view search text
 };
@@ -5091,7 +5162,7 @@ function openPermissionConfirm(role, viewChecked, entryChecked){
 const NOTIFICATION_KINDS = [
   {key:'newOrder', label:'New Order', desc:'Jab koi naya order aaye.'},
   {key:'statusChange', label:'Order Status Change', desc:'Jab order Accept/Ready/Packed/Dispatched/Reject ho.'},
-  {key:'chatMessage', label:'Chat Message', desc:'Jab koi announcement ya personal message bheje.'},
+  {key:'chatMessage', label:'Chat Message (Announcements)', desc:'Jab koi announcement bheje. (1-to-1 personal message hamesha sirf jisko bheja gaya hai use hi jaata hai — ye list us par apply nahi hoti.)'},
   {key:'lowStock', label:'Low Stock Alert', desc:'Jab koi item apni low-stock limit se neeche jaaye.'},
 ];
 function notifKindRecipients(kind){
@@ -5382,6 +5453,35 @@ function withinSelfEditWindow(entry){
 // Sales can only message admin/manager, and only admin/manager can message
 // sales — everyone else (filling, packaging, manager, admin) can message
 // each other freely.
+// Deterministic pseudo-random color per person (same idea as WhatsApp's
+// default contact avatars) so the same user always gets the same color
+// across renders, without needing to store a color on the user record.
+const CHAT_AVATAR_COLORS = ['#1E6B44','#C9A227','#8E44AD','#2980B9','#C0392B','#16A085','#D35400','#5D6D7E'];
+function avatarColorFor(name){
+  name = name || '?';
+  let hash = 0;
+  for(let i=0;i<name.length;i++) hash = (hash*31 + name.charCodeAt(i)) >>> 0;
+  return CHAT_AVATAR_COLORS[hash % CHAT_AVATAR_COLORS.length];
+}
+function chatAvatarHtml(user, size){
+  size = size || 38;
+  const name = (user && (user.name||user.username)) || '?';
+  const initial = name.trim().charAt(0).toUpperCase() || '?';
+  const photo = user && user.photo;
+  const bg = avatarColorFor(name);
+  return `<div class="chat-avatar" style="width:${size}px;height:${size}px;font-size:${Math.round(size*0.42)}px;${photo?'':'background:'+bg+';'}">${photo?`<img src="${esc(photo)}" style="width:100%;height:100%;object-fit:cover;" />`:esc(initial)}</div>`;
+}
+// Grows a <textarea> to fit multiline content (WhatsApp-style composer)
+// instead of staying a fixed one-line box -- caps at maxPx so a very long
+// paste scrolls internally rather than pushing the send button off-screen.
+function autoGrowTextarea(el, maxPx){
+  if(!el) return;
+  maxPx = maxPx || 120;
+  el.style.height = 'auto';
+  const next = Math.min(el.scrollHeight, maxPx);
+  el.style.height = next + 'px';
+  el.style.overflowY = el.scrollHeight > maxPx ? 'auto' : 'hidden';
+}
 function canChatWith(myRole, otherRole){
   if(myRole==='sales') return otherRole==='admin' || otherRole==='manager';
   if(otherRole==='sales') return myRole==='admin' || myRole==='manager';
@@ -5442,7 +5542,7 @@ function quickActionIcons(role){
   if(canDoEntry(role, 'entry_batch')) icons.push({key:'batch', ico:'🏷️', color:'purple', lbl:'Batch', sub:"This month's batch number"});
   const unread = unreadMessageCount();
   icons.push({key:'messages', ico:'💬', color:'blue', lbl:'Messages', sub:'Announcements & chat', badge: unread>0 ? unread : null});
-  const tileHtml = i=>`<div class="qa-tile" data-quick-action="${i.key}"><div class="icon-badge ${i.color}" style="position:relative;overflow:visible;"><span style="position:relative;z-index:1;">${i.ico}</span>${i.badge?`<span class="notif-dot pulse">${i.badge}</span>`:''}</div><div class="title">${esc(i.lbl)}</div><div class="sub">${esc(i.sub)}</div></div>`;
+  const tileHtml = i=>`<div class="qa-tile" data-quick-action="${i.key}"><div class="icon-badge ${i.color}" style="position:relative;overflow:visible;"><span style="position:relative;z-index:1;">${i.ico}</span>${i.badge?`<span class="notif-dot notif-pulse">${i.badge}</span>`:''}</div><div class="title">${esc(i.lbl)}</div><div class="sub">${esc(i.sub)}</div></div>`;
   // More than 5 doesn't comfortably fit one row — split evenly across two
   // rows (ceil on top, floor on bottom: 6=3+3, 7=4+3, 8=4+4) instead of
   // letting the row overflow or squeeze icons down further.
@@ -5461,8 +5561,8 @@ function quickActionIcons(role){
 }
 /* ============================= MESSAGES (announcements + personal chat) ============================= */
 function openMessagesModal(){
-  showModal(`<div id="messagesModalBody">${renderMessagesModalContent()}</div>
-    <div class="modal-actions"><button type="button" class="btn btn-outline" id="cancelModal">Close</button></div>`);
+  showModal(`<div id="messagesModalBody" class="msg-modal-body">${renderMessagesModalContent()}</div>
+    <div class="modal-actions" style="flex:0 0 auto;"><button type="button" class="btn btn-outline" id="cancelModal">Close</button></div>`, 'modal-chat');
   bindMessagesModal();
   const closeBtn = document.getElementById('cancelModal');
   if(closeBtn) closeBtn.addEventListener('click', ()=>{
@@ -5471,31 +5571,38 @@ function openMessagesModal(){
   });
 }
 function renderMessagesModalContent(){
-  const tabs = `<div class="row-actions" style="margin-bottom:12px;">
-    <button type="button" class="btn btn-sm ${S.chatView==='announcements'?'btn-primary':'btn-outline'}" style="position:relative;overflow:visible;" data-chat-tab="announcements">📢 Announcements${unreadAnnouncementCount()>0?`<span class="notif-dot pulse" style="top:-8px;right:-8px;">${unreadAnnouncementCount()}</span>`:''}</button>
-    <button type="button" class="btn btn-sm ${S.chatView==='chats'?'btn-primary':'btn-outline'}" style="position:relative;overflow:visible;" data-chat-tab="chats">💬 Chats${unreadChatCount()>0?`<span class="notif-dot pulse" style="top:-8px;right:-8px;">${unreadChatCount()}</span>`:''}</button>
+  const tabs = `<div class="row-actions chat-tabs" style="margin-bottom:12px;">
+    <button type="button" class="btn btn-sm ${S.chatView==='announcements'?'btn-primary':'btn-outline'}" style="position:relative;overflow:visible;" data-chat-tab="announcements">📢 Announcements${unreadAnnouncementCount()>0?`<span class="notif-dot notif-pulse" style="top:-8px;right:-8px;">${unreadAnnouncementCount()}</span>`:''}</button>
+    <button type="button" class="btn btn-sm ${S.chatView==='chats'?'btn-primary':'btn-outline'}" style="position:relative;overflow:visible;" data-chat-tab="chats">💬 Chats${unreadChatCount()>0?`<span class="notif-dot notif-pulse" style="top:-8px;right:-8px;">${unreadChatCount()}</span>`:''}</button>
   </div>`;
   let body;
   if(S.chatView==='announcements') body = renderAnnouncementsTab();
   else if(S.chatActiveThread) body = renderThreadView(S.chatActiveThread);
   else body = renderChatsListTab();
-  return `<h3>Messages</h3>${tabs}${body}`;
+  return `<h3>Messages</h3>${tabs}<div class="chat-panel">${body}</div>`;
 }
 function renderAnnouncementsTab(){
   const isAdmin = S.currentUser.role==='admin';
   const myUsername = S.currentUser.username;
   const announcements = S.chatMessages.filter(m=>m.type==='announcement').sort((a,b)=>b.at-a.at);
   return `
-    ${isAdmin?`<div class="field"><textarea id="newAnnouncementText" placeholder="Write an announcement for everyone…" rows="2" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);font-family:inherit;font-size:13px;resize:vertical;"></textarea></div>
-    <button type="button" class="btn btn-primary btn-sm" id="postAnnouncementBtn" style="margin-bottom:14px;">📢 Post Announcement</button>`:''}
-    ${announcements.length===0?`<div class="empty">No announcements yet.</div>`:announcements.map(m=>{
-      const unread = !(m.readBy||[]).includes(myUsername);
-      return `<div style="position:relative;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:8px;">
-        ${unread?`<span class="notif-dot pulse" style="top:-6px;right:-6px;">●</span>`:''}
-        <div style="font-size:11px;color:var(--ink-soft);margin-bottom:3px;"><b>${esc(m.fromName)}</b> · ${fmtDate(m.at)}</div>
-        <div style="font-size:13.5px;white-space:pre-wrap;">${esc(m.text)}</div>
-      </div>`;
-    }).join('')}
+    <div class="chat-scroll">
+      ${announcements.length===0?`<div class="empty">No announcements yet.</div>`:announcements.map(m=>{
+        const unread = !(m.readBy||[]).includes(myUsername);
+        return `<div style="position:relative;display:flex;gap:10px;background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:10px 12px;margin-bottom:8px;">
+          ${unread?`<span class="notif-dot notif-pulse" style="top:-6px;right:-6px;">●</span>`:''}
+          <div class="chat-avatar" style="width:34px;height:34px;font-size:15px;background:var(--accent);flex:0 0 auto;">📢</div>
+          <div style="min-width:0;flex:1;">
+            <div style="font-size:11px;color:var(--ink-soft);margin-bottom:3px;"><b>${esc(m.fromName)}</b> · ${fmtDate(m.at)}</div>
+            <div style="font-size:13.5px;white-space:pre-wrap;word-break:break-word;">${esc(m.text)}</div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+    ${isAdmin?`<div class="chat-composer">
+      <textarea id="newAnnouncementText" class="chat-input" placeholder="Write an announcement for everyone…" rows="1"></textarea>
+      <button type="button" class="chat-send-btn" id="postAnnouncementBtn" disabled title="Post announcement">📢</button>
+    </div>`:''}
   `;
 }
 function renderChatsListTab(){
@@ -5512,26 +5619,41 @@ function renderChatsListTab(){
     const last = msgs[0];
     const other = S.users.find(u=>u.username===username);
     const unread = msgs.filter(m=>m.toUsername===myUsername && !m.read).length;
-    return { username, name: other?other.name:(last.fromUsername===username?last.fromName:last.toName), last, unread };
+    return { username, user: other, name: other?other.name:(last.fromUsername===username?last.fromName:last.toName), last, unread };
   }).sort((a,b)=>b.last.at-a.last.at);
   const eligibleUsers = S.users.filter(u=>u.username!==myUsername && canChatWith(myRole, u.role));
+  const q = (S.chatSearch||'').trim().toLowerCase();
+  const visibleThreads = q ? threadList.filter(t=>t.name.toLowerCase().includes(q)) : threadList;
   return `
-    <button type="button" class="btn btn-outline btn-sm" id="newChatBtn" style="margin-bottom:10px;">+ New message</button>
-    <div id="newChatPicker" style="display:none;margin-bottom:14px;background:var(--bg);border-radius:12px;padding:10px;">
-      ${eligibleUsers.length===0?`<div class="desc" style="margin:0;">No one available to message.</div>`:`
-      <div class="field" style="margin-bottom:8px;"><label>Send to</label>
-        <select id="chatRecipientSel">${eligibleUsers.map(u=>`<option value="${esc(u.username)}">${esc(u.name)} (${esc(ROLES[u.role]?ROLES[u.role].label:u.role)})</option>`).join('')}</select>
-      </div>
-      <button type="button" class="btn btn-primary btn-sm" id="startChatBtn">Start conversation</button>`}
+    <div style="display:flex;gap:8px;flex:0 0 auto;margin-bottom:10px;">
+      <input type="text" id="chatSearchInput" class="chat-search" style="margin-bottom:0;" placeholder="Search conversations…" value="${esc(S.chatSearch||'')}" />
+      <button type="button" class="btn btn-outline btn-sm" id="newChatBtn" style="flex:0 0 auto;">+ New</button>
     </div>
-    ${threadList.length===0?`<div class="empty">No conversations yet.</div>`:threadList.map(t=>`
-      <div class="row-actions" style="position:relative;justify-content:space-between;align-items:flex-start;padding:10px 12px;border:1px solid var(--border);border-radius:12px;margin-bottom:8px;cursor:pointer;" data-open-thread="${esc(t.username)}">
-        ${t.unread>0?`<span class="notif-dot pulse" style="top:-6px;right:-6px;">${t.unread}</span>`:''}
-        <div style="min-width:0;">
-          <div style="font-weight:700;font-size:13px;">${esc(t.name)}</div>
-          <div style="font-size:11.5px;color:var(--ink-soft);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${t.last.fromUsername===myUsername?'You: ':''}${esc(t.last.text)}</div>
-        </div>
+    <div id="newChatPicker" style="display:none;margin-bottom:10px;flex:0 0 auto;max-height:220px;overflow-y:auto;background:var(--bg);border-radius:12px;padding:6px 10px;">
+      ${eligibleUsers.length===0?`<div class="desc" style="margin:6px 0;">No one available to message.</div>`:eligibleUsers.map(u=>`
+      <div class="contact-row" data-start-chat="${esc(u.username)}">
+        ${chatAvatarHtml(u, 36)}
+        <div style="min-width:0;"><div style="font-weight:700;font-size:13px;">${esc(u.name)}</div><div style="font-size:11px;color:var(--ink-soft);">${esc(ROLES[u.role]?ROLES[u.role].label:u.role)}</div></div>
       </div>`).join('')}
+    </div>
+    <div class="chat-scroll">
+      ${threadList.length===0?`<div class="empty">No conversations yet.</div>`:`
+      <div class="empty" id="chatSearchEmpty" style="display:${visibleThreads.length===0?'block':'none'};">No matches for "${esc(S.chatSearch||'')}".</div>
+      ${threadList.map(t=>`
+      <div class="thread-row" data-open-thread="${esc(t.username)}" data-thread-name="${esc(t.name.toLowerCase())}" style="${visibleThreads.includes(t)?'':'display:none;'}">
+        ${chatAvatarHtml(t.user, 44)}
+        <div style="min-width:0;flex:1;">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;">
+            <div style="font-weight:700;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(t.name)}</div>
+            <div style="font-size:10.5px;color:var(--ink-soft);flex:0 0 auto;">${fmtDateOnly(t.last.at)}</div>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;">
+            <div style="font-size:12px;color:var(--ink-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${t.last.fromUsername===myUsername?'You: ':''}${esc(t.last.text)}</div>
+            ${t.unread>0?`<span class="notif-dot" style="position:static;flex:0 0 auto;">${t.unread}</span>`:''}
+          </div>
+        </div>
+      </div>`).join('')}`}
+    </div>
   `;
 }
 function renderThreadView(otherUsername){
@@ -5544,27 +5666,34 @@ function renderThreadView(otherUsername){
     bubblesHtml += `<div style="text-align:center;margin:10px 0 8px;"><span style="background:var(--bg);color:var(--ink-soft);font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;">${esc(sec.heading)}</span></div>`;
     sec.items.forEach((m,i)=>{
       const mine = m.fromUsername===myUsername;
-      // Consecutive messages from the same sender sit closer together —
-      // only the LAST one in a run gets the usual bottom margin, matching
-      // WhatsApp's grouped-bubble look instead of uniform spacing on every line.
+      // Consecutive messages from the same sender sit closer together, and
+      // only the LAST bubble in that run gets the sharp "tail" corner —
+      // matching WhatsApp's grouped-bubble look instead of every line
+      // looking like a standalone message.
       const next = sec.items[i+1];
       const isLastInGroup = !next || next.fromUsername!==m.fromUsername;
-      const tick = mine ? (m.read ? `<span style="color:#4FC3F7;">✓✓</span>` : `<span style="opacity:0.7;">✓</span>`) : '';
-      bubblesHtml += `<div style="text-align:${mine?'right':'left'};margin-bottom:${isLastInGroup?8:2}px;">
-        <span style="display:inline-block;background:${mine?'var(--primary)':'var(--bg)'};color:${mine?'#fff':'var(--ink)'};padding:7px 11px;border-radius:12px;font-size:13px;max-width:80%;white-space:pre-wrap;text-align:left;">${esc(m.text)}</span>
-        <div style="font-size:11px;color:var(--ink-soft);margin-top:2px;">${fmtTime(m.at)} ${tick}</div>
+      const tick = mine ? (m.read ? `<span style="color:#4FC3F7;">✓✓</span>` : `<span>✓</span>`) : '';
+      const cornerStyle = isLastInGroup ? (mine ? 'border-bottom-right-radius:4px;' : 'border-bottom-left-radius:4px;') : '';
+      bubblesHtml += `<div class="bubble-row ${mine?'mine':'theirs'} ${isLastInGroup?'group-end':''}">
+        <div class="chat-bubble ${mine?'mine':'theirs'}" style="${cornerStyle}"><div class="bubble-text">${esc(m.text)}</div><div class="bubble-meta">${fmtTime(m.at)} ${tick}</div></div>
       </div>`;
     });
   });
   return `
-    <button type="button" class="btn btn-sm btn-outline" id="backToThreadsBtn" style="margin-bottom:10px;">‹ Back</button>
-    <div style="font-weight:800;margin-bottom:8px;">${esc(other?other.name:otherUsername)}</div>
-    <div id="threadMsgList" style="max-height:280px;overflow-y:auto;margin-bottom:10px;">
+    <div class="thread-header">
+      <button type="button" class="thread-back-btn" id="backToThreadsBtn" title="Back" aria-label="Back">‹</button>
+      ${chatAvatarHtml(other, 38)}
+      <div style="min-width:0;">
+        <div style="font-weight:800;font-size:14px;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(other?other.name:otherUsername)}</div>
+        <div style="font-size:11px;color:var(--ink-soft);">${esc(other&&ROLES[other.role]?ROLES[other.role].label:'')}</div>
+      </div>
+    </div>
+    <div id="threadMsgList" class="chat-scroll">
       ${msgs.length===0?`<div class="empty">Say hello 👋</div>`:bubblesHtml}
     </div>
-    <div class="row-actions">
-      <textarea id="threadReplyInput" placeholder="Type a message…" rows="1" style="flex:1;padding:9px 12px;border-radius:16px;border:1.5px solid var(--border);font-family:inherit;font-size:inherit;resize:none;max-height:100px;overflow-y:auto;"></textarea>
-      <button type="button" class="btn btn-primary btn-sm" id="sendThreadReplyBtn" disabled style="opacity:0.5;">Send</button>
+    <div class="chat-composer">
+      <textarea id="threadReplyInput" class="chat-input" placeholder="Type a message…" rows="1"></textarea>
+      <button type="button" class="chat-send-btn" id="sendThreadReplyBtn" disabled title="Send">➤</button>
     </div>
   `;
 }
@@ -5586,16 +5715,28 @@ function bindMessagesModal(skipScroll){
     S.chatView = b.dataset.chatTab; S.chatActiveThread = null; refreshMessagesModal();
   }));
   const postBtn = document.getElementById('postAnnouncementBtn');
+  const announcementInput = document.getElementById('newAnnouncementText');
   if(postBtn) postBtn.addEventListener('click', ()=>{
-    const ta = document.getElementById('newAnnouncementText');
-    if(!ta || !ta.value.trim()) return;
-    sendAnnouncement(ta.value);
+    if(!announcementInput || !announcementInput.value.trim()) return;
+    sendAnnouncement(announcementInput.value);
     refreshMessagesModal();
     showToast('Announcement posted');
   });
+  if(announcementInput){
+    announcementInput.addEventListener('input', ()=>{
+      autoGrowTextarea(announcementInput);
+      if(postBtn) postBtn.disabled = !announcementInput.value.trim();
+    });
+  }
   document.querySelectorAll('[data-open-thread]').forEach(el=>el.addEventListener('click', ()=>{
     S.chatActiveThread = el.dataset.openThread;
+    S.chatSearch = ''; // fresh search box next time the list is shown
     markThreadRead(S.chatActiveThread);
+    refreshMessagesModal();
+  }));
+  document.querySelectorAll('[data-start-chat]').forEach(el=>el.addEventListener('click', ()=>{
+    S.chatActiveThread = el.dataset.startChat;
+    S.chatSearch = '';
     refreshMessagesModal();
   }));
   const newChatBtn = document.getElementById('newChatBtn');
@@ -5603,11 +5744,27 @@ function bindMessagesModal(skipScroll){
     const picker = document.getElementById('newChatPicker');
     if(picker) picker.style.display = picker.style.display==='none' ? 'block' : 'none';
   });
-  const startChatBtn = document.getElementById('startChatBtn');
-  if(startChatBtn) startChatBtn.addEventListener('click', ()=>{
-    const sel = document.getElementById('chatRecipientSel');
-    if(sel && sel.value){ S.chatActiveThread = sel.value; refreshMessagesModal(); }
-  });
+  // Live filter of the conversation list as the person types — filters the
+  // already-rendered rows directly (no re-render) so the search box never
+  // loses focus mid-keystroke, WhatsApp-style instant search.
+  const searchInput = document.getElementById('chatSearchInput');
+  if(searchInput){
+    searchInput.addEventListener('input', ()=>{
+      S.chatSearch = searchInput.value;
+      const q = searchInput.value.trim().toLowerCase();
+      let anyVisible = false;
+      document.querySelectorAll('[data-open-thread]').forEach(row=>{
+        const match = !q || (row.dataset.threadName||'').includes(q);
+        row.style.display = match ? '' : 'none';
+        if(match) anyVisible = true;
+      });
+      const emptyMsg = document.getElementById('chatSearchEmpty');
+      if(emptyMsg){
+        emptyMsg.textContent = `No matches for "${searchInput.value}".`;
+        emptyMsg.style.display = anyVisible ? 'none' : 'block';
+      }
+    });
+  }
   const backBtn = document.getElementById('backToThreadsBtn');
   if(backBtn) backBtn.addEventListener('click', ()=>{ S.chatActiveThread = null; refreshMessagesModal(); });
   const sendReply = ()=>{
@@ -5625,13 +5782,11 @@ function bindMessagesModal(skipScroll){
     // Enter always makes a new line here — like WhatsApp's mobile keyboard,
     // where Enter never sends; only the Send button does. (No special
     // keydown handling needed — a textarea's default Enter behavior IS a
-    // newline; we just don't intercept it anymore.)
+    // newline; we just don't intercept it anymore.) The box also grows to
+    // fit multiline text (up to a cap) instead of staying a single line.
     replyInput.addEventListener('input', ()=>{
-      if(sendReplyBtn){
-        const hasText = !!replyInput.value.trim();
-        sendReplyBtn.disabled = !hasText;
-        sendReplyBtn.style.opacity = hasText ? '1' : '0.5';
-      }
+      autoGrowTextarea(replyInput);
+      if(sendReplyBtn) sendReplyBtn.disabled = !replyInput.value.trim();
     });
   }
   if(!skipScroll) scrollThreadToBottom(); // land at the newest message when a thread first opens (unless the person was reading older messages during a background refresh)
@@ -6982,12 +7137,12 @@ function showPrompt(message, defaultValue, onSubmit, opts){
   overlay.querySelector('#appPromptOkBtn').addEventListener('click', submit);
   input.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); submit(); } });
 }
-function showModal(innerHtml){
+function showModal(innerHtml, extraClass){
   closeModal(); // never stack modals — opening a new one while one is already showing used to leave two overlays behind, needing two closes to get rid of both
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   overlay.id = 'modalOverlay';
-  overlay.innerHTML = `<div class="modal"><div class="sheet-handle"></div>${innerHtml}</div>`;
+  overlay.innerHTML = `<div class="modal${extraClass?' '+extraClass:''}"><div class="sheet-handle"></div>${innerHtml}</div>`;
   const host = document.querySelector('.device-screen') || document.body;
   host.appendChild(overlay);
   enhanceFormControls(overlay);
