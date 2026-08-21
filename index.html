@@ -683,7 +683,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-21-durable-expense-balance";
+const APP_BUILD = "2026-08-21-desktop-quickactions-1row";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -5857,11 +5857,14 @@ function quickActionIcons(role){
   const unread = unreadMessageCount();
   icons.push({key:'messages', ico:'💬', color:'blue', lbl:'Messages', sub:'Announcements & chat', badge: unread>0 ? unread : null});
   const tileHtml = i=>`<div class="qa-tile" data-quick-action="${i.key}"><div class="icon-badge ${i.color}" style="position:relative;overflow:visible;"><span style="position:relative;z-index:1;">${i.ico}</span>${i.badge?`<span class="notif-dot notif-pulse">${i.badge}</span>`:''}</div><div class="title">${esc(i.lbl)}</div><div class="sub">${esc(i.sub)}</div></div>`;
-  // More than 5 doesn't comfortably fit one row — split evenly across two
-  // rows (ceil on top, floor on bottom: 6=3+3, 7=4+3, 8=4+4) instead of
-  // letting the row overflow or squeeze icons down further.
+  // More than 5 doesn't comfortably fit one row on a PHONE — split evenly
+  // across two rows there (ceil on top, floor on bottom: 6=3+3, 7=4+3,
+  // 8=4+4) instead of letting the row overflow or squeeze icons down
+  // further. On a laptop/desktop-wide window (see DESKTOP_SIDEBAR_MIN_WIDTH)
+  // there's plenty of room for all 8 in one line, so skip the split there.
+  const isDesktop = typeof window!=='undefined' && window.innerWidth>=DESKTOP_SIDEBAR_MIN_WIDTH;
   let rowsHtml;
-  if(icons.length > 5){
+  if(icons.length > 5 && !isDesktop){
     const topCount = Math.ceil(icons.length/2);
     rowsHtml = `<div class="qa-grid">${icons.slice(0,topCount).map(tileHtml).join('')}</div>
     <div class="qa-grid">${icons.slice(topCount).map(tileHtml).join('')}</div>`;
