@@ -551,6 +551,12 @@
 
   /* ---------- More sheet grid ---------- */
   .more-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:4px;}
+  /* Person/team card tiles (Customers, Users) -- 2-up on phone, 3-up on
+     desktop (see the @media (min-width:900px) block below). */
+  .tile-grid-3{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:4px;}
+  /* Checkbox-label checklist grids (Permission Manager, Notification
+     recipients) -- 2-up on phone, 4-up on desktop. */
+  .checkbox-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:4px;}
   .more-item{
     background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:14px 6px;
     display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;
@@ -580,12 +586,19 @@
     .device{width:100vw;height:100vh;border-radius:0;padding:0;box-shadow:none;}
     .device::before{display:none;}
     .device-screen{border-radius:0;}
-    #root{
+    /* :has(> .topbar) scopes the grid to the logged-in app shell only --
+       #root is also reused as-is (no wrapper class) for the login screen,
+       branded loading screen, connection-failed screen, and the post-login
+       welcome sequence, none of which have a .topbar child. Without this
+       scoping, an unconditional "#root{display:grid}" was swallowing the
+       login screen into the 232px sidebar-width first grid cell, leaving
+       it squeezed in a corner instead of filling/centering on the screen. */
+    #root:has(> .topbar){
       display:grid;grid-template-columns:232px 1fr;grid-template-rows:auto 1fr;
       height:100%;
     }
     .topbar{grid-column:1 / 3;grid-row:1;}
-    .content{
+    #root:has(> .topbar) .content{
       grid-column:2;grid-row:2;padding:22px 26px 26px;max-width:1400px;margin:0 auto;width:100%;
     }
     .navbar{
@@ -602,7 +615,27 @@
     }
     .navitem .ico{font-size:18px;}
     .navitem .lbl{font-size:13.5px;max-width:none;overflow:visible;text-overflow:clip;white-space:nowrap;}
+    /* Login screen: already full-bleed + centered by .login-wrap itself
+       (flex, height:100%, align/justify:center) once the #root grid above
+       is correctly scoped away from it -- just give the card a touch more
+       breathing room on a big screen, same centered-card-on-full-bleed-
+       background look as the Android app. */
+    .login-card{max-width:400px;}
+    /* Any plain 2-column grid becomes 4-column with the extra desktop
+       width: home stats, stock alert tiles, and every checkbox-label
+       checklist grid (Permission Manager, Notification recipients). */
     .stat-grid-v2{grid-template-columns:repeat(4,1fr);}
+    .alert-tile-grid{grid-template-columns:repeat(4,1fr);}
+    .checkbox-grid{grid-template-columns:repeat(4,1fr);}
+    /* Order tiles (Orders tab + Home's Recent Orders) and people/team
+       cards (Customers, Users) used to just stack full-width, one per
+       row -- on a wide desktop window that read as a single giant tile
+       stretched edge-to-edge. Both become a proper 3-up grid on desktop;
+       mobile is untouched (these wrapper classes are plain block
+       containers there, so tiles keep stacking exactly as before). */
+    .order-tile-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;align-items:start;}
+    .order-tile-grid .order-tile{margin-bottom:0;}
+    .tile-grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
     /* Bottom sheets read as a mobile pattern once the window is desktop-
        wide -- a sheet stretched edge-to-edge across a laptop screen looks
        broken. Keep the exact same markup/animation, just center it as a
@@ -611,6 +644,7 @@
     .modal-overlay{align-items:center;}
     .modal{max-width:520px;border-radius:20px;max-height:80vh;}
     .modal.modal-chat{max-width:640px;height:78vh;max-height:78vh;}
+    .modal.modal-wide{max-width:760px;}
   }
 </style>
 <!--
@@ -649,7 +683,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-21-desktop-sidebar-layout";
+const APP_BUILD = "2026-08-21-desktop-tiles-domino-fix";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -1683,23 +1717,31 @@ function applyServerData(data, isFullSync){
   if(has('readyStock')) S.readyStock = data.readyStock || {};
   // expenses/retailSales are financial records — a longer, accounting-scale
   // retention window (1 year / 6 months) rather than the short log windows
-  // below. activityLog/dominoPrints/loginLog are pure logs, so they get the
-  // same 7-day window as chatMessages/trackingViewLogs. Until this change
-  // all 5 of these had NO age filter at all (filterFn was null) and NO
-  // backend cleanup — they'd grown, unbounded, one row per calendar day,
-  // since the app's very first use, and every one of those rows was
-  // included in every FULL sync. That was the main reason a fresh/first
-  // fetch (a new device, a cleared cache, or the periodic full-resync
-  // safety net) kept getting slower over time, hitting older/slower
-  // hardware hardest — see cleanupOldFinancialData/cleanupOldMiscLogs below
-  // for the matching backend-side cleanup that keeps this bounded going
-  // forward, including a one-time sweep of the already-accumulated backlog.
+  // below. activityLog/loginLog are pure logs, so they get a short 7-day
+  // window like chatMessages/trackingViewLogs. Until this change all of
+  // these had NO age filter at all (filterFn was null) and NO backend
+  // cleanup — they'd grown, unbounded, one row per calendar day, since the
+  // app's very first use, and every one of those rows was included in
+  // every FULL sync. That was the main reason a fresh/first fetch (a new
+  // device, a cleared cache, or the periodic full-resync safety net) kept
+  // getting slower over time, hitting older/slower hardware hardest — see
+  // cleanupOldFinancialData/cleanupOldMiscLogs below for the matching
+  // backend-side cleanup that keeps this bounded going forward, including
+  // a one-time sweep of the already-accumulated backlog.
   S.expenses = mergeAndFilterPartition('expenses', data, S.expenses, e=>e.at >= Date.now()-365*24*60*60*1000, (a,b)=>a.at-b.at);
   S.activityLog = mergeAndFilterPartition('activityLog', data, S.activityLog, l=>l.at >= Date.now()-7*24*60*60*1000, (a,b)=>a.at-b.at);
   if(has('lowStock')) S.lowStock = data.lowStock || {raw:{}, filled:{}, ready:{}};
   if(has('watchStock')) S.watchStock = data.watchStock || {raw:{}, filled:{}, ready:{}};
   if(has('stockTasks')) S.stockTasks = data.stockTasks || [];
-  S.dominoPrints = mergeAndFilterPartition('dominoPrints', data, S.dominoPrints, p=>p.at >= Date.now()-7*24*60*60*1000, (a,b)=>a.at-b.at);
+  // BUGFIX (2026-08-21, explicit user request): Domino print entries must
+  // NEVER be auto-deleted, no matter how old — dominoPrints used to share
+  // the same 7-day window as activityLog/loginLog (see git history / the
+  // comment block above), which was silently wiping older Domino history
+  // both from the client's view (this filter) AND from the backend sheet
+  // itself (see cleanupOldMiscLogs below, which used to include
+  // 'dominoPrints' in its deletion sweep). No age filter here at all now —
+  // every Domino day the server sends back is kept, same as e.g. customers.
+  S.dominoPrints = mergeAndFilterPartition('dominoPrints', data, S.dominoPrints, null, (a,b)=>a.at-b.at);
   S.loginLog = mergeAndFilterPartition('loginLog', data, S.loginLog, l=>l.at >= Date.now()-7*24*60*60*1000, (a,b)=>a.at-b.at);
   S.chatMessages = mergeAndFilterPartition('chatMessages', data, S.chatMessages, m=>m.at >= Date.now()-7*24*60*60*1000, (a,b)=>a.at-b.at);
   S.retailSales = mergeAndFilterPartition('retailSales', data, S.retailSales, r=>r.at >= Date.now()-180*24*60*60*1000, (a,b)=>a.at-b.at, normalizeRetailEntry);
@@ -1779,15 +1821,21 @@ async function deleteKeysBatched(keys, batchSize){
     try{ await apiDeleteKeys(keys.slice(i, i+batchSize)); }catch(e){ /* rest retried next tick */ }
   }
 }
-// activityLog/dominoPrints/loginLog are pure logs — same 7-day window as
+// activityLog/loginLog are pure logs — same 7-day window as
 // chatMessages/trackingViewLogs/siteVisitLogs/stockMovementLog. Unlike
-// those, these 3 had NO cleanup at all until now, so the first run after
+// those, these 2 had NO cleanup at all until now, so the first run after
 // this ships can have a large backlog to clear — hence the batched delete.
+// NOTE (2026-08-21): 'dominoPrints' used to be cleaned up here too (same
+// 7-day window), which was actually DELETING Domino print history from the
+// backend sheet, permanently, on every admin sync. Per explicit user
+// request, Domino entries must never be auto-deleted — removed from this
+// list entirely. Domino history is now unbounded, same as customers/orders
+// on the "kept forever unless someone explicitly deletes a row" side.
 function cleanupOldMiscLogs(){
   if(!S.currentUser || S.currentUser.role!=='admin') return;
   const cutoff = localDateKey(Date.now() - 7*24*60*60*1000);
   const stale = [];
-  ['activityLog','dominoPrints','loginLog'].forEach(entity=>{
+  ['activityLog','loginLog'].forEach(entity=>{
     const seen = S._partitionKeysSeen[entity];
     if(!seen || !seen.size) return;
     [...seen].filter(dk=>dk < cutoff).forEach(dk=>stale.push(entity+'_'+dk));
@@ -4450,7 +4498,7 @@ function renderOrdersSegregated(limit){
   const pending = byStage('pending'), ready = byStage('ready'), packed = byStage('packed'), processing = byStage('processing');
   const section = (title, icon, list)=> list.length ? `<div style="margin-bottom:14px;">
     <div style="font-weight:800;font-size:11.5px;text-transform:uppercase;letter-spacing:0.03em;margin-bottom:8px;color:var(--ink-soft);">${icon} ${esc(title)} (${list.length})</div>
-    ${list.map(renderOrderTile).join('')}
+    <div class="order-tile-grid">${list.map(renderOrderTile).join('')}</div>
   </div>` : '';
   const html = section('New', '🛍️', pending) + section('Ready to dispatch', '🚚', ready) + section('Packed', '📦', packed) + section('Processing', '🔧', processing);
   return html || `<div class="empty"><div class="big">📦</div>No active orders right now.</div>`;
@@ -4458,7 +4506,7 @@ function renderOrdersSegregated(limit){
 function renderOrderTilesGrouped(list, showUndoDispatch){
   if(list.length===0) return `<div class="empty"><div class="big">📦</div>No orders yet.</div>`;
   const sections = groupByDate(list, o=>o.createdAt);
-  return sections.map(s=>dateGroupHeaderHtml(s.heading) + s.items.map(o=>renderOrderTile(o, showUndoDispatch)).join('')).join('');
+  return sections.map(s=>dateGroupHeaderHtml(s.heading) + `<div class="order-tile-grid">${s.items.map(o=>renderOrderTile(o, showUndoDispatch)).join('')}</div>`).join('');
 }
 
 function renderRetailSalesCard(){
@@ -5006,7 +5054,7 @@ function renderCustomers(){
       <button class="btn btn-primary btn-sm" id="newCustBtn">+ Add customer</button>
     </div>
     ${S.customers.length===0? `<div class="empty"><div class="big">👤</div>No customers yet.</div>` : `
-    <div class="more-grid" style="grid-template-columns:repeat(2,1fr);">
+    <div class="tile-grid-3">
       ${S.customers.slice().sort((a,b)=>b.addedAt-a.addedAt).map(c=>`
         <div style="background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:14px 12px;text-align:center;">
           <span style="width:44px;height:44px;border-radius:50%;background:var(--surface);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;color:var(--primary);margin:0 auto 8px;">${esc((c.name||'?').charAt(0).toUpperCase())}</span>
@@ -5162,7 +5210,7 @@ function renderUsers(){
         <button class="btn btn-primary btn-sm" id="newUserBtn">+ Add user</button>
       </div>
     </div>
-    <div class="more-grid" style="grid-template-columns:repeat(2,1fr);">
+    <div class="tile-grid-3">
       ${S.users.map(u=>`
         <div style="background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:14px 12px;text-align:center;">
           ${u.photo?`<img src="${esc(u.photo)}" style="width:52px;height:52px;border-radius:50%;object-fit:cover;margin:0 auto 8px;display:block;" />`:`<span style="width:52px;height:52px;border-radius:50%;background:var(--surface);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;color:var(--primary);margin:0 auto 8px;">${esc((u.name||'?').charAt(0).toUpperCase())}</span>`}
@@ -5300,19 +5348,19 @@ function openTeamPermissionDialog(role){
     <h3>${esc(ROLES[role].label)}</h3>
     <p class="desc" style="margin-top:-6px;">Choose exactly what this team can view and enter.</p>
     <div style="font-size:11.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.03em;font-weight:700;margin-bottom:6px;">Can view</div>
-    <div class="more-grid" style="grid-template-columns:repeat(2,1fr);margin-bottom:14px;">
+    <div class="checkbox-grid" style="margin-bottom:14px;">
     ${CHECKLIST_MODULES.map(m=>`<label style="display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:9px 10px;font-size:12.5px;cursor:pointer;">
       <input type="checkbox" data-teamperm-view="${m.key}" ${perm[m.key]?'checked':''} style="width:16px;height:16px;flex:0 0 auto;" /> ${esc(m.label)}
     </label>`).join('')}
     </div>
     <div style="font-size:11.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.03em;font-weight:700;margin-bottom:6px;">Home page tiles</div>
-    <div class="more-grid" style="grid-template-columns:repeat(2,1fr);margin-bottom:14px;">
+    <div class="checkbox-grid" style="margin-bottom:14px;">
     ${TILE_MODULES.map(m=>`<label style="display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:9px 10px;font-size:12.5px;cursor:pointer;">
       <input type="checkbox" data-teamperm-view="${m.key}" ${perm[m.key]?'checked':''} style="width:16px;height:16px;flex:0 0 auto;" /> ${esc(m.label)}
     </label>`).join('')}
     </div>
     <div style="font-size:11.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.03em;font-weight:700;margin-bottom:6px;">Can enter / record data</div>
-    <div class="more-grid" style="grid-template-columns:repeat(2,1fr);">
+    <div class="checkbox-grid">
     ${ENTRY_MODULES.map(m=>`<label style="display:flex;align-items:center;gap:8px;background:var(--success-bg);border:1px solid var(--border);border-radius:10px;padding:9px 10px;font-size:12.5px;cursor:pointer;">
       <input type="checkbox" data-teamperm-entry="${m.key}" ${(S.rolePermissions[role] ? !!S.rolePermissions[role][m.key] : !!entryDefaults[m.key])?'checked':''} style="width:16px;height:16px;flex:0 0 auto;" /> ${esc(m.label)}
     </label>`).join('')}
@@ -5321,7 +5369,7 @@ function openTeamPermissionDialog(role){
       <button type="button" class="btn btn-outline" id="backToTeamsBtn">‹ Back</button>
       <button type="button" class="btn btn-primary" id="reviewPermsBtn">Save…</button>
     </div>
-  `);
+  `, 'modal-wide');
   document.getElementById('backToTeamsBtn').addEventListener('click', ()=>{ closeModal(); openPermissionManager(); });
   document.getElementById('reviewPermsBtn').addEventListener('click', ()=>{
     const viewChecked = [...CHECKLIST_MODULES, ...TILE_MODULES].filter(m=>document.querySelector(`[data-teamperm-view="${m.key}"]`).checked);
@@ -5428,7 +5476,7 @@ function openNotifKindDialog(kind){
       <button type="button" class="btn btn-sm btn-outline" id="notifSelectAllBtn">Select all</button>
       <button type="button" class="btn btn-sm btn-outline" id="notifSelectNoneBtn">Select none</button>
     </div>
-    <div class="more-grid" style="grid-template-columns:repeat(2,1fr);">
+    <div class="checkbox-grid">
     ${S.users.map(u=>`<label style="display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:9px 10px;font-size:12.5px;cursor:pointer;">
       <input type="checkbox" data-notif-recipient="${esc(u.username)}" ${recipients.has(u.username)?'checked':''} style="width:16px;height:16px;flex:0 0 auto;" /> ${esc(u.name)} <span class="mono" style="font-size:10.5px;color:var(--ink-soft);">(${esc(ROLES[u.role].label)})</span>
     </label>`).join('')}
@@ -5438,7 +5486,7 @@ function openNotifKindDialog(kind){
       <button type="button" class="btn btn-outline" id="backToNotifKindsBtn">‹ Back</button>
       <button type="button" class="btn btn-primary" id="saveNotifKindBtn">Save</button>
     </div>
-  `);
+  `, 'modal-wide');
   document.getElementById('backToNotifKindsBtn').addEventListener('click', ()=>{ closeModal(); openNotificationPermissionManager(); });
   document.getElementById('notifSelectAllBtn').addEventListener('click', ()=>{
     document.querySelectorAll('[data-notif-recipient]').forEach(cb=>cb.checked=true);
