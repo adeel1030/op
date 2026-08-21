@@ -683,7 +683,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-21-desktop-quickactions-1row";
+const APP_BUILD = "2026-08-21-session-security-notifs";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -956,6 +956,18 @@ const S = {
   // correct even after the expenses 1-year retention cleanup deletes an old
   // expense/settlement row -- see expenseBalanceFor/applyExpenseBalanceDelta.
   expenseBalances:{},
+  // Per-username failed-login tracking (security feature, 2026-08-21):
+  // { username: { failCount, lastFailAt, lockedUntil } } -- synced to the
+  // backend (not just per-browser) so a lockout is a real cross-device
+  // limit. See recordFailedLogin/checkLoginLockout.
+  loginLockouts:{},
+  // "Login mandatory for notifications" (2026-08-21): { username:
+  // [{title, body, at}, ...] } -- server-recorded copy of every push this
+  // person would have received while logged out (a logged-out device is
+  // unsubscribed from OneSignal, so the real push never reaches it -- see
+  // doLogout). Replayed as toasts, oldest first, right after login -- see
+  // checkForMissedNotifsOnLogin.
+  pendingNotifs:{},
   _partitionKeysSeen:{orders:new Set(), activityLog:new Set(), attendance:new Set(), expenses:new Set(), dominoPrints:new Set(), loginLog:new Set(), chatMessages:new Set(), retailSales:new Set(), trackingViewLogs:new Set(), siteVisitLogs:new Set(), stockMovementLog:new Set()},
   currentUser:null, view:'home', stockView:'raw', notifOpen:false, moreOpen:false, profileOpen:false, alertPanelOpen:null, toast:null,
   chatModalOpen:false, chatView:'announcements', chatActiveThread:null, chatSearch:'',
@@ -1249,6 +1261,66 @@ async function initPushNotifications(){
       try{ await OneSignal.Notifications.requestPermission(); }catch(e){}
     });
   }catch(e){ /* push setup must never break the app itself */ }
+}
+// "Login mandatory for notifications" (2026-08-21, explicit user request):
+// OneSignal.login(username) above ties this browser/device to the staff
+// member's external_id for as long as it stays subscribed -- by default
+// that association survives logging OUT of the app itself, so a signed-out
+// device would keep quietly receiving pushes meant for whoever last used
+// it. Calling OneSignal.logout() here removes that tie, so from the
+// backend's point of view (which targets pushes by external_id, see
+// include_aliases in flushPushSpecs_) this device simply stops being a
+// valid target the instant someone logs out -- a real push can no longer
+// physically reach it until the next login re-subscribes. Whatever would
+// have been pushed during that gap isn't lost though -- see
+// recordPendingNotifs_ / checkForMissedNotifsOnLogin below, which replay
+// it the moment login happens again.
+function unsubscribePushNotifications(){
+  if(!ONESIGNAL_APP_ID || ONESIGNAL_APP_ID.indexOf('PASTE_')===0) return;
+  if(!window.OneSignalDeferred) return; // SDK never loaded this session -- nothing to unsubscribe
+  try{
+    window.OneSignalDeferred.push(async function(OneSignal){
+      try{ await OneSignal.logout(); }catch(e){}
+    });
+  }catch(e){ /* logout cleanup must never break the actual sign-out */ }
+}
+// "Login mandatory for notifications" replay (2026-08-21): the moment
+// someone logs in, shows a "Welcome" toast first (always, whether or not
+// anything was missed), then everything that was pushed to them while
+// they were logged out -- oldest first, a beat apart so it reads like a
+// real notification burst landing (the way WhatsApp shows a catch-up
+// stream of messages) instead of one unreadable wall of text. Clears the
+// server-side queue afterward (apiClearPendingNotifs) so the same batch
+// never replays on a later login.
+async function checkForMissedNotifsOnLogin(){
+  if(!S.currentUser) return;
+  const firstName = (S.currentUser.name||'').split(' ')[0] || S.currentUser.name || '';
+  showToast(`Welcome, ${firstName}! 👋`);
+  // S.pendingNotifs in memory can be stale here -- it's whatever the app's
+  // last full sync happened to capture, which for someone who just logged
+  // in after being logged out for a while (exactly the case this feature
+  // exists for) could be from well before this exact moment, missing
+  // anything the backend recorded in between. pendingNotifs is a QUIET key
+  // (see order-ops-backend.gs), so the routine 2s version-poll never picks
+  // it up on its own either -- a fresh full fetch here is the only way to
+  // be sure nothing gets silently skipped.
+  try{
+    const { data } = await apiFetchAll();
+    if(data && data.pendingNotifs) S.pendingNotifs = data.pendingNotifs;
+  }catch(e){ /* fall back to whatever S.pendingNotifs already had -- better than nothing */ }
+  const mine = S.pendingNotifs[S.currentUser.username];
+  if(!Array.isArray(mine) || !mine.length) return;
+  const queue = mine.slice().sort((a,b)=>a.at-b.at);
+  delete S.pendingNotifs[S.currentUser.username];
+  const showNext = (i)=>{
+    if(i >= queue.length) return;
+    const n = queue[i];
+    showToast(`${n.title || 'Notification'}${n.body ? ' — ' + n.body : ''}`);
+    if(i+1 < queue.length) setTimeout(()=>showNext(i+1), 2200);
+  };
+  setTimeout(()=>showNext(0), 1600); // let the welcome toast finish reading first
+  try{ await apiClearPendingNotifs(S.currentUser.username); }
+  catch(e){ /* best-effort -- worst case this same batch shows again next login, never silently lost */ }
 }
 // A raw fetch() has NO timeout of its own — on a slow/unreliable connection
 // (mobile data especially), a request that never gets a response just hangs
@@ -1557,6 +1629,21 @@ async function apiDeleteKeys(keys){
   });
   return res.json();
 }
+// "Login mandatory for notifications" replay (2026-08-21): tells the
+// backend this user's missed-notification queue was just shown, so it
+// clears pendingNotifs[username] server-side under its own lock (atomic —
+// see clearPendingNotifs in order-ops-backend.gs; never a raw client-side
+// read-modify-write of the whole shared pendingNotifs object, which could
+// lose another staff member's own login clearing their entry at nearly
+// the same moment). Best-effort: if this fails, the same batch just shows
+// again next login, which is annoying but never loses anything.
+async function apiClearPendingNotifs(username){
+  const res = await fetchWithTimeout(API_URL, {
+    method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify({ secret:SECRET, action:'clearPendingNotifs', username })
+  });
+  return res.json();
+}
 async function apiUploadLR(base64Data, mimeType, filename){
   // Photo uploads are a much larger payload than any other call here, and
   // legitimately take longer on a slow mobile connection — a longer timeout
@@ -1757,6 +1844,8 @@ function applyServerData(data, isFullSync){
   if(has('rolePermissions')) S.rolePermissions = data.rolePermissions || {};
   if(has('notificationPrefs')) S.notificationPrefs = data.notificationPrefs || {};
   if(has('expenseBalances')) S.expenseBalances = data.expenseBalances || {};
+  if(has('loginLockouts')) S.loginLockouts = data.loginLockouts || {};
+  if(has('pendingNotifs')) S.pendingNotifs = data.pendingNotifs || {};
   rebuildRolesRegistry();
   applyRolePermissionsToROLES();
   if(has('catalogItems')) S.catalogItems = (data.catalogItems && data.catalogItems.length) ? data.catalogItems : flattenDefaultCatalog();
@@ -1774,6 +1863,12 @@ function applyServerData(data, isFullSync){
   cleanupOldBusinessData();
   cleanupOldMiscLogs();
   cleanupOldFinancialData();
+  // Single-device login enforcement (security feature, 2026-08-21): every
+  // sync re-checks whether this device's own session token still matches
+  // what the backend says is the CURRENT valid token for this user. A
+  // mismatch means a newer login (or an admin's force-logout) elsewhere
+  // has superseded this device.
+  checkSessionStillValid();
 }
 // Chat messages are only meant to live 7 days — reconcile the backend to
 // match (admin-only, mirrors how "Reset all data" already deletes
@@ -1888,7 +1983,12 @@ async function loadAll(){
         safeSet('app:catalogItems', S.catalogItems); // first run ever — seed the backend so the order form can read it too
       }
       restoreSession();
-      if(S.currentUser) initPushNotifications(); // page refresh with an already-active session -- finalizeLogin() won't run again, so this is the only other place a session actually "starts"
+      if(S.currentUser){
+        // page refresh with an already-active session -- finalizeLogin() won't
+        // run again, so this is the only other place a session actually "starts"
+        initPushNotifications();
+        checkForMissedNotifsOnLogin(); // safety net -- normally nothing to replay here since a still-valid session was never actually logged out/unsubscribed in between
+      }
       backfillCatalogCaseSizes(); // resolve any legacy items missing a saved case size
       S.loadFailed = false;
       lastErr = null;
@@ -1918,7 +2018,11 @@ async function loadAll(){
 // without disturbing whatever the person is doing (typing in a modal etc).
 function sendHeartbeat(){
   if(!S.currentUser) return;
-  S.activeSessions[S.currentUser.username] = Date.now();
+  // Preserve the existing session token (see issueNewSessionToken) --
+  // the heartbeat only ever updates "last seen", it must never touch which
+  // token is currently the valid one for this account.
+  const prev = S.activeSessions[S.currentUser.username];
+  S.activeSessions[S.currentUser.username] = Object.assign({}, (prev && typeof prev==='object') ? prev : null, { lastSeen: Date.now() });
   safeSet('app:activeSessions', S.activeSessions);
 }
 function startHeartbeat(){
@@ -1958,6 +2062,14 @@ async function doSyncTick(){
       autoAdvanceOrders();
       syncStockTasksFromAlerts();
       setSyncLabel(null);
+      // SPEED (2026-08-21, "notifications ko zda se zda fast kro" -- as fast
+      // as possible, like WhatsApp): checking the bell/ring right HERE, the
+      // instant real new data has actually landed, instead of on its own
+      // separate 5s timer (see the old setInterval(checkForNewNotifRing,
+      // 5000) this replaced) means the badge/sound latency is bounded by
+      // ONLY this poll's own interval, not by however far out of phase the
+      // two independent timers happened to drift relative to each other.
+      checkForNewNotifRing();
       if(messagesModalOpen) refreshMessagesModal(); else render();
     } else if(S.view==='home' && !messagesModalOpen){
       // Nothing changed server-side, but time-sensitive things on Home
@@ -1987,19 +2099,42 @@ function showToast(msg, isErr){
 
 /* ============================= AUTH ============================= */
 // Session persists across app restarts using localStorage, but auto-expires
-// 6 hours after login (SESSION_MAX_MS) — after that the person is signed out
-// automatically and has to log back in.
+// after 48 hours of INACTIVITY (SESSION_MAX_MS) -- not 48 hours since login.
+// Every genuine user interaction (click/keypress/touch, see
+// watchUserActivityForIdleTimeout below) pushes SESSION_AT_KEY forward, so
+// someone actively working stays logged in all day; only a device that's
+// truly been left untouched for 48 hours signs itself out. (This was a flat
+// 6-hour timer from login regardless of activity, then briefly a 12-hour
+// idle timer -- changed to 48 hours idle per explicit user request on
+// 2026-08-21.)
 // Note: this only works when the app is actually hosted/opened in a real browser
 // tab (as this Apps-Script-backed app is meant to be) — a claude.ai artifact
 // preview iframe blocks storage APIs, so persistence won't show there.
 const SESSION_KEY = 'orderops_session_user_id';
-const SESSION_AT_KEY = 'orderops_session_started_at';
-const SESSION_MAX_MS = 6 * 60 * 60 * 1000; // 6 hours
+const SESSION_AT_KEY = 'orderops_session_started_at'; // last-activity timestamp (despite the name, kept for compatibility)
+const SESSION_MAX_MS = 48 * 60 * 60 * 1000; // 48 hours of inactivity
 function persistSession(user){
   try{
     localStorage.setItem(SESSION_KEY, user ? user.id : '');
     localStorage.setItem(SESSION_AT_KEY, user ? String(Date.now()) : '');
   }catch(e){}
+}
+// Called on every genuine user interaction while logged in -- refreshes
+// just the activity timestamp (not the whole session) so the 48-hour idle
+// clock resets. Throttled to at most once every 30s so a flurry of clicks
+// doesn't hammer localStorage.
+let lastActivityRefreshAt = 0;
+function refreshSessionActivity(){
+  if(!S.currentUser) return;
+  const now = Date.now();
+  if(now - lastActivityRefreshAt < 30000) return;
+  lastActivityRefreshAt = now;
+  try{ localStorage.setItem(SESSION_AT_KEY, String(now)); }catch(e){}
+}
+function watchUserActivityForIdleTimeout(){
+  ['click','keydown','touchstart'].forEach(evt=>{
+    document.addEventListener(evt, refreshSessionActivity, {passive:true});
+  });
 }
 function restoreSession(){
   try{
@@ -2021,10 +2156,85 @@ function startSessionExpiryWatch(){
       const startedAt = parseInt(localStorage.getItem(SESSION_AT_KEY))||0;
       if(startedAt && (Date.now()-startedAt) > SESSION_MAX_MS){
         doLogout();
-        showToast('Signed out after 6 hours — please log in again.');
+        showToast('No activity for 48 hours — signed out. Please log in again.');
       }
     }catch(e){}
   }, 60000);
+}
+
+// ---- Single-device login: only one active session per user (security
+// feature, 2026-08-21, explicit user request) ----
+// A random token is (re)generated any time a login should invalidate every
+// OTHER device currently signed in as this user: a fresh login itself
+// (finalizeLogin), an admin's manual "Force logout" (Team page), and an
+// admin resetting that user's password (openUserModal's submit handler).
+// The backend just stores whatever token is "current" for each username
+// (S.activeSessions[username].token) -- every device compares its own
+// remembered token against that on every regular sync (see
+// checkSessionStillValid, called at the end of applyServerData) and logs
+// itself out the moment it no longer matches.
+const DEVICE_SESSION_TOKEN_KEY = 'orderops_device_session_token';
+const DEVICE_SESSION_TOKEN_AT_KEY = 'orderops_device_session_token_at';
+function makeSessionToken(){
+  const arr = new Uint8Array(16);
+  crypto.getRandomValues(arr);
+  return Array.from(arr).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+// isThisDevice=true means the caller IS the affected user's own current
+// device (a fresh login, or an admin editing their own account) -- their
+// local copy is updated too so they don't immediately kick themselves out
+// on the very next sync.
+function issueNewSessionToken(username, isThisDevice){
+  const token = makeSessionToken();
+  const at = Date.now();
+  const prev = S.activeSessions[username];
+  S.activeSessions[username] = Object.assign({}, (prev && typeof prev==='object') ? prev : null, { token, at, lastSeen: at });
+  safeSet('app:activeSessions', S.activeSessions);
+  if(isThisDevice){
+    try{
+      localStorage.setItem(DEVICE_SESSION_TOKEN_KEY, token);
+      localStorage.setItem(DEVICE_SESSION_TOKEN_AT_KEY, String(at));
+    }catch(e){}
+  }
+  return token;
+}
+function checkSessionStillValid(){
+  if(!S.currentUser) return;
+  const rec = S.activeSessions[S.currentUser.username];
+  const remoteToken = (rec && typeof rec==='object') ? rec.token : null;
+  const remoteAt = (rec && typeof rec==='object') ? (rec.at||0) : 0;
+  let myToken = '', myTokenAt = 0;
+  try{
+    myToken = localStorage.getItem(DEVICE_SESSION_TOKEN_KEY) || '';
+    myTokenAt = parseInt(localStorage.getItem(DEVICE_SESSION_TOKEN_AT_KEY))||0;
+  }catch(e){}
+  if(!myToken){
+    // No local token yet -- either this device logged in before this
+    // feature shipped, or storage was cleared. Silently adopt whatever
+    // the backend already has (or claim a fresh one if there's nothing
+    // yet) instead of treating "I don't have one" as a mismatch.
+    if(remoteToken){
+      try{
+        localStorage.setItem(DEVICE_SESSION_TOKEN_KEY, remoteToken);
+        localStorage.setItem(DEVICE_SESSION_TOKEN_AT_KEY, String(remoteAt||Date.now()));
+      }catch(e){}
+    } else {
+      issueNewSessionToken(S.currentUser.username, true);
+    }
+    return;
+  }
+  // Only trust a mismatch when the backend's record is strictly NEWER than
+  // the token THIS device issued -- this is what makes the check safe
+  // against the save-hasn't-landed-yet race right after a fresh login: a
+  // sync that arrives before our own login write has been persisted still
+  // shows the OLD (or no) token with an OLDER timestamp, so remoteAt >
+  // myTokenAt is false and nothing happens; once our write lands, the
+  // token itself matches too. A genuinely newer login (or a force-logout)
+  // elsewhere is the only way remoteAt ends up newer with a different token.
+  if(remoteToken && remoteToken!==myToken && remoteAt>myTokenAt){
+    doLogout();
+    showAlert('This account was just logged in on another device or browser, so you have been signed out here automatically.');
+  }
 }
 // ---- Password hashing (Web Crypto API — built into every browser) ----
 // Passwords are never stored in plaintext going forward. Existing
@@ -2071,6 +2281,10 @@ function finalizeLogin(u){
   S.currentUser = u;
   S.view = ROLES[u.role].tabs[0];
   persistSession(u);
+  // Single-device login: this fresh login becomes the ONE valid session for
+  // this account -- any other device still signed in as u will detect the
+  // mismatch on its next sync (checkSessionStillValid) and log itself out.
+  issueNewSessionToken(u.username, true);
   primeDevicePermissions();
   S.loginLog.push({id:uid(), username:u.username, name:u.name, role:u.role, at:Date.now()});
   if(S.loginLog.length>2000) S.loginLog = S.loginLog.slice(-2000); // day-partitioned now, but keep an overall sanity cap
@@ -2080,8 +2294,15 @@ function finalizeLogin(u){
   backfillCatalogCaseSizes();
   sendHeartbeat();
   initPushNotifications();
+  checkForMissedNotifsOnLogin();
 }
-function doLogout(){ S.currentUser = null; S.notifOpen=false; S.moreOpen=false; S.profileOpen=false; S.alertPanelOpen=null; persistSession(null); render(); }
+function doLogout(){
+  unsubscribePushNotifications(); // "login mandatory for notifications" -- see its own comment
+  S.currentUser = null; S.notifOpen=false; S.moreOpen=false; S.profileOpen=false; S.alertPanelOpen=null;
+  persistSession(null);
+  try{ localStorage.removeItem(DEVICE_SESSION_TOKEN_KEY); localStorage.removeItem(DEVICE_SESSION_TOKEN_AT_KEY); }catch(e){}
+  render();
+}
 // Manual, on-demand backup — fetches everything fresh from the backend
 // (not just what's currently in memory) and downloads it as one JSON file.
 async function downloadBackupNow(){
@@ -2741,6 +2962,33 @@ function renderLogin(){
   </div>`;
 }
 let loginSubmitting = false;
+// ---- Failed-login lockout (security feature, 2026-08-21, explicit user
+// request): 5 wrong attempts in a row locks that USERNAME (not just this
+// browser) out for 120 seconds. Synced via S.loginLockouts/app:loginLockouts
+// exactly like activeSessions, so the lockout is a real limit across every
+// device trying that username, not something an attacker can dodge by
+// just switching browsers. Counted by username only (never by whether the
+// username itself is valid) so the login form can't be used to probe
+// which usernames exist. ----
+const FAILED_LOGIN_LIMIT = 5;
+const FAILED_LOGIN_LOCK_MS = 120 * 1000; // 120 seconds
+function recordFailedLogin(usernameKey){
+  if(!usernameKey) return;
+  const rec = Object.assign({failCount:0}, S.loginLockouts[usernameKey]);
+  rec.failCount = (rec.failCount||0) + 1;
+  rec.lastFailAt = Date.now();
+  if(rec.failCount >= FAILED_LOGIN_LIMIT){
+    rec.lockedUntil = Date.now() + FAILED_LOGIN_LOCK_MS;
+  }
+  S.loginLockouts[usernameKey] = rec;
+  safeSet('app:loginLockouts', S.loginLockouts);
+}
+function clearFailedLogins(usernameKey){
+  if(S.loginLockouts[usernameKey]){
+    delete S.loginLockouts[usernameKey];
+    safeSet('app:loginLockouts', S.loginLockouts);
+  }
+}
 function bindLogin(){
   loginSubmitting = false; // reset every time the login form is (re)shown — e.g. after logout — so a stuck flag from a prior successful login never blocks the next one
   document.getElementById('loginForm').addEventListener('submit', async (e)=>{
@@ -2754,9 +3002,18 @@ function bindLogin(){
     const u = document.getElementById('loginUser').value;
     const p = document.getElementById('loginPass').value;
     if(loadAllPromise) await loadAllPromise; // data may still be loading in the background — wait for it before checking credentials
+    const uKey = u.trim().toLowerCase();
+    const lock = S.loginLockouts[uKey];
+    if(lock && lock.lockedUntil && lock.lockedUntil > Date.now()){
+      loginSubmitting = false;
+      const waitSec = Math.max(1, Math.ceil((lock.lockedUntil - Date.now())/1000));
+      loginError = `Too many failed attempts — try again in ${waitSec}s.`;
+      render();
+      return;
+    }
     const matched = await findMatchingUser(u, p);
-    if(matched){ loginError=''; startPostLoginSequence(matched); }
-    else { loginSubmitting = false; startWrongLoginSequence(); }
+    if(matched){ loginError=''; clearFailedLogins(uKey); startPostLoginSequence(matched); }
+    else { loginSubmitting = false; recordFailedLogin(uKey); startWrongLoginSequence(); }
   });
 }
 
@@ -5268,8 +5525,9 @@ function renderUsers(){
           <span class="role-pill" style="background:var(--surface);color:var(--primary-dark);border:1px solid var(--border);">${esc(ROLES[u.role].label)}</span>
           ${u.post?`<div style="font-size:11px;color:var(--ink-soft);margin-top:4px;font-style:italic;">${esc(u.post)}</div>`:''}
           ${u.phone?`<div class="mono" style="margin-top:6px;">${esc(u.phone)}</div>`:''}
-          <div class="row-actions" style="justify-content:center;margin-top:10px;">
+          <div class="row-actions" style="justify-content:center;margin-top:10px;flex-wrap:wrap;">
             <button class="btn btn-sm btn-outline" data-edit-user="${u.id}">Edit</button>
+            ${u.username!==S.currentUser.username ? `<button class="btn btn-sm btn-outline" data-force-logout="${esc(u.username)}" title="Immediately signs this person out wherever they're currently logged in">🔒 Force logout</button>` : ''}
             ${u.username!=='admin' || S.users.filter(x=>x.role==='admin').length>1 ? `<button class="btn btn-sm btn-danger" data-del-user="${u.id}">Delete</button>` : ''}
           </div>
         </div>
@@ -5606,6 +5864,17 @@ function bindUsers(){
       safeSet('app:users', S.users); render();
     });
   }));
+  document.querySelectorAll('[data-force-logout]').forEach(b=>b.addEventListener('click', ()=>{
+    const uname = b.dataset.forceLogout;
+    showConfirm(`Sign "${uname}" out on whichever device they're currently using?`, ()=>{
+      // isThisDevice=false -- this is ADMIN's device acting on someone
+      // ELSE's account, so only the backend record changes; the affected
+      // person's own device picks up the mismatch on its next sync (within
+      // a few seconds) and logs itself out there.
+      issueNewSessionToken(uname, false);
+      showToast(`${uname} will be signed out shortly`);
+    });
+  }));
 }
 function resizeImageFile(file, maxDim, quality){
   return new Promise((resolve, reject)=>{
@@ -5717,6 +5986,16 @@ function openUserModal(id){
       : {id:uid(), name, username, role, post, phone, address, photo};
     if(newPassword){
       await setUserPassword(newRecord, newPassword); // hashes it, never stores plaintext
+      if(existing){
+        // Security feature (2026-08-21): resetting someone's password must
+        // invalidate whatever session they currently have immediately --
+        // otherwise, if the reset was because their old password leaked,
+        // whoever had the OLD session keeps working right up to the
+        // 48-hour idle timeout regardless. isThisDevice=true only when the
+        // admin is resetting their OWN password, so they don't immediately
+        // kick themselves out on the next sync.
+        issueNewSessionToken(existing.username, existing.username===S.currentUser.username);
+      }
     } else if(!existing){
       showAlert('Password is required for a new user.'); return;
     }
@@ -7220,7 +7499,11 @@ function renderAttendanceMap(){
       const employees = S.users.filter(u=>u.role!=='admin' || u.username===S.currentUser.username);
       const ACTIVE_WINDOW = 3*60*1000; // heartbeat fires every 60s — 3 minutes is a generous margin before calling someone offline
       const rows = employees.map(u=>{
-        const lastSeen = S.activeSessions[u.username];
+        // activeSessions[username] became {token, at, lastSeen} (2026-08-21,
+        // for single-device login) -- still transparently reads a legacy
+        // plain-number entry from before that change as a bare lastSeen.
+        const rec = S.activeSessions[u.username];
+        const lastSeen = (rec && typeof rec==='object') ? rec.lastSeen : rec;
         const isActive = lastSeen && (Date.now()-lastSeen) < ACTIVE_WINDOW;
         const statusHtml = isActive
           ? `<span style="color:var(--success);">●</span> Active now`
@@ -7229,6 +7512,24 @@ function renderAttendanceMap(){
       }).sort((a,b)=> (b.isActive?1:0)-(a.isActive?1:0) || (b.lastSeen||0)-(a.lastSeen||0));
       return `<table><thead><tr><th>Name</th><th>Role</th><th>Status</th></tr></thead><tbody>
         ${rows.map(r=>`<tr><td>${esc(r.name)}</td><td class="mono">${esc(r.role)}</td><td>${r.statusHtml}</td></tr>`).join('')}
+      </tbody></table>`;
+    })()}
+  </div>
+  <div class="card">
+    <h2>Failed login attempts</h2>
+    <p class="desc">Usernames with recent wrong-password attempts. 5 in a row locks that username out for 120 seconds.</p>
+    ${(() => {
+      const entries = Object.entries(S.loginLockouts||{}).filter(([,r])=>r && r.failCount>0)
+        .sort((a,b)=>(b[1].lastFailAt||0)-(a[1].lastFailAt||0));
+      if(!entries.length) return `<div class="empty">No failed login attempts recorded.</div>`;
+      return `<table><thead><tr><th>Username</th><th>Failed attempts</th><th>Last attempt</th><th>Status</th><th></th></tr></thead><tbody>
+        ${entries.map(([uname, r])=>{
+          const locked = r.lockedUntil && r.lockedUntil>Date.now();
+          const statusHtml = locked
+            ? `<span style="color:var(--danger);">🔒 Locked — ${Math.max(1,Math.ceil((r.lockedUntil-Date.now())/1000))}s left</span>`
+            : `<span class="mono" style="color:var(--ink-soft);">Not locked</span>`;
+          return `<tr><td class="mono">${esc(uname)}</td><td class="mono">${r.failCount}</td><td class="mono">${fmtAgo(r.lastFailAt)}</td><td>${statusHtml}</td><td><button type="button" class="btn btn-sm btn-outline" data-clear-lockout="${esc(uname)}">Clear</button></td></tr>`;
+        }).join('')}
       </tbody></table>`;
     })()}
   </div>`;
@@ -7240,6 +7541,11 @@ function bindAttendanceMap(){
   if(holidayBtn) holidayBtn.addEventListener('click', openMarkHolidayModal);
   const summaryBtn = document.getElementById('monthlySummaryBtn');
   if(summaryBtn) summaryBtn.addEventListener('click', openMonthlySummaryModal);
+  document.querySelectorAll('[data-clear-lockout]').forEach(b=>b.addEventListener('click', ()=>{
+    delete S.loginLockouts[b.dataset.clearLockout];
+    safeSet('app:loginLockouts', S.loginLockouts);
+    render(); showToast('Lockout cleared');
+  }));
 }
 function openMarkForOthersModal(){
   const employees = S.users.filter(u=>u.role!=='admin');
@@ -7561,9 +7867,27 @@ let loadAllPromise = null;
       }, 150);
     });
   })();
-  startSyncPolling(4000);
+  // SPEED (2026-08-21, "notifications ko zda se zda fast kro"): was 4000ms.
+  // action=version (what every tick pays for on the no-change path, by far
+  // the common case) is deliberately built to never open the spreadsheet
+  // (see doGet's own comment), so it's cheap enough to poll twice as often
+  // -- this halves the worst-case delay between something real happening
+  // and every online device noticing it (new order, status change, chat
+  // message, bell badge/ring -- see checkForNewNotifRing inside
+  // doSyncTick), closer to a real push's feel without needing every single
+  // event type to go through OneSignal.
+  startSyncPolling(2000);
   startHeartbeat();
   startSessionExpiryWatch();
+  watchUserActivityForIdleTimeout();
+  // Backstop only now (2026-08-21) -- the real, fast check runs inside
+  // doSyncTick itself the instant new data actually arrives (every 2s at
+  // most). This just catches the rare case where doSyncTick keeps
+  // skipping ticks for a while (e.g. a modal left open a long time), so
+  // the bell/ring can never fall silent for more than 5s no matter what.
+  // checkForNewNotifRing is idempotent (compares against the last count it
+  // saw), so this running redundantly alongside doSyncTick's own call is
+  // harmless -- never a double ring for the same new item.
   setInterval(checkForNewNotifRing, 5000);
 })();
 </script>
