@@ -2392,6 +2392,9 @@ function applyActivityForward(e){
   if(e.kind==='packaging'){
     S.filledStock[e.key] = (S.filledStock[e.key]||0) - e.qty;
     S.readyStock[e.key] = (S.readyStock[e.key]||0) + e.qty;
+    // Keep the "Updated Qty" shown on the Daily Work packing row accurate
+    // after an edit re-applies this entry's stock effect.
+    e.totalAfter = S.readyStock[e.key];
     logStockMovement(e.key, e.itemLabel, 'packaging', -e.qty, `${activityLabel(e)} — entry edited (from filled)`, 'filled');
     logStockMovement(e.key, e.itemLabel, 'packaging', e.qty, `${activityLabel(e)} — entry edited`);
   }
@@ -3187,6 +3190,18 @@ function renderDailyWork(){
   const bookedCount = allEntries.filter(e=>e.booked).length;
   const totalCount = allEntries.length;
 
+  // Backlog check: does any day BEFORE the one currently shown here still
+  // have unbooked entries sitting around? Surfaced as a warning banner up
+  // top so the admin notices old, un-booked-into-accounting entries piling
+  // up instead of only ever seeing whatever single day happens to be
+  // selected. orders key their date off createdAt; everything else off at.
+  const entryDateKey = e => localDateKey(e.createdAt!=null ? e.createdAt : e.at);
+  const prevUnbookedDates = [...new Set(
+    [...S.activityLog, ...S.expenses, ...S.retailSales, ...S.orders]
+      .filter(e => !e.booked && entryDateKey(e) < date)
+      .map(entryDateKey)
+  )].sort();
+
   // Unified action cell for every section: booked -> only Undo (Edit/Delete
   // hidden, since a booked entry is meant to be locked once it's reflected
   // in the accounting software); not booked -> Edit + Delete + Book.
@@ -3228,7 +3243,14 @@ function renderDailyWork(){
     ${packagingEntries.map(e=>{
       const it = findItem(e.key);
       const qtyDisplay = it && it.caseSize ? fmtCase(e.qty, it.caseSize) : `${e.qty} pc`;
-      return `<tr${e.booked?' style="opacity:0.55;"':''}><td>${esc(e.itemLabel)}${e.note?` <span class="mono">(${esc(e.note)})</span>`:''}</td><td class="mono">${qtyDisplay}</td><td>${esc(e.by)}</td><td class="mono">${fmtTime(e.at)}</td><td>${actionCell(e,'activityLog',true)}</td></tr>`;
+      // "Updated Qty" = Ready stock total for this item right after this
+      // packing entry was recorded (captured on e.totalAfter at write-time
+      // -- see the packaging-record submit handler and applyActivityForward
+      // -- so it stays historically accurate even if today's live Ready
+      // stock has since moved). Older entries recorded before this field
+      // existed simply won't have it, so nothing extra renders for them.
+      const totalDisplay = e.totalAfter!=null ? (it && it.caseSize ? fmtCase(e.totalAfter, it.caseSize) : `${e.totalAfter} pc`) : null;
+      return `<tr${e.booked?' style="opacity:0.55;"':''}><td>${esc(e.itemLabel)}${e.note?` <span class="mono">(Batch no- ${esc(e.note)})</span>`:''}${totalDisplay?`<div class="mono" style="margin-top:2px;">Updated Qty: ${totalDisplay}</div>`:''}</td><td class="mono">${qtyDisplay}</td><td>${esc(e.by)}</td><td class="mono">${fmtTime(e.at)}</td><td>${actionCell(e,'activityLog',true)}</td></tr>`;
     }).join('')}
     </tbody></table>`}
   </div>`;
@@ -3276,6 +3298,12 @@ function renderDailyWork(){
     <h2>📆 Daily Work</h2>
     <p class="desc">Every entry for the day, in one place — book each as you update your accounting software. Editing or deleting stays available until it's booked.</p>
     <div class="field"><label>Date</label><input type="date" id="dwDateSel" value="${date}" max="${localDateKey(Date.now())}" /></div>
+    ${prevUnbookedDates.length ? `<div style="background:#FCE2DF;border:1.5px solid #E8938B;border-radius:10px;padding:10px 12px;margin:10px 0;font-size:12.5px;">
+      <div style="font-weight:800;color:#D8483B;margin-bottom:6px;">⚠️ Previous Entry Not Booked${prevUnbookedDates.length>1?` (${prevUnbookedDates.length} days)`:''}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        ${prevUnbookedDates.map(d=>`<button type="button" class="btn btn-sm btn-outline" style="border-color:#E8938B;color:#D8483B;" data-goto-dw-date="${d}">${fmtDateOnly(dateKeyToTs(d))}</button>`).join('')}
+      </div>
+    </div>` : ''}
     <button type="button" class="btn btn-outline" id="dwPrintBtn" style="width:100%;margin-bottom:6px;">🖨️ Print this day</button>
     ${totalCount>0 ? `<div style="background:${bookedCount===totalCount?'var(--success-bg)':'var(--bg)'};border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin:10px 0;font-size:12.5px;font-weight:700;">${bookedCount===totalCount?'✅':'📋'} ${bookedCount} of ${totalCount} entries booked</div>` : ''}
     ${(totalCount>0 && bookedCount<totalCount) ? `<button type="button" class="btn btn-outline" id="dwBookAllBtn" style="width:100%;">✅ Book all remaining (${totalCount-bookedCount})</button>` : ''}
@@ -3361,6 +3389,9 @@ function bindDailyWork(){
   if(printBtn) printBtn.addEventListener('click', printDailyWork);
   const dateSel = document.getElementById('dwDateSel');
   if(dateSel) dateSel.addEventListener('change', ()=>{ S.dailyWorkDate = dateSel.value; render(); });
+  document.querySelectorAll('[data-goto-dw-date]').forEach(b=>b.addEventListener('click', ()=>{
+    S.dailyWorkDate = b.dataset.gotoDwDate; render();
+  }));
   document.querySelectorAll('[data-book]').forEach(b=>b.addEventListener('click', ()=>{
     const [source, id] = b.dataset.book.split('|');
     toggleEntryBooked(source, id);
@@ -6298,7 +6329,7 @@ function openPackagingModal(prefillKey, prefillQty){
     S.filledStock[key] = filledAvail - qty;
     S.readyStock[key] = (S.readyStock[key]||0) + qty;
     Promise.all([safeSet('app:filledStock',S.filledStock), safeSet('app:readyStock',S.readyStock)]);
-    logActivity({kind:'packaging', key, itemLabel: it?`${it.name} ${it.size}`:key, qty, note});
+    logActivity({kind:'packaging', key, itemLabel: it?`${it.name} ${it.size}`:key, qty, note, totalAfter: S.readyStock[key]});
     logStockMovement(key, it?`${it.name} ${it.size}`:key, 'packaging', qty, 'Packaging recorded');
     completeStockTasksForItem('ready', key);
     autoAdvanceOrders();
