@@ -683,7 +683,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-21-desktop-tiles-domino-fix";
+const APP_BUILD = "2026-08-21-durable-expense-balance";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -949,6 +949,13 @@ const S = {
   users:[], orders:[], customers:[], attendance:[], tasks:[], loginLog:[],
   rawMaterial:{}, filledStock:{}, readyStock:{}, expenses:[], activityLog:[], stockTasks:[], dominoPrints:[], chatMessages:[], retailSales:[], trackingViewLogs:[], siteVisitLogs:[], stockMovementLog:[],
   lowStock:{raw:{}, filled:{}, ready:{}}, watchStock:{raw:{}, filled:{}, ready:{}}, rolePermissions:{}, customRoles:[], catalogItems:[], transports:[], dailyRecordMarks:{}, dailyWorkDate:null, batchReferences:{}, holidays:{}, activeSessions:{}, notificationPrefs:{},
+  // Durable per-user expense/settlement balance -- a running total kept in
+  // sync the same way rawMaterial/filledStock/readyStock are (incremented/
+  // decremented on every create/edit/delete, persisted as its own key),
+  // NOT recomputed from S.expenses on the fly. This means the balance stays
+  // correct even after the expenses 1-year retention cleanup deletes an old
+  // expense/settlement row -- see expenseBalanceFor/applyExpenseBalanceDelta.
+  expenseBalances:{},
   _partitionKeysSeen:{orders:new Set(), activityLog:new Set(), attendance:new Set(), expenses:new Set(), dominoPrints:new Set(), loginLog:new Set(), chatMessages:new Set(), retailSales:new Set(), trackingViewLogs:new Set(), siteVisitLogs:new Set(), stockMovementLog:new Set()},
   currentUser:null, view:'home', stockView:'raw', notifOpen:false, moreOpen:false, profileOpen:false, alertPanelOpen:null, toast:null,
   chatModalOpen:false, chatView:'announcements', chatActiveThread:null, chatSearch:'',
@@ -1749,6 +1756,7 @@ function applyServerData(data, isFullSync){
   if(has('customRoles')) S.customRoles = data.customRoles || [];
   if(has('rolePermissions')) S.rolePermissions = data.rolePermissions || {};
   if(has('notificationPrefs')) S.notificationPrefs = data.notificationPrefs || {};
+  if(has('expenseBalances')) S.expenseBalances = data.expenseBalances || {};
   rebuildRolesRegistry();
   applyRolePermissionsToROLES();
   if(has('catalogItems')) S.catalogItems = (data.catalogItems && data.catalogItems.length) ? data.catalogItems : flattenDefaultCatalog();
@@ -3526,6 +3534,7 @@ function deleteDailyEntry(source, id){
     showConfirm('Delete this entry?', ()=>{
       S.expenses = S.expenses.filter(x=>x.id!==id);
       savePartitionForItem('expenses', e);
+      applyExpenseBalanceDelta(e, -1);
       render();
     });
   } else if(source==='retailSales'){
@@ -3883,11 +3892,41 @@ function openCatalogItemModal(existingItem){
 }
 
 /* ============================= EXPENSES (manager pocket expenses; admin settles & can add/edit) ============================= */
+// BUGFIX (2026-08-21, explicit user request): this used to recompute the
+// balance live by summing S.expenses every time -- which meant the balance
+// would silently drift once the 1-year retention cleanup deleted an old
+// unsettled expense/settlement row, even though nothing was actually paid.
+// Now it's a durable running total (S.expenseBalances[username]), kept in
+// sync incrementally on every create/edit/delete via
+// applyExpenseBalanceDelta, exactly like rawMaterial/filledStock/readyStock
+// already are for stock. The live-sum path below only ever runs ONCE per
+// user, the very first time this code sees them with no durable balance
+// recorded yet -- it seeds S.expenseBalances from whatever expense history
+// currently exists (self-healing migration), then every call after that
+// reads the durable number straight away.
 function expenseBalanceFor(username){
+  if(Object.prototype.hasOwnProperty.call(S.expenseBalances, username)){
+    return S.expenseBalances[username];
+  }
   const mine = S.expenses.filter(x=>x.byUsername===username);
   const spent = mine.filter(x=>x.type!=='settlement').reduce((s,x)=>s+x.amount,0);
   const settled = mine.filter(x=>x.type==='settlement').reduce((s,x)=>s+x.amount,0);
-  return spent - settled; // positive = still owed to the manager
+  const seed = spent - settled; // positive = still owed to the manager
+  S.expenseBalances[username] = seed;
+  safeSet('app:expenseBalances', S.expenseBalances);
+  return seed;
+}
+// Applies (sign=+1) or reverses (sign=-1) one expense/settlement entry's
+// effect on its owner's durable balance. An expense INCREASES what's owed
+// to them; a settlement (cash paid back) DECREASES it. Call with sign=-1
+// on an entry's OLD state before an edit changes it, then sign=+1 with the
+// NEW state -- this correctly handles an admin re-assigning an entry to a
+// different manager or changing its amount mid-edit.
+function applyExpenseBalanceDelta(entry, sign){
+  if(!entry || !entry.byUsername) return;
+  const delta = (entry.type==='settlement' ? -entry.amount : entry.amount) || 0;
+  S.expenseBalances[entry.byUsername] = (S.expenseBalances[entry.byUsername]||0) + sign*delta;
+  safeSet('app:expenseBalances', S.expenseBalances);
 }
 function renderExpenses(){
   const isAdmin = S.currentUser.role==='admin';
@@ -3965,7 +4004,7 @@ function bindExpenses(){
     showConfirm('Delete this entry?', ()=>{
       const item = S.expenses.find(x=>x.id===b.dataset.delExp);
       S.expenses = S.expenses.filter(x=>x.id!==b.dataset.delExp);
-      if(item) savePartitionForItem('expenses', item);
+      if(item){ savePartitionForItem('expenses', item); applyExpenseBalanceDelta(item, -1); }
       render();
     });
   }));
@@ -3997,12 +4036,21 @@ function openExpenseModal(existing, type, forUsername){
     const byUser = S.users.find(u=>u.username===byUsername);
     let touched;
     if(existing){
+      // Capture the entry's balance-relevant fields BEFORE this edit
+      // overwrites them, so applyExpenseBalanceDelta can reverse exactly
+      // what this entry used to contribute (to its OLD manager, at its OLD
+      // amount) before applying the new contribution below -- handles an
+      // admin re-assigning the entry to a different manager or changing
+      // its amount mid-edit without corrupting either balance.
+      const before = { byUsername: existing.byUsername, amount: existing.amount, type: existing.type };
       Object.assign(existing, {
         description: document.getElementById('expDesc').value.trim(),
         category: document.getElementById('expCat').value.trim(), amount,
         byUsername, byName: byUser?byUser.name:byUsername
       });
       touched = existing;
+      applyExpenseBalanceDelta(before, -1);
+      applyExpenseBalanceDelta(touched, +1);
     } else {
       touched = {
         // BUGFIX (2026-08-21): this used to force type to 'expense' for
@@ -4023,6 +4071,7 @@ function openExpenseModal(existing, type, forUsername){
         at:Date.now()
       };
       S.expenses.push(touched);
+      applyExpenseBalanceDelta(touched, +1);
     }
     if(isAdmin) S.expenseAdminSel = byUsername;
     savePartitionForItem('expenses', touched);
@@ -5525,13 +5574,18 @@ function performResetAllDataExceptUsers(){
   S.rawMaterial = {}; S.filledStock = {}; S.readyStock = {};
   S.expenses = []; S.activityLog = []; S.stockTasks = []; S.dominoPrints = []; S.chatMessages = []; S.retailSales = []; S.trackingViewLogs = []; S.siteVisitLogs = []; S.stockMovementLog = [];
   S.lowStock = {raw:{}, filled:{}, ready:{}};
+  // Durable expense balances must be wiped here too -- otherwise, since
+  // expenseBalanceFor() only ever seeds from S.expenses when no durable
+  // entry exists yet, every manager's pre-reset balance would linger
+  // forever even though every expense that produced it is now gone.
+  S.expenseBalances = {};
   PARTITIONED_ENTITIES.forEach(entity=>{ S._partitionKeysSeen[entity] = new Set(); });
   offlineQueue = {}; persistOfflineQueue(); updateSyncStatusUI(); // don't let a stale queued save push old data back after reset
   Promise.all([
     safeSet('app:customers', S.customers), safeSet('app:tasks', S.tasks),
     safeSet('app:rawMaterial', S.rawMaterial), safeSet('app:filledStock', S.filledStock),
     safeSet('app:readyStock', S.readyStock), safeSet('app:stockTasks', S.stockTasks),
-    safeSet('app:lowStock', S.lowStock),
+    safeSet('app:lowStock', S.lowStock), safeSet('app:expenseBalances', S.expenseBalances),
     apiDeleteKeys(keysToDelete)
   ]);
   render();
