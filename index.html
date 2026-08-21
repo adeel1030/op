@@ -883,10 +883,10 @@ const MAX_PURCHASE_L = 2000; // max liters in a single purchase entry
 
 const ROLES = {
   admin:{label:'Admin', tabs:['home','orders','customers','stock','domino','tasks','expenses','dailywork','attendance','users']},
-  manager:{label:'Manager', tabs:['home','orders','stock','domino','tasks','expenses','checkin']},
+  manager:{label:'Manager', tabs:['home','orders','stock','domino','tasks','expenses','checkin','dailywork']},
   sales:{label:'Sales', tabs:['home','orders','customers','stock','tasks','checkin']},
   filling:{label:'Filling Team', tabs:['home','tasks','checkin','stock']},
-  packaging:{label:'Packaging Team', tabs:['home','tasks','checkin','stock','domino']},
+  packaging:{label:'Packaging Team', tabs:['home','tasks','checkin','stock','domino','dailywork']},
 };
 // Immutable snapshot of each post's default access — used as the fallback
 // whenever admin hasn't customized a post's checklist yet, and as the
@@ -908,6 +908,14 @@ function applyRolePermissionsToROLES(){
       ROLES[role].tabs = allowed.length ? allowed : ['home'];
     } else {
       ROLES[role].tabs = DEFAULT_ROLE_TABS[role].slice();
+    }
+    // Daily Work isn't in CHECKLIST_MODULES (the admin-customizable
+    // Permission Manager checklist), so it can never come back from the
+    // `perm` branch above -- Manager (full, view-only) and Packaging
+    // (Filling + Packing only) always get it regardless of whether this
+    // role's permissions were customized before this feature existed.
+    if((role==='manager' || role==='packaging') && !ROLES[role].tabs.includes('dailywork')){
+      ROLES[role].tabs.push('dailywork');
     }
   });
   if(S.currentUser && !ROLES[S.currentUser.role].tabs.includes(S.view)){
@@ -972,6 +980,27 @@ function canDoEntry(role, key){
   if(perm && Object.prototype.hasOwnProperty.call(perm, key)) return !!perm[key];
   return !!(DEFAULT_ENTRY_PERMS[role] && DEFAULT_ENTRY_PERMS[role][key]);
 }
+// Non-admin staff may only record a NEW entry (purchase / filling /
+// packaging / expense / retail sale) on a working day, between 10:30 AM
+// and 8:00 PM -- outside that window, or on a Sunday/admin-marked holiday
+// (isWorkingDay, defined further down near Attendance), the shop floor
+// shouldn't be logging new work at all. Admins are exempt (they may need
+// to backfill/correct data anytime, e.g. entering a purchase recorded on
+// paper the previous night). This only gates CREATING something new --
+// editing/deleting an already-recorded entry is governed separately by
+// canEditDailyEntry (own entry, not yet booked).
+function withinEntryWindow(){
+  if(S.currentUser.role==='admin') return true;
+  const now = new Date();
+  if(!isWorkingDay(localDateKey(now.getTime()))) return false;
+  const mins = now.getHours()*60 + now.getMinutes();
+  return mins >= (10*60+30) && mins <= (20*60);
+}
+function blockIfOutsideEntryWindow(){
+  if(withinEntryWindow()) return false;
+  showAlert('Entries can only be recorded on working days, between 10:30 AM and 8:00 PM.');
+  return true;
+}
 
 const TAB_LABEL = {
   home:'Home', orders:'Orders', customers:'Customers',
@@ -996,9 +1025,14 @@ function navSplit(tabs){
 
 function uid(){ return (crypto.randomUUID ? crypto.randomUUID() : (Date.now()+'-'+Math.random().toString(36).slice(2))); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function fmtDate(ts){ const d=new Date(ts); return d.toLocaleDateString(undefined,{month:'short',day:'numeric'}) + ' ' + d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'}); }
+function fmtDate(ts){ const d=new Date(ts); return d.toLocaleDateString(undefined,{month:'short',day:'numeric'}) + ' ' + d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit',hour12:true}); }
 function fmtDateOnly(ts){ return new Date(ts).toLocaleDateString(undefined,{month:'short',day:'numeric'}); }
-function fmtTime(ts){ return new Date(ts).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'}); }
+// hour12:true is set explicitly -- without it, toLocaleTimeString silently
+// follows the DEVICE's regional 24h/12h system setting, so the exact same
+// code could show "14:20" on one phone and "2:20 PM" on another. Forcing
+// hour12:true makes every clock-time in the app consistently 12-hour AM/PM
+// regardless of whose phone it's on.
+function fmtTime(ts){ return new Date(ts).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit',hour12:true}); }
 function dateHeading(ts){
   const d = new Date(ts); const today = new Date(); const yest = new Date(Date.now()-86400000);
   const sameDay = (a,b)=> a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
@@ -2422,7 +2456,13 @@ function saveAfterActivityChange(entry){
   safeSet('app:readyStock', S.readyStock);
   savePartitionForItem('activityLog', entry);
 }
-function openEditLogModal(e){
+function openEditLogModal(e, opts){
+  // allowUntilBooked: used by Daily Work (see editDailyEntry) where the
+  // rule is "your own entry, editable until it's booked" -- NOT the
+  // general 5-minute self-edit window used everywhere else (e.g. Home's
+  // "Your recent activity" quick-fix list). Booked itself always blocks
+  // editing regardless of this flag -- see the save handler below.
+  const allowUntilBooked = !!(opts && opts.allowUntilBooked);
   const isPurchase = e.kind==='purchase';
   const isFilling = e.kind==='filling';
   const currentActualL = isFilling ? ((e.actualMl!=null ? e.actualMl : (e.qty*e.mlPer))/1000).toFixed(2) : null;
@@ -2443,8 +2483,11 @@ function openEditLogModal(e){
     </div>
   `);
   document.getElementById('editLogSave').addEventListener('click', ()=>{
-    if(!withinSelfEditWindow(e) || (S.currentUser.role!=='admin' && e.byUsername!==S.currentUser.username)){
-      showAlert('This entry can no longer be edited (past the 5-minute window).');
+    const isAdmin = S.currentUser.role==='admin';
+    const isOwner = e.byUsername===S.currentUser.username;
+    const windowOk = allowUntilBooked || withinSelfEditWindow(e); // withinSelfEditWindow already always true for admin
+    if(e.booked || (!isAdmin && !isOwner) || (!isAdmin && !windowOk)){
+      showAlert(e.booked ? 'This entry has already been booked and can no longer be edited.' : 'This entry can no longer be edited (past the 5-minute window).');
       closeModal(); render(); return;
     }
     let val = parseFloat(document.getElementById('editLogVal').value)||0;
@@ -3175,6 +3218,16 @@ function bindView(){
 
 /* ============================= DAILY WORK (admin — for updating external accounting) ============================= */
 function renderDailyWork(){
+  const role = S.currentUser.role;
+  const isAdmin = role==='admin';
+  const isManager = role==='manager';
+  // Anyone else who reaches this page (today that's the Packaging team)
+  // only ever sees Filling + Packing -- the two categories that are their
+  // shop floor's business -- never Purchase/Expenses/Retail/New Orders,
+  // which stay admin/manager-only. They see EVERY filling/packing entry
+  // for the day regardless of who logged it ("by anyone"), not just their own.
+  const restrictedToProduction = !isAdmin && !isManager;
+  const myUsername = S.currentUser.username;
   const date = S.dailyWorkDate || localDateKey(Date.now());
   const purchaseEntries = S.activityLog.filter(e=>e.kind==='purchase' && localDateKey(e.at)===date).sort((a,b)=>a.at-b.at);
   const fillingEntries = S.activityLog.filter(e=>e.kind==='filling' && localDateKey(e.at)===date).sort((a,b)=>a.at-b.at);
@@ -3186,35 +3239,54 @@ function renderDailyWork(){
   const newOrderEntries = S.orders.filter(o=>localDateKey(o.createdAt)===date).sort((a,b)=>a.createdAt-b.createdAt);
   const totalOrderValue = newOrderEntries.reduce((s,o)=>s+orderMrpValue(o),0);
 
-  const allEntries = [...purchaseEntries, ...fillingEntries, ...packagingEntries, ...expenseEntries, ...retailEntries, ...newOrderEntries];
+  const allEntries = restrictedToProduction
+    ? [...fillingEntries, ...packagingEntries]
+    : [...purchaseEntries, ...fillingEntries, ...packagingEntries, ...expenseEntries, ...retailEntries, ...newOrderEntries];
   const bookedCount = allEntries.filter(e=>e.booked).length;
   const totalCount = allEntries.length;
 
   // Backlog check: does any day BEFORE the one currently shown here still
   // have unbooked entries sitting around? Surfaced as a warning banner up
-  // top so the admin notices old, un-booked-into-accounting entries piling
-  // up instead of only ever seeing whatever single day happens to be
+  // top so old, un-booked-into-accounting entries piling up get noticed
+  // instead of only ever seeing whatever single day happens to be
   // selected. orders key their date off createdAt; everything else off at.
+  // Scoped the same way as allEntries above -- Packaging shouldn't see (or
+  // be alerted about) backlog in categories they can't view at all.
   const entryDateKey = e => localDateKey(e.createdAt!=null ? e.createdAt : e.at);
+  const backlogSource = restrictedToProduction
+    ? S.activityLog.filter(e=>e.kind==='filling'||e.kind==='packaging')
+    : [...S.activityLog, ...S.expenses, ...S.retailSales, ...S.orders];
   const prevUnbookedDates = [...new Set(
-    [...S.activityLog, ...S.expenses, ...S.retailSales, ...S.orders]
-      .filter(e => !e.booked && entryDateKey(e) < date)
-      .map(entryDateKey)
+    backlogSource.filter(e => !e.booked && entryDateKey(e) < date).map(entryDateKey)
   )].sort();
 
-  // Unified action cell for every section: booked -> only Undo (Edit/Delete
-  // hidden, since a booked entry is meant to be locked once it's reflected
-  // in the accounting software); not booked -> Edit + Delete + Book.
-  // canDelete=false (New Orders) still gets Edit + Book, just never Delete
-  // — deleting an order is a bigger action (cancels it) done from
-  // Orders/Home's own Accept/Reject/Delete flow, not from here.
-  const actionCell = (e, source, canDelete)=> e.booked
-    ? `<button type="button" class="btn btn-sm btn-outline" data-book="${source}|${e.id}">↩ Undo</button>`
-    : `<div class="row-actions" style="flex-wrap:wrap;gap:4px;">
-        <button type="button" class="btn btn-sm btn-outline" data-edit-entry="${source}|${e.id}">Edit</button>
-        ${canDelete?`<button type="button" class="btn btn-sm btn-danger" data-del-entry="${source}|${e.id}">Delete</button>`:''}
-        <button type="button" class="btn btn-sm btn-accent" data-book="${source}|${e.id}">✅ Book</button>
-      </div>`;
+  // Action cell, role-aware:
+  //  - Manager: view only -- no buttons at all, on anything.
+  //  - Admin: unchanged -- Edit/Delete/Book any entry until booked, Undo
+  //    once booked (booking is how "reflected in accounting software" gets
+  //    tracked, so it's kept an admin-only action).
+  //  - Everyone else (e.g. Packaging team): only THEIR OWN, still-unbooked
+  //    entry gets Edit/Delete -- no Book/Undo. Someone else's entry, or
+  //    their own once it's been booked, shows no action buttons at all.
+  const actionCell = (e, source, canDelete) => {
+    if(isManager) return '';
+    if(isAdmin){
+      return e.booked
+        ? `<button type="button" class="btn btn-sm btn-outline" data-book="${source}|${e.id}">↩ Undo</button>`
+        : `<div class="row-actions" style="flex-wrap:wrap;gap:4px;">
+            <button type="button" class="btn btn-sm btn-outline" data-edit-entry="${source}|${e.id}">Edit</button>
+            ${canDelete?`<button type="button" class="btn btn-sm btn-danger" data-del-entry="${source}|${e.id}">Delete</button>`:''}
+            <button type="button" class="btn btn-sm btn-accent" data-book="${source}|${e.id}">✅ Book</button>
+          </div>`;
+    }
+    if(e.byUsername===myUsername && !e.booked){
+      return `<div class="row-actions" style="flex-wrap:wrap;gap:4px;">
+          <button type="button" class="btn btn-sm btn-outline" data-edit-entry="${source}|${e.id}">Edit</button>
+          ${canDelete?`<button type="button" class="btn btn-sm btn-danger" data-del-entry="${source}|${e.id}">Delete</button>`:''}
+        </div>`;
+    }
+    return e.booked ? `<span class="mono" style="font-size:11px;opacity:0.7;">✅ Booked</span>` : '';
+  };
 
   const purchaseHtml = `<div class="card">
     <h2>🛢️ Purchase — ${purchaseEntries.length} entr${purchaseEntries.length===1?'y':'ies'}</h2>
@@ -3282,21 +3354,29 @@ function renderDailyWork(){
 
   // Sections with entries surface first; empty (0-entry) sections sink to
   // the bottom, so the day's actual activity isn't buried below a wall of
-  // "No X recorded this day" placeholders.
-  const sections = [
-    { count: purchaseEntries.length, html: purchaseHtml },
-    { count: fillingEntries.length, html: fillingHtml },
-    { count: packagingEntries.length, html: packagingHtml },
-    { count: expenseEntries.length, html: expensesHtml },
-    { count: retailEntries.length, html: retailHtml },
-    { count: newOrderEntries.length, html: newOrdersHtml },
-  ];
+  // "No X recorded this day" placeholders. Packaging team only ever gets
+  // the Filling + Packing cards -- see restrictedToProduction above.
+  const sections = restrictedToProduction
+    ? [
+        { count: fillingEntries.length, html: fillingHtml },
+        { count: packagingEntries.length, html: packagingHtml },
+      ]
+    : [
+        { count: purchaseEntries.length, html: purchaseHtml },
+        { count: fillingEntries.length, html: fillingHtml },
+        { count: packagingEntries.length, html: packagingHtml },
+        { count: expenseEntries.length, html: expensesHtml },
+        { count: retailEntries.length, html: retailHtml },
+        { count: newOrderEntries.length, html: newOrdersHtml },
+      ];
   sections.sort((a,b)=> (b.count>0?1:0) - (a.count>0?1:0));
 
   return `
   <div class="card">
     <h2>📆 Daily Work</h2>
-    <p class="desc">Every entry for the day, in one place — book each as you update your accounting software. Editing or deleting stays available until it's booked.</p>
+    <p class="desc">${restrictedToProduction
+      ? 'Filling &amp; Packing entries for the day, from everyone on the team. You can edit or delete your own entry until it\'s booked — once booked, it\'s locked.'
+      : 'Every entry for the day, in one place — book each as you update your accounting software.'+(isManager?' View only.':' Editing or deleting stays available until it\'s booked.')}</p>
     <div class="field"><label>Date</label><input type="date" id="dwDateSel" value="${date}" max="${localDateKey(Date.now())}" /></div>
     ${prevUnbookedDates.length ? `<div style="background:#FCE2DF;border:1.5px solid #E8938B;border-radius:10px;padding:10px 12px;margin:10px 0;font-size:12.5px;">
       <div style="font-weight:800;color:#D8483B;margin-bottom:6px;">⚠️ Previous Entry Not Booked${prevUnbookedDates.length>1?` (${prevUnbookedDates.length} days)`:''}</div>
@@ -3306,20 +3386,40 @@ function renderDailyWork(){
     </div>` : ''}
     <button type="button" class="btn btn-outline" id="dwPrintBtn" style="width:100%;margin-bottom:6px;">🖨️ Print this day</button>
     ${totalCount>0 ? `<div style="background:${bookedCount===totalCount?'var(--success-bg)':'var(--bg)'};border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin:10px 0;font-size:12.5px;font-weight:700;">${bookedCount===totalCount?'✅':'📋'} ${bookedCount} of ${totalCount} entries booked</div>` : ''}
-    ${(totalCount>0 && bookedCount<totalCount) ? `<button type="button" class="btn btn-outline" id="dwBookAllBtn" style="width:100%;">✅ Book all remaining (${totalCount-bookedCount})</button>` : ''}
+    ${(isAdmin && totalCount>0 && bookedCount<totalCount) ? `<button type="button" class="btn btn-outline" id="dwBookAllBtn" style="width:100%;">✅ Book all remaining (${totalCount-bookedCount})</button>` : ''}
   </div>
   ${sections.map(s=>s.html).join('')}`;
 }
+// Shared "can THIS user touch THIS Daily Work entry" check, re-verified
+// here (not just at button-render time) so a stale button or a direct call
+// can never bypass it. Booked always locks an entry, even for admin (an
+// admin must Undo it first, same as what the action buttons already show);
+// everyone else may only touch their OWN, still-unbooked entry.
+function canEditDailyEntry(e){
+  if(!e || e.booked) return false;
+  if(S.currentUser.role==='admin') return true;
+  return e.byUsername===S.currentUser.username;
+}
 function editDailyEntry(source, id){
-  if(source==='activityLog'){ const e = S.activityLog.find(x=>x.id===id); if(e) openEditLogModal(e); }
-  else if(source==='expenses'){ const e = S.expenses.find(x=>x.id===id); if(e) openExpenseModal(e, e.type||'expense', e.byUsername); }
-  else if(source==='retailSales'){ editRetailEntry(id); }
-  else if(source==='orders'){ const o = S.orders.find(x=>x.id===id); if(o) openOrderModal(o); }
+  let e;
+  if(source==='activityLog') e = S.activityLog.find(x=>x.id===id);
+  else if(source==='expenses') e = S.expenses.find(x=>x.id===id);
+  else if(source==='retailSales') e = S.retailSales.find(x=>x.id===id);
+  else if(source==='orders') e = S.orders.find(x=>x.id===id);
+  if(!canEditDailyEntry(e)){ showAlert('This entry can no longer be edited.'); render(); return; }
+  if(source==='activityLog') openEditLogModal(e, {allowUntilBooked:true});
+  else if(source==='expenses') openExpenseModal(e, e.type||'expense', e.byUsername);
+  else if(source==='retailSales') editRetailEntry(id);
+  else if(source==='orders') openOrderModal(e);
 }
 function deleteDailyEntry(source, id){
+  let e;
+  if(source==='activityLog') e = S.activityLog.find(x=>x.id===id);
+  else if(source==='expenses') e = S.expenses.find(x=>x.id===id);
+  else if(source==='retailSales') e = S.retailSales.find(x=>x.id===id);
+  if(!canEditDailyEntry(e)){ showAlert('This entry can no longer be edited.'); render(); return; }
   if(source==='activityLog'){
     showConfirm('Delete this entry? Its stock effect will be reversed.', ()=>{
-      const e = S.activityLog.find(x=>x.id===id); if(!e) return;
       revertActivity(e, 'delete');
       S.activityLog = S.activityLog.filter(x=>x.id!==id);
       saveAfterActivityChange(e);
@@ -3327,9 +3427,8 @@ function deleteDailyEntry(source, id){
     });
   } else if(source==='expenses'){
     showConfirm('Delete this entry?', ()=>{
-      const item = S.expenses.find(x=>x.id===id);
       S.expenses = S.expenses.filter(x=>x.id!==id);
-      if(item) savePartitionForItem('expenses', item);
+      savePartitionForItem('expenses', e);
       render();
     });
   } else if(source==='retailSales'){
@@ -3338,6 +3437,10 @@ function deleteDailyEntry(source, id){
   // orders are intentionally NOT deletable from here -- see actionCell's canDelete=false above
 }
 function toggleEntryBooked(source, id){
+  // Booking/unbooking marks an entry as reflected in the external
+  // accounting software -- that's an admin-only accounting action, not
+  // something any team member recording their own work should do.
+  if(S.currentUser.role!=='admin') return;
   const list = source==='expenses' ? S.expenses : source==='retailSales' ? S.retailSales : source==='orders' ? S.orders : S.activityLog;
   const e = list.find(x=>x.id===id); if(!e) return;
   e.booked = !e.booked;
@@ -3346,6 +3449,9 @@ function toggleEntryBooked(source, id){
   showToast(e.booked ? 'Booked ✅' : 'Unbooked');
 }
 function printDailyWork(){
+  // Mirrors renderDailyWork's own visibility rule -- Packaging team only
+  // ever prints Filling + Packing, never Purchase/Expenses/Retail/Orders.
+  const restrictedToProduction = S.currentUser.role!=='admin' && S.currentUser.role!=='manager';
   const date = S.dailyWorkDate || localDateKey(Date.now());
   const purchaseEntries = S.activityLog.filter(e=>e.kind==='purchase' && localDateKey(e.at)===date).sort((a,b)=>a.at-b.at);
   const fillingEntries = S.activityLog.filter(e=>e.kind==='filling' && localDateKey(e.at)===date).sort((a,b)=>a.at-b.at);
@@ -3362,23 +3468,27 @@ function printDailyWork(){
 
   let html = `<h1>${esc(COMPANY_NAME)}</h1><div style="font-size:11px;color:#555;margin-bottom:10px;">Daily Work — ${esc(fmtDateOnly(dateKeyToTs(date)))}</div>`;
 
-  html += `<h2>🛢️ Purchase</h2>` + table(['Category','Qty','By','Time'],
-    purchaseEntries.map(e=>`<tr><td>${esc(e.cat)}</td><td>${fmtMl(e.ml)}</td><td>${esc(e.by)}</td><td>${fmtTime(e.at)}</td></tr>`).join(''));
+  if(!restrictedToProduction){
+    html += `<h2>🛢️ Purchase</h2>` + table(['Category','Qty','By','Time'],
+      purchaseEntries.map(e=>`<tr><td>${esc(e.cat)}</td><td>${fmtMl(e.ml)}</td><td>${esc(e.by)}</td><td>${fmtTime(e.at)}</td></tr>`).join(''));
+  }
 
   html += `<h2>🧴 Filling</h2>` + table(['Item','Qty','By','Time'],
     fillingEntries.map(e=>`<tr><td>${esc(e.itemLabel)}</td><td>${e.qty} pc</td><td>${esc(e.by)}</td><td>${fmtTime(e.at)}</td></tr>`).join(''));
 
   html += `<h2>📦 Packing</h2>` + table(['Item','Qty','By','Time'],
-    packagingEntries.map(e=>`<tr><td>${esc(e.itemLabel)}${e.note?` (${esc(e.note)})`:''}</td><td>${e.qty} pc</td><td>${esc(e.by)}</td><td>${fmtTime(e.at)}</td></tr>`).join(''));
+    packagingEntries.map(e=>`<tr><td>${esc(e.itemLabel)}${e.note?` (Batch no- ${esc(e.note)})`:''}</td><td>${e.qty} pc</td><td>${esc(e.by)}</td><td>${fmtTime(e.at)}</td></tr>`).join(''));
 
-  html += `<h2>💰 Expenses ${totalExpense?`— Total ₹${totalExpense.toLocaleString('en-IN')}`:''}</h2>` + table(['To','Description','Amount','Time'],
-    expenseEntries.map(e=>`<tr><td>${esc(e.byName)}</td><td>${esc(e.description||e.category||'—')}</td><td>${e.type==='settlement'?'− ':''}₹${(e.amount||0).toLocaleString('en-IN')}</td><td>${fmtTime(e.at)}</td></tr>`).join(''));
+  if(!restrictedToProduction){
+    html += `<h2>💰 Expenses ${totalExpense?`— Total ₹${totalExpense.toLocaleString('en-IN')}`:''}</h2>` + table(['To','Description','Amount','Time'],
+      expenseEntries.map(e=>`<tr><td>${esc(e.byName)}</td><td>${esc(e.description||e.category||'—')}</td><td>${e.type==='settlement'?'− ':''}₹${(e.amount||0).toLocaleString('en-IN')}</td><td>${fmtTime(e.at)}</td></tr>`).join(''));
 
-  html += `<h2>💵 Retail Sale &amp; Samples ${totalRetail?`— Total ₹${totalRetail.toLocaleString('en-IN')}`:''}</h2>` + table(['Items','Type','Total','Time'],
-    retailEntries.map(e=>`<tr><td>${(e.items||[]).map(i=>`${esc(i.itemLabel)} ×${i.qty}`).join(', ')}</td><td>${e.type==='sale'?'Sale':'Sample'}</td><td>${e.type==='sale'?'₹'+(e.totalAmount||0).toLocaleString('en-IN'):'—'}</td><td>${fmtTime(e.at)}</td></tr>`).join(''));
+    html += `<h2>💵 Retail Sale &amp; Samples ${totalRetail?`— Total ₹${totalRetail.toLocaleString('en-IN')}`:''}</h2>` + table(['Items','Type','Total','Time'],
+      retailEntries.map(e=>`<tr><td>${(e.items||[]).map(i=>`${esc(i.itemLabel)} ×${i.qty}`).join(', ')}</td><td>${e.type==='sale'?'Sale':'Sample'}</td><td>${e.type==='sale'?'₹'+(e.totalAmount||0).toLocaleString('en-IN'):'—'}</td><td>${fmtTime(e.at)}</td></tr>`).join(''));
 
-  html += `<h2>🛍️ New Orders ${totalOrderValue?`— Total ₹${totalOrderValue.toLocaleString('en-IN')}`:''}</h2>` + table(['Party','Items','MRP Value','By','Time'],
-    newOrderEntries.map(o=>`<tr><td>${esc(orderDisplayLabel(o))}</td><td>${o.items.filter(i=>!i.cancelled).map(i=>`${esc(i.name)} ${esc(i.size)} ×${i.qty}`).join(', ')}</td><td>₹${orderMrpValue(o).toLocaleString('en-IN')}</td><td>${esc(o.createdBy)}</td><td>${fmtTime(o.createdAt)}</td></tr>`).join(''));
+    html += `<h2>🛍️ New Orders ${totalOrderValue?`— Total ₹${totalOrderValue.toLocaleString('en-IN')}`:''}</h2>` + table(['Party','Items','MRP Value','By','Time'],
+      newOrderEntries.map(o=>`<tr><td>${esc(orderDisplayLabel(o))}</td><td>${o.items.filter(i=>!i.cancelled).map(i=>`${esc(i.name)} ${esc(i.size)} ×${i.qty}`).join(', ')}</td><td>₹${orderMrpValue(o).toLocaleString('en-IN')}</td><td>${esc(o.createdBy)}</td><td>${fmtTime(o.createdAt)}</td></tr>`).join(''));
+  }
 
   const printArea = document.getElementById('printArea');
   printArea.innerHTML = html;
@@ -3406,6 +3516,7 @@ function bindDailyWork(){
   }));
   const bookAllBtn = document.getElementById('dwBookAllBtn');
   if(bookAllBtn) bookAllBtn.addEventListener('click', ()=>{
+    if(S.currentUser.role!=='admin') return; // booking is an admin-only accounting action -- see toggleEntryBooked
     const date = S.dailyWorkDate || localDateKey(Date.now());
     S.activityLog.filter(e=>(e.kind==='purchase'||e.kind==='filling'||e.kind==='packaging') && localDateKey(e.at)===date && !e.booked).forEach(e=>{ e.booked = true; savePartitionForItem('activityLog', e); });
     S.expenses.filter(e=>localDateKey(e.at)===date && !e.booked).forEach(e=>{ e.booked = true; savePartitionForItem('expenses', e); });
@@ -3771,6 +3882,7 @@ function openExpenseModal(existing, type, forUsername){
   `);
   document.getElementById('expForm').addEventListener('submit', (e)=>{
     e.preventDefault();
+    if(!existing && blockIfOutsideEntryWindow()) return; // only gates NEW entries -- editing an existing one isn't a "new" entry
     const amount = parseFloat(document.getElementById('expAmt').value)||0;
     if(amount<=0){ showAlert('Enter a valid amount.'); return; }
     const managerSel = document.getElementById('expManager');
@@ -6188,6 +6300,7 @@ function openPurchaseModal(){
   `);
   document.getElementById('purchaseForm').addEventListener('submit', e=>{
     e.preventDefault();
+    if(blockIfOutsideEntryWindow()) return;
     const cat = document.getElementById('purCat').value;
     const qty = parseFloat(document.getElementById('purQty').value)||0;
     const ml = qty*1000;
@@ -6218,6 +6331,7 @@ function openFillingModal(prefillKey, prefillQty){
   `);
   document.getElementById('fillForm').addEventListener('submit', e=>{
     e.preventDefault();
+    if(blockIfOutsideEntryWindow()) return;
     const key = prefillKey || (resolveItemFromText(document.getElementById('fillItem').value)||{}).key;
     const it = findItem(key);
     if(!it){ showAlert('Pick a valid item from the list.'); return; }
@@ -6312,6 +6426,7 @@ function openPackagingModal(prefillKey, prefillQty){
   refreshCaseRow();
   document.getElementById('packForm').addEventListener('submit', e=>{
     e.preventDefault();
+    if(blockIfOutsideEntryWindow()) return;
     const key = currentKey();
     const it = findItem(key);
     if(!it){ showAlert('Pick a valid item from the list.'); return; }
@@ -6488,6 +6603,7 @@ function openRetailModal(type, existingEntry){
       showAlert('This entry can no longer be edited (past the 5-minute window).');
       closeModal(); render(); return;
     }
+    if(!existingEntry && blockIfOutsideEntryWindow()) return; // only gates a NEW sale/sample -- editing an existing one is handled above
     if(retailDraft.length===0){ showAlert('Add at least one item.'); return; }
     // When editing, this entry's OWN current quantities are already
     // deducted from readyStock — add them back in before checking
