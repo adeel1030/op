@@ -683,7 +683,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-22-dispatch-date-report1";
+const APP_BUILD = "2026-08-22-push-login-retry1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -1318,11 +1318,57 @@ async function initPushNotifications(){
       // change") can target/exclude specific people -- current triggers
       // broadcast to every subscribed staff device.
       if(S.currentUser && S.currentUser.username){
-        try{ await OneSignal.login(S.currentUser.username); }catch(e){}
+        ensureOneSignalLogin(OneSignal, S.currentUser.username);
       }
       try{ await OneSignal.Notifications.requestPermission(); }catch(e){}
     });
   }catch(e){ /* push setup must never break the app itself */ }
+}
+// "Kuch ko notification ja rhi h, kuch ko nahi" (2026-08-22, user-reported):
+// diagnosed via the live OneSignal dashboard -- one staff device was shown
+// "Subscribed" (push permission granted, service worker healthy) but with
+// its External ID column completely blank, meaning OneSignal.login(username)
+// above had silently failed at some point (flaky network, SDK not fully
+// ready yet, etc) and the old code just swallowed the error and gave up for
+// the rest of that browser session. The backend targets pushes ONLY by
+// external_id (see include_aliases in flushPushSpecs_ / order-ops-backend.gs),
+// so a device stuck in that state can be perfectly subscribed and STILL
+// never receive a single push -- indistinguishable from "notifications are
+// broken" to that staff member, with no error shown anywhere. Fix: retry
+// with backoff instead of a single silent attempt, and verify the login
+// actually stuck (OneSignal.User.externalId must equal our username -- login()
+// can resolve without throwing even when the underlying association didn't
+// fully complete). Re-armed on 'online' (see the window 'online' listener
+// near init()) so a device that lost the race while the network was flaky
+// self-heals the moment connectivity returns, the same way this app's
+// offline save queue already does -- no need to wait for a full app reload.
+let oneSignalLoginOk = false;
+async function ensureOneSignalLogin(OneSignal, username, attempt){
+  attempt = attempt || 1;
+  try{
+    await OneSignal.login(username);
+    if(OneSignal.User && OneSignal.User.externalId && OneSignal.User.externalId !== username){
+      throw new Error('OneSignal externalId mismatch after login');
+    }
+    oneSignalLoginOk = true;
+  }catch(e){
+    oneSignalLoginOk = false;
+    if(attempt < 6){
+      // backoff: 2s, 4s, 8s, 16s, 32s -- covers slow/flaky networks and the
+      // SDK still finishing its own init, without hammering OneSignal's API
+      setTimeout(function(){ ensureOneSignalLogin(OneSignal, username, attempt+1); }, Math.min(2000*Math.pow(2, attempt-1), 32000));
+    }
+  }
+}
+// Re-check (and retry if needed) whenever the browser comes back online or
+// the installed PWA is foregrounded again after being backgrounded for a
+// while -- covers the long-lived-tab case where initPushNotifications() only
+// ever ran once at a stale page load and the network happened to be down or
+// flaky at that exact moment.
+function reverifyOneSignalLogin(){
+  if(!oneSignalLoginOk && window.OneSignalDeferred && S.currentUser && S.currentUser.username){
+    window.OneSignalDeferred.push(function(OneSignal){ ensureOneSignalLogin(OneSignal, S.currentUser.username); });
+  }
 }
 // "Login mandatory for notifications" (2026-08-21, explicit user request):
 // OneSignal.login(username) above ties this browser/device to the staff
@@ -1623,6 +1669,21 @@ function mergePartitionedEntity(rawData, entity, existing){
   const touchedDays = new Set();
   Object.keys(rawData).forEach(k=>{
     if(k.indexOf(entity+'_')===0) touchedDays.add(k.substring(entity.length+1));
+  });
+  // 2026-08-22 fix ("messages sometimes disappear"): a day this device still
+  // has an UNFLUSHED local save queued for (offlineQueue[entity_day]) must
+  // NEVER be replaced by whatever this sync response says about that same
+  // day — that response was necessarily fetched before (or racing with) our
+  // own pending write reached the server, so it can't yet reflect it. Without
+  // this guard, a message/order/etc. just added locally (visible instantly,
+  // per the local-first design) could be wiped from view moments later by an
+  // incoming poll that still shows the old server state, even though the
+  // item is safely queued and WILL actually save — it would just vanish from
+  // the screen in the meantime, which is exactly what felt like a message
+  // "failing to send and disappearing". Once the queued save actually
+  // flushes, offlineQueue[key] clears and the next sync applies normally.
+  touchedDays.forEach(day=>{
+    if(offlineQueue[entity+'_'+day]) touchedDays.delete(day);
   });
   if(!touchedDays.size) return existing || [];
   const tsField = PARTITIONED_TS_FIELD[entity];
@@ -8206,8 +8267,13 @@ let loadAllPromise = null;
   render();
   if(S.currentUser){ primeDevicePermissions(); lastKnownNotifCount = myNotifCount(getStockAlerts()); }
   flushOfflineQueue(); // in case saves were queued from a previous session
-  window.addEventListener('online', ()=>{ showToast('Back online — syncing…'); flushOfflineQueue(); });
+  window.addEventListener('online', ()=>{ showToast('Back online — syncing…'); flushOfflineQueue(); reverifyOneSignalLogin(); });
   window.addEventListener('offline', ()=>{ showToast('No connection — changes will be saved and synced automatically', true); });
+  // Installed PWAs can stay open (backgrounded) for days without a real page
+  // reload -- if the very first OneSignal.login() attempt lost its race
+  // (see ensureOneSignalLogin above), this is the other natural moment to
+  // quietly retry it, matching how the offline save queue self-heals.
+  document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') reverifyOneSignalLogin(); });
   // Re-render (debounced) when the window crosses the desktop-sidebar
   // breakpoint, so resizing a browser window updates the nav split
   // (bottom-bar "More" overflow <-> full sidebar list) without waiting
