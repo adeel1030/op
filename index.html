@@ -683,7 +683,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-21-session-security-notifs";
+const APP_BUILD = "2026-08-21-audit-fixes-full2";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -959,7 +959,9 @@ const S = {
   // Per-username failed-login tracking (security feature, 2026-08-21):
   // { username: { failCount, lastFailAt, lockedUntil } } -- synced to the
   // backend (not just per-browser) so a lockout is a real cross-device
-  // limit. See recordFailedLogin/checkLoginLockout.
+  // limit. Written server-side now (see order-ops-backend.gs's
+  // recordFailedLoginServer_, run as part of action:"login"); read here
+  // only as a fast local pre-check in bindLogin.
   loginLockouts:{},
   // "Login mandatory for notifications" (2026-08-21): { username:
   // [{title, body, at}, ...] } -- server-recorded copy of every push this
@@ -970,6 +972,14 @@ const S = {
   pendingNotifs:{},
   _partitionKeysSeen:{orders:new Set(), activityLog:new Set(), attendance:new Set(), expenses:new Set(), dominoPrints:new Set(), loginLog:new Set(), chatMessages:new Set(), retailSales:new Set(), trackingViewLogs:new Set(), siteVisitLogs:new Set(), stockMovementLog:new Set()},
   currentUser:null, view:'home', stockView:'raw', notifOpen:false, moreOpen:false, profileOpen:false, alertPanelOpen:null, toast:null,
+  // SECURITY FIX (2026-08-21 audit, findings #3/#4): the real, server-issued
+  // session token from the new action:"login" backend endpoint (see
+  // requireSession_ in order-ops-backend.gs). Every staff write now sends
+  // this alongside actingUsername, and the server verifies it against its
+  // own private authSessions store -- login is no longer decided purely by
+  // the client comparing a locally-held password hash. See apiLogin/
+  // restoreSession/finalizeLogin/doLogout.
+  authToken:null,
   chatModalOpen:false, chatView:'announcements', chatActiveThread:null, chatSearch:'',
   postLoginPhase:null, pendingUser:null, postLoginLoadingStep:0,
   search:{}, // per-view search text
@@ -978,6 +988,15 @@ const S = {
 // Per-entry caps
 const MAX_PC_ENTRY = 5000;   // max pieces in a single filling / packaging / order-item entry
 const MAX_PURCHASE_L = 2000; // max liters in a single purchase entry
+// MEDIUM FIX (2026-08-21 audit, finding #22): the manual stock-adjustment
+// modal (openAdjustModal) sets an ABSOLUTE new total, not a per-entry
+// delta -- so it can't reuse MAX_PC_ENTRY/MAX_PURCHASE_L (those are sized
+// for a single purchase/filling event, and a legitimate running total can
+// be far larger). This is a much more generous sanity ceiling whose only
+// job is catching a fat-fingered extra zero, not enforcing a real business
+// limit.
+const MAX_STOCK_ADJUST_PC = 500000;
+const MAX_STOCK_ADJUST_L = 200000;
 
 const ROLES = {
   admin:{label:'Admin', tabs:['home','orders','customers','stock','domino','tasks','expenses','dailywork','attendance','users']},
@@ -1127,6 +1146,49 @@ function navSplit(tabs){
 
 function uid(){ return (crypto.randomUUID ? crypto.randomUUID() : (Date.now()+'-'+Math.random().toString(36).slice(2))); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+// SECURITY FIX (2026-08-21 audit, findings #5/#7): orderLat/orderLng and
+// attendance a.lat/a.lng were the only fields anywhere in the app rendered
+// WITHOUT esc() -- both are interpolated straight into a Google Maps href,
+// and both can originate from an untrusted source (orderLat/orderLng from
+// the public order form; a.lat/a.lng from any logged-in staff member's
+// browser geolocation API, which is fully attacker-controlled via dev
+// tools). A crafted value like `0" onmouseover="alert(1)` or one that
+// closes the href attribute and injects a script tag breaks out of the
+// href attribute and executes with full admin privileges the moment an
+// admin opens that tile. The
+// backend now validates GPS as strict numeric ranges at the point of public
+// submission (handlePublicOrderSubmission_'s sanitizeGeoCoord_), but this
+// is the necessary defense-in-depth twin: it also protects any data that
+// was stored before that fix landed, and anything written via a direct
+// staff-secret API call, which isn't field-validated the same way. Returns
+// a finite number, or null if the value isn't safely usable as one --
+// callers must skip rendering the link entirely on null rather than try to
+// coerce/escape garbage into a coordinate.
+function safeGeoCoord(v){
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+// SECURITY FIX (2026-08-21 audit, finding #9): almost every save/create
+// form except login had no double-submit protection -- a double-tap on a
+// slow connection (very common on the mobile connections this app
+// actually gets used on) could fire the handler twice before the first
+// call's render()/closeModal() had a chance to remove the button/form from
+// the DOM, creating a duplicate order (fresh uid() each call), a duplicate
+// expense/settlement entry, or double-applying a stock delta. Wraps a
+// submit/click handler so a second event received while the first call is
+// still "in flight" is silently ignored -- released again once the handler
+// (sync or async) actually finishes, so a rejected/invalid submission can
+// always be retried. Mirrors the loginSubmitting flag the login form
+// already used.
+function withSubmitGuard(handler){
+  let running = false;
+  return async function(e){
+    if(running) return;
+    running = true;
+    try{ await handler(e); }
+    finally{ running = false; }
+  };
+}
 function fmtDate(ts){ const d=new Date(ts); return d.toLocaleDateString(undefined,{month:'short',day:'numeric'}) + ' ' + d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit',hour12:true}); }
 function fmtDateOnly(ts){ return new Date(ts).toLocaleDateString(undefined,{month:'short',day:'numeric'}); }
 // hour12:true is set explicitly -- without it, toLocaleTimeString silently
@@ -1433,7 +1495,7 @@ async function flushOfflineQueue(){
     const res = await fetchWithTimeout(API_URL, {
       method:'POST',
       headers:{'Content-Type':'text/plain;charset=utf-8'},
-      body: JSON.stringify({ secret:SECRET, action:'batchSave', items, actingUsername: S.currentUser && S.currentUser.username })
+      body: JSON.stringify({ secret:SECRET, action:'batchSave', items, actingUsername: S.currentUser && S.currentUser.username, sessionToken: S.authToken })
     });
     const json = await res.json();
     if(json.error) throw new Error(json.error);
@@ -1441,7 +1503,17 @@ async function flushOfflineQueue(){
     settle();
   }catch(e){
     console.error('batch sync failed — still queued, will retry', e);
-    showToast('No connection — saved on this device, will sync automatically', true);
+    // SECURITY FIX (2026-08-21 audit, findings #3/#4): session_required/
+    // forbidden are NOT connectivity failures -- retrying the same request
+    // forever would never succeed, since the server is correctly refusing
+    // an invalid/expired/insufficient session, not a dropped connection.
+    // handleAuthError prompts a quick one-time re-login (session_required)
+    // or shows a clear permission message (forbidden) instead of the
+    // generic "no connection" toast, and re-flushes automatically once a
+    // fresh session is obtained -- nothing queued here is lost either way.
+    if(!handleAuthError(e.message)){
+      showToast('No connection — saved on this device, will sync automatically', true);
+    }
     // Resolve pending `await safeSet(...)` callers so they don't hang
     // forever, but (per settle()'s own check) never delete anything here —
     // items simply stay queued for the next retry.
@@ -1488,7 +1560,7 @@ async function apiSave(key, value){
     const res = await fetchWithTimeout(API_URL, {
       method:'POST',
       headers:{'Content-Type':'text/plain;charset=utf-8'},
-      body: JSON.stringify({ secret:SECRET, action:'save', key, value, actingUsername: S.currentUser && S.currentUser.username })
+      body: JSON.stringify({ secret:SECRET, action:'save', key, value, actingUsername: S.currentUser && S.currentUser.username, sessionToken: S.authToken })
     });
     const json = await res.json();
     if(json.error) throw new Error(json.error);
@@ -1625,9 +1697,11 @@ async function apiDeleteKeys(keys){
   if(!keys.length) return;
   const res = await fetchWithTimeout(API_URL, {
     method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
-    body: JSON.stringify({ secret:SECRET, action:'deleteKeys', keys })
+    body: JSON.stringify({ secret:SECRET, action:'deleteKeys', keys, actingUsername: S.currentUser && S.currentUser.username, sessionToken: S.authToken })
   });
-  return res.json();
+  const json = await res.json();
+  if(json && json.error) handleAuthError(json.error);
+  return json;
 }
 // "Login mandatory for notifications" replay (2026-08-21): tells the
 // backend this user's missed-notification queue was just shown, so it
@@ -1640,9 +1714,26 @@ async function apiDeleteKeys(keys){
 async function apiClearPendingNotifs(username){
   const res = await fetchWithTimeout(API_URL, {
     method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
-    body: JSON.stringify({ secret:SECRET, action:'clearPendingNotifs', username })
+    body: JSON.stringify({ secret:SECRET, action:'clearPendingNotifs', username, actingUsername: S.currentUser && S.currentUser.username, sessionToken: S.authToken })
   });
-  return res.json();
+  const json = await res.json();
+  if(json && json.error) handleAuthError(json.error);
+  return json;
+}
+// SECURITY FIX (2026-08-21 audit, finding #12): applies a balance delta
+// ATOMICALLY server-side (see applyKeyedNumberDelta_ in
+// order-ops-backend.gs), against whatever is currently stored -- not a
+// client-computed whole-object snapshot. Closes the lost-update race where
+// two devices adjusting expenseBalances within the same few seconds could
+// have whichever save landed second silently discard the other's change.
+async function apiApplyExpenseBalanceDelta(username, delta){
+  const res = await fetchWithTimeout(API_URL, {
+    method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify({ secret:SECRET, action:'applyExpenseBalanceDelta', username, delta, actingUsername: S.currentUser && S.currentUser.username, sessionToken: S.authToken })
+  });
+  const json = await res.json();
+  if(json && json.error) handleAuthError(json.error);
+  return json;
 }
 async function apiUploadLR(base64Data, mimeType, filename){
   // Photo uploads are a much larger payload than any other call here, and
@@ -1650,16 +1741,124 @@ async function apiUploadLR(base64Data, mimeType, filename){
   // avoids aborting a real (just slow) upload while it's still in flight.
   const res = await fetchWithTimeout(API_URL, {
     method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
-    body: JSON.stringify({ secret:SECRET, action:'uploadLR', base64Data, mimeType, filename })
+    body: JSON.stringify({ secret:SECRET, action:'uploadLR', base64Data, mimeType, filename, actingUsername: S.currentUser && S.currentUser.username, sessionToken: S.authToken })
   }, 60000);
-  return res.json();
+  const json = await res.json();
+  if(json && json.error) handleAuthError(json.error);
+  return json;
 }
 async function apiDeleteLR(fileId){
   const res = await fetchWithTimeout(API_URL, {
     method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
-    body: JSON.stringify({ secret:SECRET, action:'deleteLR', fileId })
+    body: JSON.stringify({ secret:SECRET, action:'deleteLR', fileId, actingUsername: S.currentUser && S.currentUser.username, sessionToken: S.authToken })
   });
-  return res.json();
+  const json = await res.json();
+  if(json && json.error) handleAuthError(json.error);
+  return json;
+}
+// ---- SERVER-SIDE AUTH (2026-08-21 audit, findings #3/#4) ----
+// Real login: the server verifies the password itself (against the same
+// salted hash format hashPassword() already produces here) and mints a
+// real session token, instead of the app deciding "this password matches"
+// purely by comparing against a locally-held hash and then just trusting
+// itself forever after. See action:"login" in order-ops-backend.gs.
+async function apiLogin(username, password){
+  const res = await fetchWithTimeout(API_URL, {
+    method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify({ secret:SECRET, action:'login', username, password })
+  });
+  return res.json(); // {ok:true,user,sessionToken} | {error:'invalid_credentials'} | {error:'locked',lockedUntil}
+}
+// Best-effort — the token is discarded client-side regardless of whether
+// this reaches the server, so a failed/slow logout call never blocks the
+// UI from returning to the login screen.
+async function apiLogout(){
+  if(!S.currentUser || !S.authToken) return;
+  try{
+    await fetchWithTimeout(API_URL, {
+      method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({ secret:SECRET, action:'logout', username:S.currentUser.username, sessionToken:S.authToken })
+    });
+  }catch(e){ /* token is cleared locally either way — see doLogout */ }
+}
+// Actually revokes another user's session server-side (Force logout, and
+// resetting someone else's password) — before this fix, both only ever
+// flipped a client-visible flag (activeSessions) that the affected device
+// would merely NOTICE on its next sync; its writes kept working the whole
+// time since the backend never checked any token at all. Best-effort by
+// design (fire-and-forget at both call sites): the client-visible
+// activeSessions flag (issueNewSessionToken) still does the visible "signed
+// out" UX even if this particular call fails.
+async function apiInvalidateSession(username){
+  if(!S.currentUser || !S.authToken) return;
+  try{
+    const res = await fetchWithTimeout(API_URL, {
+      method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({ secret:SECRET, action:'invalidateSession', username, actingUsername:S.currentUser.username, sessionToken:S.authToken })
+    });
+    const json = await res.json();
+    if(json && json.error) handleAuthError(json.error);
+  }catch(e){ /* best-effort */ }
+}
+// Replaces the old client-driven "save ~8 keys to empty + deleteKeys
+// whatever days I've locally seen" sequence with the one atomic,
+// server-comprehensive action (finding #1's literal "wipe all data"
+// example) — see performResetAllData_ in order-ops-backend.gs.
+async function apiResetAllData(){
+  const res = await fetchWithTimeout(API_URL, {
+    method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify({ secret:SECRET, action:'resetAllData', actingUsername:S.currentUser && S.currentUser.username, sessionToken:S.authToken })
+  });
+  const json = await res.json();
+  if(json && json.error) throw new Error(json.error);
+  return json;
+}
+// ---- Graceful handling for the two new auth failure reasons a write can
+// come back with (2026-08-21 audit, findings #3/#4) ----
+//   "session_required": the session is missing/stale/expired — re-login
+//     (silently, without losing whatever screen the person is on) is the
+//     fix, and it's exactly what's needed, so prompt for it right here.
+//   "forbidden": the session IS valid, but this account's role doesn't
+//     allow the action — re-login won't help, so just say so.
+// Anything else (network errors, locked_busy, etc.) is left for the caller
+// to keep handling as it already did (returns false so callers can fall
+// back to their own generic message).
+let authErrorPromptOpen = false;
+function handleAuthError(errMsg){
+  if(errMsg === 'forbidden'){
+    showToast("You don't have permission to do that.", true);
+    return true;
+  }
+  if(errMsg === 'session_required'){
+    if(!authErrorPromptOpen && S.currentUser){
+      authErrorPromptOpen = true;
+      showPrompt(
+        `Your session needs to be refreshed to keep saving changes, ${S.currentUser.name}. Enter your password to continue (anything already entered stays safely queued):`,
+        '',
+        async (pwd)=>{
+          authErrorPromptOpen = false;
+          if(!pwd) return;
+          try{
+            const result = await apiLogin(S.currentUser.username, pwd);
+            if(result && result.ok && result.sessionToken){
+              S.authToken = result.sessionToken;
+              persistAuthToken(result.sessionToken);
+              showToast('Session refreshed — syncing…');
+              flushOfflineQueue(); // retry whatever was queued, now with a valid token
+            } else {
+              showAlert('That password was not accepted. Please try again from the Team page, or log out and back in.');
+            }
+          }catch(e){
+            showAlert('Could not reach the server to refresh your session — will try again shortly.');
+          }
+        },
+        {password:true},
+        ()=>{ authErrorPromptOpen = false; } // cancelled — allow the prompt to reappear on the next failed write instead of being permanently silenced
+      );
+    }
+    return true;
+  }
+  return false;
 }
 function openUploadLRModal(orderId){
   const o = S.orders.find(x=>x.id===orderId); if(!o) return;
@@ -2119,6 +2318,20 @@ function persistSession(user){
     localStorage.setItem(SESSION_AT_KEY, user ? String(Date.now()) : '');
   }catch(e){}
 }
+// SECURITY FIX (2026-08-21 audit, findings #3/#4): the real server session
+// token (from action:"login"), stored separately from SESSION_KEY (which is
+// just "who was last logged in on this device, for restoring the UI").
+// This is what every write now has to send for requireSession_ to accept it.
+const AUTH_TOKEN_KEY = 'orderops_auth_token';
+function persistAuthToken(token){
+  try{
+    if(token) localStorage.setItem(AUTH_TOKEN_KEY, token);
+    else localStorage.removeItem(AUTH_TOKEN_KEY);
+  }catch(e){}
+}
+function restoreAuthToken(){
+  try{ return localStorage.getItem(AUTH_TOKEN_KEY) || null; }catch(e){ return null; }
+}
 // Called on every genuine user interaction while logged in -- refreshes
 // just the activity timestamp (not the whole session) so the 48-hour idle
 // clock resets. Throttled to at most once every 30s so a flurry of clicks
@@ -2146,7 +2359,16 @@ function restoreSession(){
       return;
     }
     const u = S.users.find(x=>x.id===id);
-    if(u){ S.currentUser = u; S.view = ROLES[u.role].tabs[0]; }
+    if(u){
+      S.currentUser = u;
+      S.view = ROLES[u.role].tabs[0];
+      // The real server session token (if any) survives an app restart too
+      // -- if it's stale/expired, requireSession_ will reject the first
+      // write that needs it and the app prompts a quick re-login then (see
+      // handleAuthError), rather than forcing a full re-login just to
+      // restore this READ-ONLY view of already-synced local data.
+      S.authToken = restoreAuthToken();
+    }
   }catch(e){}
 }
 function startSessionExpiryWatch(){
@@ -2297,8 +2519,10 @@ function finalizeLogin(u){
   checkForMissedNotifsOnLogin();
 }
 function doLogout(){
+  apiLogout(); // best-effort real server-side session revoke (2026-08-21 fix) -- never awaited, never blocks the local logout below
   unsubscribePushNotifications(); // "login mandatory for notifications" -- see its own comment
   S.currentUser = null; S.notifOpen=false; S.moreOpen=false; S.profileOpen=false; S.alertPanelOpen=null;
+  S.authToken = null; persistAuthToken(null);
   persistSession(null);
   try{ localStorage.removeItem(DEVICE_SESSION_TOKEN_KEY); localStorage.removeItem(DEVICE_SESSION_TOKEN_AT_KEY); }catch(e){}
   render();
@@ -2817,6 +3041,14 @@ function openEditLogModal(e, opts){
       closeModal(); render(); return;
     }
     let val = parseFloat(document.getElementById('editLogVal').value)||0;
+    // MEDIUM FIX (2026-08-21 audit, finding #20): this Save button is
+    // type="button" with its own click handler, not a real <form> submit
+    // -- so the input's min="0" HTML attribute is never actually enforced
+    // by the browser's constraint validation (that only runs on a real
+    // form submission). Without this explicit check, typing a negative
+    // quantity here silently corrupts stock totals via
+    // applyActivityForward/revertActivity below.
+    if(val<0){ showAlert('Quantity cannot be negative.'); return; }
     const cap = isPurchase ? MAX_PURCHASE_L : MAX_PC_ENTRY;
     if(val>cap){ showAlert(`Max allowed is ${cap} ${isPurchase?'L':'pc'} per entry.`); return; }
     revertActivity(e);
@@ -2962,33 +3194,19 @@ function renderLogin(){
   </div>`;
 }
 let loginSubmitting = false;
-// ---- Failed-login lockout (security feature, 2026-08-21, explicit user
-// request): 5 wrong attempts in a row locks that USERNAME (not just this
-// browser) out for 120 seconds. Synced via S.loginLockouts/app:loginLockouts
-// exactly like activeSessions, so the lockout is a real limit across every
-// device trying that username, not something an attacker can dodge by
-// just switching browsers. Counted by username only (never by whether the
-// username itself is valid) so the login form can't be used to probe
-// which usernames exist. ----
-const FAILED_LOGIN_LIMIT = 5;
-const FAILED_LOGIN_LOCK_MS = 120 * 1000; // 120 seconds
-function recordFailedLogin(usernameKey){
-  if(!usernameKey) return;
-  const rec = Object.assign({failCount:0}, S.loginLockouts[usernameKey]);
-  rec.failCount = (rec.failCount||0) + 1;
-  rec.lastFailAt = Date.now();
-  if(rec.failCount >= FAILED_LOGIN_LIMIT){
-    rec.lockedUntil = Date.now() + FAILED_LOGIN_LOCK_MS;
-  }
-  S.loginLockouts[usernameKey] = rec;
-  safeSet('app:loginLockouts', S.loginLockouts);
-}
-function clearFailedLogins(usernameKey){
-  if(S.loginLockouts[usernameKey]){
-    delete S.loginLockouts[usernameKey];
-    safeSet('app:loginLockouts', S.loginLockouts);
-  }
-}
+// ---- Failed-login lockout (security feature, 2026-08-21): 5 wrong
+// attempts in a row locks that USERNAME (not just this browser) out for
+// 120 seconds, synced via S.loginLockouts/app:loginLockouts so it's a real
+// cross-device limit. As of this same date's server-side auth fix (findings
+// #3/#4), the actual failCount/lockedUntil bookkeeping moved to the server
+// (recordFailedLoginServer_/clearFailedLoginsServer_ in
+// order-ops-backend.gs, run as part of action:"login" itself) since login
+// verification moved there too — a client-only write here would now just
+// be rejected (session_required) anyway, since it happens before any
+// session exists. S.loginLockouts is still read here (see bindLogin below)
+// purely as a fast local pre-check to skip an unnecessary round-trip when
+// we already know from normal sync that this username is locked; the
+// server's own check in the login action is what's actually authoritative.
 function bindLogin(){
   loginSubmitting = false; // reset every time the login form is (re)shown — e.g. after logout — so a stuck flag from a prior successful login never blocks the next one
   document.getElementById('loginForm').addEventListener('submit', async (e)=>{
@@ -3011,9 +3229,53 @@ function bindLogin(){
       render();
       return;
     }
-    const matched = await findMatchingUser(u, p);
-    if(matched){ loginError=''; clearFailedLogins(uKey); startPostLoginSequence(matched); }
-    else { loginSubmitting = false; recordFailedLogin(uKey); startWrongLoginSequence(); }
+    // SECURITY FIX (2026-08-21 audit, findings #3/#4): the password check
+    // now happens on the SERVER first (real verification against the
+    // stored hash, real lockout tracking, a real session token minted on
+    // success) — the app no longer decides "this login is valid" purely by
+    // comparing against a locally-held password hash and then trusting
+    // itself. clearFailedLogins/recordFailedLogin (client-only writes) are
+    // dropped in favor of the server's own recordFailedLoginServer_/
+    // clearFailedLoginsServer_, which run as part of the same login call.
+    let result;
+    try{
+      result = await apiLogin(u, p);
+    }catch(netErr){
+      // Server unreachable (not a wrong password) — fall back to the old
+      // local-only check so someone who already has the app loaded can
+      // still get in and see their synced data offline. No session token
+      // is issued in this path, so every WRITE will correctly come back
+      // session_required (handleAuthError) until they're back online and
+      // get a real session — this only ever restores read access.
+      console.error('Server login unreachable, falling back to local check', netErr);
+      const matched = await findMatchingUser(u, p);
+      if(matched){
+        loginError=''; S.authToken = null; persistAuthToken(null);
+        startPostLoginSequence(matched);
+      } else {
+        loginSubmitting = false; startWrongLoginSequence();
+      }
+      return;
+    }
+    if(result && result.ok && result.user){
+      loginError = '';
+      S.authToken = result.sessionToken;
+      persistAuthToken(result.sessionToken);
+      // Prefer the already-loaded local user record (same object identity
+      // as everything else in S.users) when we have it; the server's
+      // sanitized copy (no password fields anyway) is only a fallback for
+      // the rare case the local list hasn't synced this account yet.
+      const matched = S.users.find(x=>x.username.toLowerCase()===result.user.username.toLowerCase()) || result.user;
+      startPostLoginSequence(matched);
+    } else if(result && result.error === 'locked'){
+      loginSubmitting = false;
+      const waitSec = Math.max(1, Math.ceil(((result.lockedUntil||Date.now())-Date.now())/1000));
+      loginError = `Too many failed attempts — try again in ${waitSec}s.`;
+      render();
+    } else {
+      loginSubmitting = false;
+      startWrongLoginSequence();
+    }
   });
 }
 
@@ -3953,7 +4215,7 @@ function openDominoModal(){
       </div>
     </form>
   `);
-  document.getElementById('dominoForm').addEventListener('submit', (e)=>{
+  document.getElementById('dominoForm').addEventListener('submit', withSubmitGuard((e)=>{
     e.preventDefault();
     const impressions = parseInt(document.getElementById('domImpr').value)||0;
     if(impressions<=0){ showAlert('Enter a valid number.'); return; }
@@ -3965,7 +4227,7 @@ function openDominoModal(){
     S.dominoPrints.push(entry);
     savePartitionForItem('dominoPrints', entry);
     closeModal(); render(); showToast('Recorded');
-  });
+  }));
 }
 
 /* ============================= UNIFIED STOCK (dropdown: raw / filled / ready) ============================= */
@@ -4182,8 +4444,23 @@ function expenseBalanceFor(username){
 function applyExpenseBalanceDelta(entry, sign){
   if(!entry || !entry.byUsername) return;
   const delta = (entry.type==='settlement' ? -entry.amount : entry.amount) || 0;
-  S.expenseBalances[entry.byUsername] = (S.expenseBalances[entry.byUsername]||0) + sign*delta;
-  safeSet('app:expenseBalances', S.expenseBalances);
+  const finalDelta = sign*delta;
+  // Optimistic local update — the UI (e.g. the balance shown at the top of
+  // My Expenses) reflects the change instantly, same local-first pattern
+  // as everywhere else in this app.
+  S.expenseBalances[entry.byUsername] = (S.expenseBalances[entry.byUsername]||0) + finalDelta;
+  // SECURITY FIX (2026-08-21 audit, finding #12): the value actually
+  // PERSISTED is now applied atomically server-side against whatever is
+  // currently stored there, not this whole local S.expenseBalances object
+  // pushed via safeSet/"save" — see apiApplyExpenseBalanceDelta's own
+  // comment. Reconciles the local value with the server's authoritative
+  // post-delta total afterward, in case a concurrent delta from another
+  // device landed in between.
+  apiApplyExpenseBalanceDelta(entry.byUsername, finalDelta).then(res=>{
+    if(res && res.ok && typeof res.balance==='number'){
+      S.expenseBalances[entry.byUsername] = res.balance;
+    }
+  }).catch(()=>{ /* best-effort reconcile -- the optimistic local value stands until the next successful call corrects it */ });
 }
 function renderExpenses(){
   const isAdmin = S.currentUser.role==='admin';
@@ -4283,7 +4560,7 @@ function openExpenseModal(existing, type, forUsername){
       </div>
     </form>
   `);
-  document.getElementById('expForm').addEventListener('submit', (e)=>{
+  document.getElementById('expForm').addEventListener('submit', withSubmitGuard((e)=>{
     e.preventDefault();
     if(!existing && blockIfOutsideEntryWindow()) return; // only gates NEW entries -- editing an existing one isn't a "new" entry
     const amount = parseFloat(document.getElementById('expAmt').value)||0;
@@ -4333,7 +4610,7 @@ function openExpenseModal(existing, type, forUsername){
     if(isAdmin) S.expenseAdminSel = byUsername;
     savePartitionForItem('expenses', touched);
     closeModal(); render(); showToast(existing?'Entry updated':'Saved');
-  });
+  }));
 }
 
 
@@ -4693,7 +4970,7 @@ async function exportMonthPdf(year, month0){
   if(!att.length) emptyNote('No check-ins this month.');
   groupByDate(att.slice().sort((a,b)=>b.timestamp-a.timestamp), a=>a.timestamp).forEach(sec=>{
     h2(sec.heading);
-    sec.items.forEach(a=> line(`${a.name} — ${a.type} — ${fmtTime(a.timestamp)}${(a.lat||a.lng)?` — ${a.lat.toFixed(4)}, ${a.lng.toFixed(4)}`:''}`));
+    sec.items.forEach(a=>{ const geoLatP=safeGeoCoord(a.lat), geoLngP=safeGeoCoord(a.lng); line(`${a.name} — ${a.type} — ${fmtTime(a.timestamp)}${(geoLatP!=null&&geoLngP!=null)?` — ${geoLatP.toFixed(4)}, ${geoLngP.toFixed(4)}`:''}`); });
   });
 
   // ---- Footer on every page: thin rule, company name, generated date, page numbers ----
@@ -4766,7 +5043,7 @@ function renderOrderTile(o, showUndoDispatch){
       return `${mark} ${qtyLabel}`;
     }).join('<br/>')}</div>
     ${o.transportName?`<div class="ot-meta"><b>🚚 ${esc(o.transportName)}</b>${o.totalCases?` · ${o.totalCases} cases`:''}${o.dispatchedAt?` · ${fmtDate(o.dispatchedAt)}`:''}</div>`:''}
-    <div class="ot-meta">${o.orderNumber?`#${esc(o.orderNumber)} · `:''}by ${esc(o.createdBy)} · ${fmtTime(o.createdAt)}${isAdmin && (o.orderLat||o.orderLng) ? ` · <a href="https://www.google.com/maps?q=${o.orderLat},${o.orderLng}" target="_blank" rel="noopener" style="color:var(--primary);">📍 Order location</a>` : ''}${isAdmin ? ` · <button type="button" class="mono" data-view-tracking-logs="${o.id}" style="background:none;border:none;color:var(--primary);cursor:pointer;padding:0;font-size:inherit;">📜 Logs</button>` : ''}</div>
+    ${(()=>{ const geoLat=safeGeoCoord(o.orderLat), geoLng=safeGeoCoord(o.orderLng); const hasGeo = isAdmin && geoLat!=null && geoLng!=null; return `<div class="ot-meta">${o.orderNumber?`#${esc(o.orderNumber)} · `:''}by ${esc(o.createdBy)} · ${fmtTime(o.createdAt)}${hasGeo ? ` · <a href="https://www.google.com/maps?q=${encodeURIComponent(geoLat)},${encodeURIComponent(geoLng)}" target="_blank" rel="noopener" style="color:var(--primary);">📍 Order location</a>` : ''}${isAdmin ? ` · <button type="button" class="mono" data-view-tracking-logs="${o.id}" style="background:none;border:none;color:var(--primary);cursor:pointer;padding:0;font-size:inherit;">📜 Logs</button>` : ''}</div>`; })()}
     ${isAdmin ? (()=>{ const liveCust = liveCustomerFor(o); const disc = liveCust ? (liveCust.discountPercent||0) : 0; return `<div class="ot-meta"><b>MRP Value: ₹${orderMrpValue(o).toLocaleString('en-IN')}${disc>0?` (${disc}% off)`:''}</b></div>`; })() : ''}
     <div class="row-actions">
       ${(isAdmin || (S.currentUser.role==='sales' && o.createdByUsername===S.currentUser.username)) ? `<button class="btn btn-sm btn-outline" data-track-link="${o.id}">🔗 Track link</button>` : ''}
@@ -5046,10 +5323,22 @@ function openOrderModal(existingOrder){
     ordCaseRow.style.display='none';
   });
   document.getElementById('submitOrderBtn').addEventListener('click', ()=>{
+    // SECURITY FIX (2026-08-21 audit, finding #9): disable the button the
+    // instant a click is accepted, not just via withSubmitGuard -- this
+    // flow can pause on a showConfirm/showPrompt chain (new-customer
+    // prompt) that returns control to the browser between steps, so a
+    // promise-based guard would release again before the flow is actually
+    // done. Direct element disabling stays correct across that whole
+    // chain (the overlay covers the button anyway once one appears), and
+    // gets explicitly re-enabled on every early-return validation failure
+    // below so a genuine retry after fixing the input still works.
+    const submitBtnEl = document.getElementById('submitOrderBtn');
+    if(submitBtnEl.disabled) return;
     if(orderDraft.length===0){ showAlert('Add at least one item.'); return; }
     const nameInput = document.getElementById('ordCustomer');
     const typedName = nameInput.value.trim();
     if(!typedName){ showAlert('Enter the party name.'); return; }
+    submitBtnEl.disabled = true; // committed to submitting from here on -- every path below either finishes (and removes this button via closeModal) or explicitly re-enables it
     const proceedWithSubmit = ()=>{
     const existingCust = S.customers.find(c=>c.name.trim().toLowerCase()===typedName.toLowerCase());
     let custId = existingCust ? existingCust.id : null;
@@ -5121,7 +5410,7 @@ function openOrderModal(existingOrder){
       const dup = findRecentDuplicateOrder(typedName, orderDraft);
       if(dup){
         const itemsSummary = dup.items.map(i=>`${i.name} ${i.size} ×${i.qty}`).join(', ');
-        showConfirm(`A very similar order for "${typedName}" was just created ${fmtAgo(dup.createdAt)} (${itemsSummary}). Submit this one too?`, proceedWithSubmit, {danger:false, confirmLabel:'Yes, submit anyway'});
+        showConfirm(`A very similar order for "${typedName}" was just created ${fmtAgo(dup.createdAt)} (${itemsSummary}). Submit this one too?`, proceedWithSubmit, {danger:false, confirmLabel:'Yes, submit anyway'}, ()=>{ submitBtnEl.disabled = false; }); // declined -- re-enable so they can actually retry
         return;
       }
     }
@@ -5459,7 +5748,7 @@ function openCustomerModal(existingCust){
       </div>
     </form>
   `);
-  document.getElementById('custForm').addEventListener('submit', (e)=>{
+  document.getElementById('custForm').addEventListener('submit', withSubmitGuard((e)=>{
     e.preventDefault();
     const phone = document.getElementById('custPhone').value.trim();
     if(phone && !/^\d{10}$/.test(phone)){ showAlert('Enter a valid 10-digit WhatsApp number, or leave it blank.'); return; }
@@ -5496,7 +5785,7 @@ function openCustomerModal(existingCust){
     }
     safeSet('app:customers', S.customers);
     closeModal(); render(); showToast(existingCust?'Customer updated':'Customer added');
-  });
+  }));
 }
 
 /* ============================= USERS (admin only) ============================= */
@@ -5820,32 +6109,35 @@ function resetAllDataExceptUsers(){
     }, {confirmLabel:'Yes, erase everything'});
   }, {password:true});
 }
-function performResetAllDataExceptUsers(){
-  // Every day-partition row we've ever seen for these entities needs to be
-  // deleted on the backend too, or old days would silently reappear the
-  // next time data is merged back in from the sheet.
-  const keysToDelete = [];
-  PARTITIONED_ENTITIES.forEach(entity=>{
-    (S._partitionKeysSeen[entity] || new Set()).forEach(day=>keysToDelete.push(entity+'_'+day));
-  });
+async function performResetAllDataExceptUsers(){
+  // SECURITY FIX (2026-08-21 audit, finding #1's literal "wipe all data"
+  // example): this used to separately save ~8 STATIC_KEYS to empty values
+  // and call apiDeleteKeys with whatever day-partitions THIS DEVICE
+  // happened to have seen locally -- fragile (a dropped connection
+  // mid-sequence could leave things half-wiped) and, before the backend
+  // fix, gated on nothing but the shared staff SECRET. Now it's one atomic,
+  // admin-session-gated, server-comprehensive call (performResetAllData_ in
+  // order-ops-backend.gs, which scans the ACTUAL sheet for every
+  // day-partition row rather than trusting local bookkeeping) -- the
+  // client's own local wipe below is now purely an optimistic UI update
+  // that runs AFTER the server confirms success, not the source of truth.
+  showToast('Erasing all data…');
+  let result;
+  try{
+    result = await apiResetAllData();
+  }catch(e){
+    console.error('resetAllData failed', e);
+    showAlert('Could not reset data: ' + e.message + '. Nothing was changed.');
+    return;
+  }
   S.orders = []; S.customers = []; S.attendance = []; S.tasks = []; S.loginLog = [];
   S.rawMaterial = {}; S.filledStock = {}; S.readyStock = {};
   S.expenses = []; S.activityLog = []; S.stockTasks = []; S.dominoPrints = []; S.chatMessages = []; S.retailSales = []; S.trackingViewLogs = []; S.siteVisitLogs = []; S.stockMovementLog = [];
   S.lowStock = {raw:{}, filled:{}, ready:{}};
-  // Durable expense balances must be wiped here too -- otherwise, since
-  // expenseBalanceFor() only ever seeds from S.expenses when no durable
-  // entry exists yet, every manager's pre-reset balance would linger
-  // forever even though every expense that produced it is now gone.
   S.expenseBalances = {};
   PARTITIONED_ENTITIES.forEach(entity=>{ S._partitionKeysSeen[entity] = new Set(); });
-  offlineQueue = {}; persistOfflineQueue(); updateSyncStatusUI(); // don't let a stale queued save push old data back after reset
-  Promise.all([
-    safeSet('app:customers', S.customers), safeSet('app:tasks', S.tasks),
-    safeSet('app:rawMaterial', S.rawMaterial), safeSet('app:filledStock', S.filledStock),
-    safeSet('app:readyStock', S.readyStock), safeSet('app:stockTasks', S.stockTasks),
-    safeSet('app:lowStock', S.lowStock), safeSet('app:expenseBalances', S.expenseBalances),
-    apiDeleteKeys(keysToDelete)
-  ]);
+  offlineQueue = {}; persistOfflineQueue(); updateSyncStatusUI(); // don't let a stale queued save push old (pre-reset) data back
+  if(result && result.updatedAt) lastServerUpdatedAt = result.updatedAt;
   render();
   showToast('All data reset — Users kept');
 }
@@ -5872,6 +6164,11 @@ function bindUsers(){
       // person's own device picks up the mismatch on its next sync (within
       // a few seconds) and logs itself out there.
       issueNewSessionToken(uname, false);
+      // SECURITY FIX (2026-08-21 audit, findings #3/#4): also revoke the
+      // REAL server-side session, not just this client-visible flag --
+      // otherwise the affected device's WRITES kept working right up to
+      // the 48h idle timeout even after this button says "signed out".
+      apiInvalidateSession(uname);
       showToast(`${uname} will be signed out shortly`);
     });
   }));
@@ -5970,6 +6267,17 @@ function openUserModal(id){
   });
   document.getElementById('userForm').addEventListener('submit', async (e)=>{
     e.preventDefault();
+    // SECURITY FIX (2026-08-21 audit, finding #9): withSubmitGuard isn't
+    // used here because this handler can pause on a showConfirm below
+    // (the "photo too large" branch) that returns control to the browser
+    // between steps -- a promise-based guard would release again right
+    // away, before that confirm is even answered. Direct button disabling
+    // stays correct across that gap; every early-return path below
+    // re-enables it explicitly so a genuine retry still works.
+    const userSubmitBtn = document.querySelector('#userForm button[type="submit"]');
+    if(userSubmitBtn && userSubmitBtn.disabled) return;
+    if(userSubmitBtn) userSubmitBtn.disabled = true;
+    const reenable = ()=>{ if(userSubmitBtn) userSubmitBtn.disabled = false; };
     const name = document.getElementById('uName').value.trim();
     const username = document.getElementById('uUser').value.trim();
     const newPassword = document.getElementById('uPass').value; // blank when editing means "keep unchanged"
@@ -5979,7 +6287,7 @@ function openUserModal(id){
     const address = document.getElementById('uAddr').value.trim();
     const photo = pendingPhoto;
     if(S.users.some(u=>u.username.toLowerCase()===username.toLowerCase() && (!existing || u.id!==existing.id))){
-      showAlert('That username is already taken.'); return;
+      showAlert('That username is already taken.'); reenable(); return;
     }
     const newRecord = existing
       ? Object.assign({}, existing, {name, username, role, post, phone, address, photo})
@@ -5994,10 +6302,18 @@ function openUserModal(id){
         // 48-hour idle timeout regardless. isThisDevice=true only when the
         // admin is resetting their OWN password, so they don't immediately
         // kick themselves out on the next sync.
-        issueNewSessionToken(existing.username, existing.username===S.currentUser.username);
+        const isOwnAccount = existing.username===S.currentUser.username;
+        issueNewSessionToken(existing.username, isOwnAccount);
+        // SECURITY FIX (2026-08-21 audit, findings #3/#4): also revoke the
+        // REAL server session (see apiInvalidateSession's own comment) --
+        // but only when resetting someone ELSE's password. Revoking our
+        // OWN just-active session here would immediately session_required
+        // our own very next write, for no security benefit (we already
+        // know the new password).
+        if(!isOwnAccount) apiInvalidateSession(existing.username);
       }
     } else if(!existing){
-      showAlert('Password is required for a new user.'); return;
+      showAlert('Password is required for a new user.'); reenable(); return;
     }
     const draftUsers = existing ? S.users.map(u=>u.id===existing.id ? newRecord : u) : [...S.users, newRecord];
     const finishSaveUser = ()=>{
@@ -6015,6 +6331,7 @@ function openUserModal(id){
         finishSaveUser();
       }, {danger:false, confirmLabel:'Save without photo'}, ()=>{
         showAlert('Not saved. Remove a photo from another team member first, or skip the photo for this one.');
+        reenable();
       });
       return;
     }
@@ -6644,7 +6961,7 @@ function openTaskModal(existingTask){
       </div>
     </form>
   `);
-  document.getElementById('taskForm').addEventListener('submit', (e)=>{
+  document.getElementById('taskForm').addEventListener('submit', withSubmitGuard((e)=>{
     e.preventDefault();
     const assigneeSel = document.getElementById('taskAssignee');
     const value = assigneeSel ? assigneeSel.value : '';
@@ -6674,7 +6991,7 @@ function openTaskModal(existingTask){
     }
     safeSet('app:tasks', S.tasks);
     closeModal(); render(); showToast('Task assigned');
-  });
+  }));
 }
 
 /* ============================= RAW MATERIAL ============================= */
@@ -6751,7 +7068,7 @@ function openPurchaseModal(){
       </div>
     </form>
   `);
-  document.getElementById('purchaseForm').addEventListener('submit', e=>{
+  document.getElementById('purchaseForm').addEventListener('submit', withSubmitGuard(e=>{
     e.preventDefault();
     if(blockIfOutsideEntryWindow()) return;
     const cat = document.getElementById('purCat').value;
@@ -6766,7 +7083,7 @@ function openPurchaseModal(){
     logStockMovement(cat, cat, 'purchase', ml, 'Purchase recorded');
     syncStockTasksFromAlerts();
     closeModal(); render(); showToast('Purchase recorded');
-  });
+  }));
 }
 function openFillingModal(prefillKey, prefillQty){
   showModal(`
@@ -6782,7 +7099,7 @@ function openFillingModal(prefillKey, prefillQty){
       </div>
     </form>
   `);
-  document.getElementById('fillForm').addEventListener('submit', e=>{
+  document.getElementById('fillForm').addEventListener('submit', withSubmitGuard(e=>{
     e.preventDefault();
     if(blockIfOutsideEntryWindow()) return;
     const key = prefillKey || (resolveItemFromText(document.getElementById('fillItem').value)||{}).key;
@@ -6807,7 +7124,7 @@ function openFillingModal(prefillKey, prefillQty){
     syncStockTasksFromAlerts();
     closeModal(); render();
     showToast('Filling recorded');
-  });
+  }));
 }
 
 /* ============================= FILLED STOCK ============================= */
@@ -6877,7 +7194,7 @@ function openPackagingModal(prefillKey, prefillQty){
   itemSel.addEventListener('input', refreshCaseRow);
   itemSel.addEventListener('change', refreshCaseRow);
   refreshCaseRow();
-  document.getElementById('packForm').addEventListener('submit', e=>{
+  document.getElementById('packForm').addEventListener('submit', withSubmitGuard(e=>{
     e.preventDefault();
     if(blockIfOutsideEntryWindow()) return;
     const key = currentKey();
@@ -6904,7 +7221,7 @@ function openPackagingModal(prefillKey, prefillQty){
     syncStockTasksFromAlerts();
     closeModal(); render();
     showToast('Packaging recorded');
-  });
+  }));
 }
 
 /* ============================= BATCH NUMBER ============================= */
@@ -7260,7 +7577,7 @@ function openAdjustModal(kind, id, currentVal, label){
   const displayVal = isRaw ? +(currentVal/1000).toFixed(2) : currentVal;
   showModal(`
     <h3>Adjust — ${esc(label)}</h3>
-    <div class="field"><label>New quantity ${isRaw?'(Liters)':'(pieces)'}</label><input id="adjVal" type="number" ${isRaw?'step="0.01"':''} value="${displayVal}" /></div>
+    <div class="field"><label>New quantity ${isRaw?'(Liters)':'(pieces)'}</label><input id="adjVal" type="number" ${isRaw?`step="0.01" max="${MAX_STOCK_ADJUST_L}" min="-${MAX_STOCK_ADJUST_L}"`:`max="${MAX_STOCK_ADJUST_PC}" min="-${MAX_STOCK_ADJUST_PC}"`} value="${displayVal}" /></div>
     <div class="modal-actions">
       <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
       <button type="button" class="btn btn-primary" id="adjSave">Save</button>
@@ -7268,6 +7585,17 @@ function openAdjustModal(kind, id, currentVal, label){
   `);
   document.getElementById('adjSave').addEventListener('click', async ()=>{
     const raw = parseFloat(document.getElementById('adjVal').value)||0;
+    // MEDIUM FIX (2026-08-21 audit, finding #22): this Save button is
+    // type="button", not a real <form> submit, so the min/max attributes
+    // just added above are never enforced by the browser -- this explicit
+    // JS check is what actually catches a fat-fingered extra zero.
+    // Deliberately a magnitude check (Math.abs), not a min=0 floor:
+    // negative stock is a real, intentionally-displayed state elsewhere
+    // in this app (see the stockneg styling on the inventory tables, used
+    // for tracking a genuine deficit/overselling situation), so blocking
+    // negative values here would prevent a legitimate correction.
+    const adjCap = isRaw ? MAX_STOCK_ADJUST_L : MAX_STOCK_ADJUST_PC;
+    if(Math.abs(raw) > adjCap){ showAlert(`That's more than ${adjCap.toLocaleString()} ${isRaw?'L':'pc'} — please double-check for a typo (extra zero?) before saving.`); return; }
     const val = isRaw ? raw*1000 : raw; // Liters -> mL for raw material
     let key;
     const oldVal = kind==='raw' ? (S.rawMaterial[id]||0) : kind==='filled' ? (S.filledStock[id]||0) : (S.readyStock[id]||0);
@@ -7317,8 +7645,14 @@ function renderCheckin(){
     ${mine.length===0?`<div class="empty">Nothing marked yet.</div>`:`
     <table><thead><tr><th>Date</th><th>Time</th><th>Location</th></tr></thead><tbody>
     ${mine.slice(0,30).map(a=>{
-      const hasLoc = a.lat||a.lng;
-      const locCell = a.markedByAdmin ? `<span class="mono">Marked by Admin</span>` : (hasLoc?`<a href="https://www.google.com/maps?q=${a.lat},${a.lng}" target="_blank" rel="noopener" class="mono" style="color:var(--primary);">📍 view</a>`:`<span class="mono">no location</span>`);
+      // SECURITY FIX (2026-08-21 audit, finding #7): a.lat/a.lng come from
+      // this same person's OWN browser geolocation API on a normal check-in,
+      // but that's still fully attacker-controlled via dev tools -- see
+      // safeGeoCoord's own comment for the full rationale (same class as
+      // finding #5's orderLat/orderLng fix).
+      const geoLatA = safeGeoCoord(a.lat), geoLngA = safeGeoCoord(a.lng);
+      const hasLoc = geoLatA!=null && geoLngA!=null;
+      const locCell = a.markedByAdmin ? `<span class="mono">Marked by Admin</span>` : (hasLoc?`<a href="https://www.google.com/maps?q=${encodeURIComponent(geoLatA)},${encodeURIComponent(geoLngA)}" target="_blank" rel="noopener" class="mono" style="color:var(--primary);">📍 view</a>`:`<span class="mono">no location</span>`);
       const timeCell = (a.type==='present' && !a.markedByAdmin) ? fmtTime(a.timestamp) : '—';
       return `<tr><td class="mono">${esc(dateHeading(a.timestamp))}</td><td class="mono">${timeCell}</td><td>${locCell}</td></tr>`;
     }).join('')}
@@ -7468,8 +7802,10 @@ function renderAttendanceMap(){
           let statusCell, locCell;
           if(e.status==='present'){
             statusCell = `<span class="badge badge-approved">Present</span>${e.record.markedByAdmin?' <span class="mono" style="font-size:11px;">(by admin)</span>':''}`;
-            const hasLoc = e.record.lat||e.record.lng;
-            const gpsLine = e.record.markedByAdmin ? `<span class="mono">Marked by Admin</span>` : (hasLoc ? `<a href="https://www.google.com/maps?q=${e.record.lat},${e.record.lng}" target="_blank" rel="noopener" class="mono" style="color:var(--primary);">📍 view</a>` : `<span class="mono">no location</span>`);
+            // SECURITY FIX (2026-08-21 audit, finding #7) -- see safeGeoCoord's comment.
+            const geoLatE = safeGeoCoord(e.record.lat), geoLngE = safeGeoCoord(e.record.lng);
+            const hasLoc = geoLatE!=null && geoLngE!=null;
+            const gpsLine = e.record.markedByAdmin ? `<span class="mono">Marked by Admin</span>` : (hasLoc ? `<a href="https://www.google.com/maps?q=${encodeURIComponent(geoLatE)},${encodeURIComponent(geoLngE)}" target="_blank" rel="noopener" class="mono" style="color:var(--primary);">📍 view</a>` : `<span class="mono">no location</span>`);
             const flLine = e.record.fieldLocation ? `<div class="mono" style="font-size:12px;color:var(--ink-soft);margin-top:2px;">Field Location - ${esc(e.record.fieldLocation)}</div>` : '';
             locCell = gpsLine + flLine;
           } else if(e.status==='absent'){
@@ -7736,7 +8072,7 @@ function showConfirm(message, onConfirm, opts, onCancel){
 // Styled replacement for the native prompt() — same async-via-callback
 // approach as showConfirm. onSubmit receives the trimmed input value, or
 // is never called at all if the person cancels.
-function showPrompt(message, defaultValue, onSubmit, opts){
+function showPrompt(message, defaultValue, onSubmit, opts, onCancel){
   const existing = document.getElementById('appAlertOverlay');
   if(existing) existing.remove();
   const overlay = document.createElement('div');
@@ -7758,8 +8094,8 @@ function showPrompt(message, defaultValue, onSubmit, opts){
   const input = overlay.querySelector('#appPromptInput');
   setTimeout(()=>{ input.focus(); input.select(); }, 50);
   const close = ()=>{ overlay.remove(); };
-  overlay.addEventListener('click', (e)=>{ if(e.target===overlay) close(); });
-  overlay.querySelector('#appPromptCancelBtn').addEventListener('click', close);
+  overlay.addEventListener('click', (e)=>{ if(e.target===overlay){ close(); if(onCancel) onCancel(); } });
+  overlay.querySelector('#appPromptCancelBtn').addEventListener('click', ()=>{ close(); if(onCancel) onCancel(); });
   const submit = ()=>{ const val = input.value.trim(); close(); onSubmit(val); };
   overlay.querySelector('#appPromptOkBtn').addEventListener('click', submit);
   input.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); submit(); } });
