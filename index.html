@@ -683,7 +683,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-21-audit-fixes-full2";
+const APP_BUILD = "2026-08-22-dispatch-date-report1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -4909,12 +4909,32 @@ async function exportMonthPdf(year, month0){
 
   // Orders
   h1('Orders');
-  const orders = S.orders.filter(o=>inMonth(o.createdAt)).sort((a,b)=>a.createdAt-b.createdAt);
+  // 2026-08-22 (explicit user request): the Monthly Report now groups/sorts/
+  // displays a dispatched order under the date it was actually DISPATCHED,
+  // not the date it was originally placed. o.processedAt is set the moment
+  // an order's status becomes 'processed' (both the full dispatch flow in
+  // finalizeDispatch and the simpler setOrderStatus path always set it),
+  // making it the one reliable "actually dispatched" timestamp -- more so
+  // than o.dispatchedAt, which only the full LR/transport dispatch modal
+  // sets. An order that hasn't been dispatched yet has no dispatch date to
+  // use, so it still falls back to its placed date (o.createdAt) — nothing
+  // about when an order actually came in is ever discarded from the data,
+  // only THIS report's own date/grouping choice. When the two dates land on
+  // different calendar days, the original placed date is still shown right
+  // alongside the dispatch date, so nothing is hidden. Note: since this
+  // groups by dispatch date, an order placed in one month but dispatched in
+  // the next will appear in the LATER month's report, not the one it was
+  // placed in — and a still-pending order counted in this month's report
+  // (under its placed date) will move to a later month's report once it's
+  // actually dispatched, if this report is ever regenerated after that.
+  const orderReportDate = o => o.processedAt || o.createdAt;
+  const orders = S.orders.filter(o=>inMonth(orderReportDate(o))).sort((a,b)=>orderReportDate(a)-orderReportDate(b));
   if(!orders.length) emptyNote('No orders this month.');
-  groupByDate(orders.slice().sort((a,b)=>b.createdAt-a.createdAt), o=>o.createdAt).forEach(sec=>{
+  groupByDate(orders.slice().sort((a,b)=>orderReportDate(b)-orderReportDate(a)), orderReportDate).forEach(sec=>{
     h2(sec.heading);
     sec.items.forEach(o=>{
-      h3(`${o.customerName} — ${ORDER_STAGE_LABEL[o.status]||o.status} — by ${o.createdBy} — ${fmtTime(o.createdAt)}`);
+      const placedDiffers = o.processedAt && localDateKey(o.processedAt) !== localDateKey(o.createdAt);
+      h3(`${o.customerName} — ${ORDER_STAGE_LABEL[o.status]||o.status} — by ${o.createdBy} — ${fmtTime(orderReportDate(o))}${placedDiffers?` (placed ${fmtDateOnly(o.createdAt)})`:''}`);
       o.items.forEach(i=> line(`${i.name} ${i.size} × ${i.qty}`));
     });
   });
