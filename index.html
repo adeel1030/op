@@ -683,7 +683,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-22-push-login-retry1";
+const APP_BUILD = "2026-08-24-expense-balance-fix1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -1796,6 +1796,79 @@ async function apiApplyExpenseBalanceDelta(username, delta){
   if(json && json.error) handleAuthError(json.error);
   return json;
 }
+// BUGFIX (2026-08-24, "bug in calculation of Expenses of manager", user-
+// reported): unlike every other save in this app, a balance delta used to
+// be a bare fire-and-forget fetch -- no offline queue, no retry, and its
+// success handler just stomped S.expenseBalances[username] with whatever
+// response happened to arrive. That had two separate ways to leave a
+// manager's balance permanently wrong even though the underlying expense
+// entry itself saved fine (via the real offline queue):
+//  1. If the network call failed outright (offline at the moment of
+//     add/edit/delete, a timeout, or the backend's LockService genuinely
+//     waiting up to 6s under contention and the request aborting first) the
+//     delta was simply dropped -- caught by an empty .catch() -- and the
+//     very next sync (every ~4s) would overwrite the optimistic local total
+//     with the server's still-stale value, forever, since nothing ever
+//     retried it.
+//  2. Even with a healthy network, firing two balance-affecting actions in
+//     quick succession (e.g. add expense, then immediately add another) let
+//     their two HTTP responses race: whichever response happened to arrive
+//     LAST simply overwrote S.expenseBalances[username] with ITS balance
+//     snapshot, silently discarding the other request's already-applied
+//     server-side delta from the client's view if it had resolved first.
+// Fix: every delta is now tracked in a durable, per-username PENDING queue
+// (persisted like the real offline queue) until the server actually
+// confirms it. The synced/displayed balance is always computed as
+// (server's last-known confirmed total) + (sum of this device's still-
+// unconfirmed pending deltas for that user) -- see the expenseBalances
+// merge in applyServerData -- so an incoming sync can never wipe a pending
+// local change out from under it, a failed request is retried automatically
+// (flushExpenseDeltaQueue runs on every sync tick and on 'online', exactly
+// like flushOfflineQueue), and out-of-order responses can no longer clobber
+// each other since each pending amount is only ever subtracted once ITS
+// OWN request actually succeeds, never blindly replaced by a response
+// meant for a different request.
+const PENDING_EXPENSE_DELTAS_KEY = 'orderops_pending_expense_deltas';
+let pendingExpenseDeltas = {}; // { username: sum of unconfirmed deltas }
+let expenseDeltaInFlight = {}; // { username: true } -- prevents duplicate concurrent sends
+function loadPendingExpenseDeltas(){
+  try{
+    const raw = localStorage.getItem(PENDING_EXPENSE_DELTAS_KEY);
+    pendingExpenseDeltas = raw ? JSON.parse(raw) : {};
+  }catch(e){ pendingExpenseDeltas = {}; }
+}
+function persistPendingExpenseDeltas(){
+  try{ localStorage.setItem(PENDING_EXPENSE_DELTAS_KEY, JSON.stringify(pendingExpenseDeltas)); }catch(e){}
+}
+function queueExpenseDelta(username, delta){
+  if(!username || !delta) return;
+  pendingExpenseDeltas[username] = (pendingExpenseDeltas[username]||0) + delta;
+  if(Math.abs(pendingExpenseDeltas[username]) < 1e-9) delete pendingExpenseDeltas[username]; // fully cancelled out (e.g. add then immediately delete)
+  persistPendingExpenseDeltas();
+}
+async function flushExpenseDeltaQueue(){
+  const usernames = Object.keys(pendingExpenseDeltas);
+  for(const username of usernames){
+    if(expenseDeltaInFlight[username]) continue;
+    const amt = pendingExpenseDeltas[username];
+    if(!amt) continue;
+    expenseDeltaInFlight[username] = true;
+    try{
+      const res = await apiApplyExpenseBalanceDelta(username, amt);
+      if(res && res.ok){
+        // Only ever subtract exactly the amount THIS request was sent for --
+        // never overwrite with res.balance directly, so a delta queued by
+        // the user while this request was in flight (and already reflected
+        // optimistically in pendingExpenseDeltas) is never lost.
+        pendingExpenseDeltas[username] = (pendingExpenseDeltas[username]||0) - amt;
+        if(Math.abs(pendingExpenseDeltas[username]) < 1e-9) delete pendingExpenseDeltas[username];
+        persistPendingExpenseDeltas();
+      }
+      // a non-ok response (auth error etc) leaves the pending amount queued for the next retry
+    }catch(e){ /* network hiccup -- stays queued, retried on the next sync tick / 'online' event */ }
+    finally{ delete expenseDeltaInFlight[username]; }
+  }
+}
 async function apiUploadLR(base64Data, mimeType, filename){
   // Photo uploads are a much larger payload than any other call here, and
   // legitimately take longer on a slow mobile connection — a longer timeout
@@ -2103,7 +2176,22 @@ function applyServerData(data, isFullSync){
   if(has('customRoles')) S.customRoles = data.customRoles || [];
   if(has('rolePermissions')) S.rolePermissions = data.rolePermissions || {};
   if(has('notificationPrefs')) S.notificationPrefs = data.notificationPrefs || {};
-  if(has('expenseBalances')) S.expenseBalances = data.expenseBalances || {};
+  // BUGFIX (2026-08-24, "bug in calculation of Expenses of manager"): must
+  // NOT blindly replace with the server's snapshot -- this sync poll fires
+  // every ~4s and can easily land in the middle of this device's own
+  // balance-delta round trip (or after one that failed and hasn't retried
+  // yet), which used to wipe the just-applied local change back out. The
+  // displayed/stored total is always server-confirmed + whatever this
+  // device still has queued-but-unconfirmed for that user (0 for everyone
+  // with nothing pending) -- see queueExpenseDelta/flushExpenseDeltaQueue.
+  if(has('expenseBalances')){
+    const incomingBalances = data.expenseBalances || {};
+    const mergedBalances = Object.assign({}, incomingBalances);
+    for(const pendingUser in pendingExpenseDeltas){
+      if(pendingExpenseDeltas[pendingUser]) mergedBalances[pendingUser] = (mergedBalances[pendingUser]||0) + pendingExpenseDeltas[pendingUser];
+    }
+    S.expenseBalances = mergedBalances;
+  }
   if(has('loginLockouts')) S.loginLockouts = data.loginLockouts || {};
   if(has('pendingNotifs')) S.pendingNotifs = data.pendingNotifs || {};
   rebuildRolesRegistry();
@@ -2304,6 +2392,7 @@ function startHeartbeat(){
 async function doSyncTick(){
   if(!S.currentUser) return;
   flushOfflineQueue(); // fire-and-forget; retries any saves that failed while offline
+  flushExpenseDeltaQueue(); // fire-and-forget; retries any expense-balance deltas that failed to reach the server
   if(syncing) return;
   const messagesModalOpen = !!document.getElementById('messagesModalBody');
   const modalOpen = !!document.getElementById('modalOverlay') && !messagesModalOpen;
@@ -4511,17 +4600,19 @@ function applyExpenseBalanceDelta(entry, sign){
   // as everywhere else in this app.
   S.expenseBalances[entry.byUsername] = (S.expenseBalances[entry.byUsername]||0) + finalDelta;
   // SECURITY FIX (2026-08-21 audit, finding #12): the value actually
-  // PERSISTED is now applied atomically server-side against whatever is
+  // PERSISTED is applied atomically server-side against whatever is
   // currently stored there, not this whole local S.expenseBalances object
   // pushed via safeSet/"save" — see apiApplyExpenseBalanceDelta's own
-  // comment. Reconciles the local value with the server's authoritative
-  // post-delta total afterward, in case a concurrent delta from another
-  // device landed in between.
-  apiApplyExpenseBalanceDelta(entry.byUsername, finalDelta).then(res=>{
-    if(res && res.ok && typeof res.balance==='number'){
-      S.expenseBalances[entry.byUsername] = res.balance;
-    }
-  }).catch(()=>{ /* best-effort reconcile -- the optimistic local value stands until the next successful call corrects it */ });
+  // comment.
+  // BUGFIX (2026-08-24): queued (durable, retried) instead of a bare
+  // fire-and-forget call whose response could race with another one and
+  // clobber the local total, or get silently dropped on a network failure
+  // -- see queueExpenseDelta/flushExpenseDeltaQueue above for the full
+  // reasoning. The queue is also what protects this optimistic value from
+  // being overwritten by the very next sync tick before the server round
+  // trip completes (see the expenseBalances merge in applyServerData).
+  queueExpenseDelta(entry.byUsername, finalDelta);
+  flushExpenseDeltaQueue();
 }
 function renderExpenses(){
   const isAdmin = S.currentUser.role==='admin';
@@ -6218,6 +6309,7 @@ async function performResetAllDataExceptUsers(){
   S.expenseBalances = {};
   PARTITIONED_ENTITIES.forEach(entity=>{ S._partitionKeysSeen[entity] = new Set(); });
   offlineQueue = {}; persistOfflineQueue(); updateSyncStatusUI(); // don't let a stale queued save push old (pre-reset) data back
+  pendingExpenseDeltas = {}; persistPendingExpenseDeltas(); // don't let a stale queued balance delta reapply against the post-reset (zeroed) balances
   if(result && result.updatedAt) lastServerUpdatedAt = result.updatedAt;
   render();
   showToast('All data reset — Users kept');
@@ -8260,6 +8352,7 @@ function checkForNewNotifRing(){
 let loadAllPromise = null;
 (async function init(){
   loadOfflineQueue();
+  loadPendingExpenseDeltas();
   render();
   primeDevicePermissions();
   loadAllPromise = loadAll();
@@ -8267,7 +8360,8 @@ let loadAllPromise = null;
   render();
   if(S.currentUser){ primeDevicePermissions(); lastKnownNotifCount = myNotifCount(getStockAlerts()); }
   flushOfflineQueue(); // in case saves were queued from a previous session
-  window.addEventListener('online', ()=>{ showToast('Back online — syncing…'); flushOfflineQueue(); reverifyOneSignalLogin(); });
+  flushExpenseDeltaQueue(); // in case an expense-balance delta was left pending from a previous session
+  window.addEventListener('online', ()=>{ showToast('Back online — syncing…'); flushOfflineQueue(); flushExpenseDeltaQueue(); reverifyOneSignalLogin(); });
   window.addEventListener('offline', ()=>{ showToast('No connection — changes will be saved and synced automatically', true); });
   // Installed PWAs can stay open (backgrounded) for days without a real page
   // reload -- if the very first OneSignal.login() attempt lost its race
