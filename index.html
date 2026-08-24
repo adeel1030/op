@@ -683,7 +683,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-24-expense-balance-fix1";
+const APP_BUILD = "2026-08-24-admin-add-expense1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -4641,6 +4641,17 @@ function renderExpenses(){
     </div>`;
   }
   // Admin view: pick a manager, see balance, add settlement or expense-on-their-behalf, edit/delete anything.
+  // BUGFIX (2026-08-24): this comment always claimed admin could add either
+  // a settlement OR an expense-on-behalf-of-a-manager, but only the
+  // settlement button ("+ Add entry", hardcoded to
+  // openExpenseModal(null,'settlement',...)) actually existed -- there was
+  // no way for admin to log a plain expense for a manager at all, even
+  // though openExpenseModal itself already fully supports it (the isAdmin
+  // manager-picker + type param were always there). Discovered while
+  // correcting a manager's balance after the 2026-08-24 durability fix (see
+  // applyExpenseBalanceDelta) -- admin had no path to add the missing
+  // ₹300 expense-side correction entry. Added the matching "+ Add expense"
+  // button here, mirroring the one managers already have for themselves.
   const managers = S.users.filter(u=>u.role==='manager' || S.expenses.some(x=>x.byUsername===u.username));
   const selUsername = S.expenseAdminSel || (managers[0] && managers[0].username) || '';
   const list = S.expenses.filter(x=>x.byUsername===selUsername).sort((a,b)=>b.at-a.at);
@@ -4649,7 +4660,10 @@ function renderExpenses(){
   <div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
       <div><h2>Expenses &amp; settlements</h2><p class="desc">Manager expenses &amp; settlements.</p></div>
-      <button class="btn btn-primary btn-sm" id="newSettleBtn">+ Add entry</button>
+      <div class="row-actions" style="flex-wrap:wrap;gap:6px;">
+        <button class="btn btn-outline btn-sm" id="newAdminExpBtn">+ Add expense</button>
+        <button class="btn btn-primary btn-sm" id="newSettleBtn">+ Add entry</button>
+      </div>
     </div>
     ${managers.length===0?`<div class="empty">No managers yet.</div>`:`
     <select id="expManagerSel" style="width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:11px;font-size:14px;background:#FBFBFD;margin-bottom:12px;">
@@ -4681,6 +4695,8 @@ function bindExpenses(){
   if(selfSettleBtn) selfSettleBtn.addEventListener('click', ()=>openExpenseModal(null,'settlement',S.currentUser.username));
   const settleBtn = document.getElementById('newSettleBtn');
   if(settleBtn) settleBtn.addEventListener('click', ()=>openExpenseModal(null,'settlement', S.expenseAdminSel));
+  const adminExpBtn = document.getElementById('newAdminExpBtn');
+  if(adminExpBtn) adminExpBtn.addEventListener('click', ()=>openExpenseModal(null,'expense', S.expenseAdminSel));
   const sel = document.getElementById('expManagerSel');
   if(sel) sel.addEventListener('change', ()=>{ S.expenseAdminSel = sel.value; render(); });
   document.querySelectorAll('[data-edit-exp]').forEach(b=>b.addEventListener('click', ()=>{
