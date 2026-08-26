@@ -683,7 +683,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-24-admin-add-expense1";
+const APP_BUILD = "2026-08-26-tiles-autosync-fix1";
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -1458,6 +1458,8 @@ const FULL_RESYNC_INTERVAL_MS = 20*60*1000; // 20 minutes
 let systemHealth = { lastBackupAt: null, lastBackupError: null };
 let syncing = false;
 let syncBusyCount = 0;
+let syncBusySince = null; // when syncBusyCount last went 0 -> >0; used by doSyncTick's stuck-flag watchdog below
+const SYNC_STUCK_WATCHDOG_MS = 60000; // comfortably above the 25s fetch timeout -- anything longer means the flag is wedged, not genuinely busy
 
 /* ---- Offline queue: a save that fails (dropped wifi, etc.) is kept here and
    retried automatically — nothing is silently lost. Only the latest value per
@@ -1557,22 +1559,42 @@ async function flushOfflineQueue(){
     // or shows a clear permission message (forbidden) instead of the
     // generic "no connection" toast, and re-flushes automatically once a
     // fresh session is obtained -- nothing queued here is lost either way.
-    if(!handleAuthError(e.message)){
-      showToast('No connection — saved on this device, will sync automatically', true);
-    }
+    // BUGFIX (2026-08-26, "site auto update nahi ho rahi, refresh karna
+    // padta hai"): handleAuthError/showToast themselves call render(), and
+    // if THAT throws for any reason, the exception used to escape this
+    // whole function before ever reaching the cleanup below -- leaving
+    // flushingQueue/syncing stuck true FOREVER (nothing else ever resets
+    // them). doSyncTick's very first check is "if(syncing) return", so a
+    // single wedged flush like this permanently silenced ALL future sync
+    // polling for the rest of that browser session -- exactly the "must
+    // refresh to see any change" symptom, since a page reload is the only
+    // thing that resets this in-memory flag. Guarded so a failure here can
+    // never again block the cleanup below.
+    try{
+      if(!handleAuthError(e.message)){
+        showToast('No connection — saved on this device, will sync automatically', true);
+      }
+    }catch(e2){ console.error('flushOfflineQueue: error while reporting the failure (ignored, so cleanup below still runs)', e2); }
     // Resolve pending `await safeSet(...)` callers so they don't hang
     // forever, but (per settle()'s own check) never delete anything here —
     // items simply stay queued for the next retry.
     settle();
+  } finally {
+    // Moved into `finally` as part of the same fix above: these three MUST
+    // run no matter what happened above, or syncBusyCount never comes back
+    // down and doSyncTick stays blocked until the page is manually reloaded.
+    setSyncLabel(null);
+    setSyncing(false);
+    flushingQueue = false;
   }
-  setSyncLabel(null);
-  setSyncing(false);
-  flushingQueue = false;
 }
 
 function setSyncing(on){
   syncBusyCount += on ? 1 : -1;
+  if(syncBusyCount < 0) syncBusyCount = 0; // defensive -- an unbalanced on/off pair should never go negative
   syncing = syncBusyCount > 0;
+  if(syncing && !syncBusySince) syncBusySince = Date.now();
+  if(!syncing) syncBusySince = null;
   const el = document.getElementById('syncDot');
   if(el) el.classList.toggle('syncing', syncing);
 }
@@ -2393,6 +2415,20 @@ async function doSyncTick(){
   if(!S.currentUser) return;
   flushOfflineQueue(); // fire-and-forget; retries any saves that failed while offline
   flushExpenseDeltaQueue(); // fire-and-forget; retries any expense-balance deltas that failed to reach the server
+  // BUGFIX (2026-08-26, "site auto update nahi ho rahi, refresh karna padta
+  // hai"): root cause was flushOfflineQueue's `syncing` flag getting stuck
+  // true forever if its own failure-handling code threw (see the fix on
+  // flushOfflineQueue above) -- since every tick bails out immediately
+  // below whenever `syncing` is true, one wedged flush silently killed ALL
+  // future polling on that device until the page was manually reloaded.
+  // That's fixed at the source now, but as a second line of defense against
+  // any other path ever leaving this flag unbalanced, self-heal here: if
+  // it's been "busy" far longer than any real request could legitimately
+  // take, force it back to a known-good state instead of staying wedged.
+  if(syncing && syncBusySince && (Date.now()-syncBusySince) > SYNC_STUCK_WATCHDOG_MS){
+    console.error('doSyncTick: syncing flag stuck for', Date.now()-syncBusySince, 'ms — forcibly resetting so polling can resume');
+    syncBusyCount = 0; syncing = false; syncBusySince = null; flushingQueue = false;
+  }
   if(syncing) return;
   const messagesModalOpen = !!document.getElementById('messagesModalBody');
   const modalOpen = !!document.getElementById('modalOverlay') && !messagesModalOpen;
@@ -3824,7 +3860,7 @@ function markOrderPacked(orderId){
   o.packedBy = S.currentUser.name;
   savePartitionForItem('orders', o);
   render();
-  showToast('Order marked Packed — ready to dispatch');
+  showToast('Order marked Ready to Dispatch');
 }
 function undoMarkOrderPacked(orderId){
   if(S.currentUser.role!=='admin' && S.currentUser.role!=='manager') return;
@@ -3834,7 +3870,7 @@ function undoMarkOrderPacked(orderId){
   delete o.packedAt; delete o.packedBy;
   savePartitionForItem('orders', o);
   render();
-  showToast('Undone — back to Ready');
+  showToast('Undone — back to Under Packing');
 }
 
 function openDispatchModal(orderId){
@@ -4824,8 +4860,8 @@ function renderHomeGeneric(role){
   ${quickActionIcons(role)}
   <div class="stat-grid-v2">
     ${canViewTile(role,'tile_pending')?`<div class="stat-card-v2" data-stat="pending"><div class="row-top"><div class="icon-badge green">🛍️</div><span class="chev">›</span></div><div class="n">${pending}</div><div class="title">New Orders</div><div class="sub">Pending orders</div></div>`:''}
-    ${canViewTile(role,'tile_ready')?`<div class="stat-card-v2" data-stat="ready"><div class="row-top"><div class="icon-badge blue">🚚</div><span class="chev">›</span></div><div class="n">${ready}</div><div class="title">Ready to Dispatch</div><div class="sub">Ready to ship</div></div>`:''}
-    ${canViewTile(role,'tile_packed')?`<div class="stat-card-v2" data-stat="packed"><div class="row-top"><div class="icon-badge purple">📦</div><span class="chev">›</span></div><div class="n">${packed}</div><div class="title">Packed</div><div class="sub">Packed & ready to ship</div></div>`:''}
+    ${canViewTile(role,'tile_ready')?`<div class="stat-card-v2" data-stat="ready"><div class="row-top"><div class="icon-badge blue">📦</div><span class="chev">›</span></div><div class="n">${ready}</div><div class="title">Under Packing</div><div class="sub">Items ready, not yet packed</div></div>`:''}
+    ${canViewTile(role,'tile_packed')?`<div class="stat-card-v2" data-stat="packed"><div class="row-top"><div class="icon-badge purple">🚚</div><span class="chev">›</span></div><div class="n">${packed}</div><div class="title">Ready to Dispatch</div><div class="sub">Packed & ready to ship</div></div>`:''}
     ${extraCard}
   </div>
   ${role==='manager'
@@ -4924,12 +4960,12 @@ function renderHomeAdmin(){
       <div class="n">${processing}</div><div class="title">Processing</div><div class="sub">Orders in progress</div>
     </div>
     <div class="stat-card-v2" data-stat="ready">
-      <div class="row-top"><div class="icon-badge blue">🚚</div><span class="chev">›</span></div>
-      <div class="n">${ready}</div><div class="title">Ready to Dispatch</div><div class="sub">Orders ready to ship</div>
+      <div class="row-top"><div class="icon-badge blue">📦</div><span class="chev">›</span></div>
+      <div class="n">${ready}</div><div class="title">Under Packing</div><div class="sub">Items ready, not yet packed</div>
     </div>
     <div class="stat-card-v2" data-stat="packed">
-      <div class="row-top"><div class="icon-badge purple">📦</div><span class="chev">›</span></div>
-      <div class="n">${packed}</div><div class="title">Packed</div><div class="sub">Packed & ready to ship</div>
+      <div class="row-top"><div class="icon-badge purple">🚚</div><span class="chev">›</span></div>
+      <div class="n">${packed}</div><div class="title">Ready to Dispatch</div><div class="sub">Packed & ready to ship</div>
     </div>
   </div>
   <div class="promo-banner">
@@ -5185,7 +5221,7 @@ function countPresentToday(){
 }
 
 /* ============================= ORDERS ============================= */
-const ORDER_STAGE_LABEL = {pending:'New', processing:'Processing', ready:'Ready', packed:'Packed', processed:'Processed & Dispatched', rejected:'Rejected'};
+const ORDER_STAGE_LABEL = {pending:'New', processing:'Processing', ready:'Under Packing', packed:'Ready to Dispatch', processed:'Processed & Dispatched', rejected:'Rejected'};
 function orderDisplayLabel(o){
   const role = S.currentUser.role;
   if(role==='admin' || role==='manager') return o.customerName;
@@ -5241,8 +5277,8 @@ function renderOrderTile(o, showUndoDispatch){
       ${o.status==='ready' && o.items.some(it=>it.autoCancelledByReady)?`<button class="btn btn-sm btn-outline" data-undo-ready="${o.id}">↩ Undo Ready</button>`:''}
       `:''}
       ${(isAdmin || S.currentUser.role==='manager')?`
-      ${o.status==='ready'?`<button class="btn btn-sm btn-success" data-mark-packed="${o.id}">📦 Mark Packed &amp; Ready to Dispatch</button>`:''}
-      ${o.status==='packed'?`<button class="btn btn-sm btn-outline" data-undo-packed="${o.id}">↩ Undo Packed</button>`:''}
+      ${o.status==='ready'?`<button class="btn btn-sm btn-success" data-mark-packed="${o.id}">🚚 Mark Ready to Dispatch</button>`:''}
+      ${o.status==='packed'?`<button class="btn btn-sm btn-outline" data-undo-packed="${o.id}">↩ Undo Ready to Dispatch</button>`:''}
       ${o.status==='packed'?`<button class="btn btn-sm btn-success" data-dispatch-order="${o.id}">Processed &amp; Dispatched</button>`:''}
       ${o.status==='processed' && showUndoDispatch?`<button class="btn btn-sm btn-outline" data-undo-dispatch="${o.id}">↩ Undo Dispatch</button>`:''}
       `:''}
@@ -5271,7 +5307,7 @@ function renderOrdersSegregated(limit){
     <div style="font-weight:800;font-size:11.5px;text-transform:uppercase;letter-spacing:0.03em;margin-bottom:8px;color:var(--ink-soft);">${icon} ${esc(title)} (${list.length})</div>
     <div class="order-tile-grid">${list.map(renderOrderTile).join('')}</div>
   </div>` : '';
-  const html = section('New', '🛍️', pending) + section('Ready to dispatch', '🚚', ready) + section('Packed', '📦', packed) + section('Processing', '🔧', processing);
+  const html = section('New', '🛍️', pending) + section('Under packing', '📦', ready) + section('Ready to dispatch', '🚚', packed) + section('Processing', '🔧', processing);
   return html || `<div class="empty"><div class="big">📦</div>No active orders right now.</div>`;
 }
 function renderOrderTilesGrouped(list, showUndoDispatch){
@@ -5313,8 +5349,8 @@ function renderOrders(){
     </div>
     <div class="row-actions" style="margin-top:10px;flex-wrap:wrap;gap:8px;">
       <span class="badge badge-processing" style="font-size:11.5px;padding:5px 10px;">🔧 Processing: ${processingCount}</span>
-      <span class="badge badge-approved" style="font-size:11.5px;padding:5px 10px;">🚚 Ready: ${readyCount}</span>
-      <button type="button" class="btn btn-sm btn-outline" data-stat="packed" style="padding:4px 10px;font-size:11.5px;">📦 Packed: ${packedCount}</button>
+      <span class="badge badge-approved" style="font-size:11.5px;padding:5px 10px;">📦 Under Packing: ${readyCount}</span>
+      <button type="button" class="btn btn-sm btn-outline" data-stat="packed" style="padding:4px 10px;font-size:11.5px;">🚚 Ready to Dispatch: ${packedCount}</button>
       <button type="button" class="btn btn-sm btn-outline" data-stat="processed" style="padding:4px 10px;font-size:11.5px;">✅ Processed: ${processedCount}</button>
       ${S.currentUser.role==='admin' ? `<button type="button" class="btn btn-sm btn-outline" id="siteVisitLogsBtn" style="padding:4px 10px;font-size:11.5px;">🌐 Order Form Logs (${S.siteVisitLogs.length})</button>` : ''}
     </div>
@@ -5353,7 +5389,7 @@ function openStatModal(key){
     const alerts = getStockAlerts();
     bodyHtml = alerts.total ? (renderAlertSection('raw',alerts.raw)+renderAlertSection('filled',alerts.filled)+renderAlertSection('ready',alerts.ready)) : `<div class="empty">No alerts right now 🎉</div>`;
   } else {
-    const titles = {pending:'New orders', processing:'Processing orders', ready:'Ready to dispatch', packed:'Packed orders', processed:'Processed orders'};
+    const titles = {pending:'New orders', processing:'Processing orders', ready:'Under packing', packed:'Ready to dispatch', processed:'Processed orders'};
     title = titles[key] || key;
     const list = S.orders.filter(o=>o.status===key).sort((a,b)=>b.createdAt-a.createdAt);
     bodyHtml = renderOrderTilesGrouped(list, key==='processed');
@@ -6027,8 +6063,8 @@ const CHECKLIST_MODULES = [
 const TILE_MODULES = [
   {key:'tile_pending', label:'Home tile: New Orders'},
   {key:'tile_processing', label:'Home tile: Processing'},
-  {key:'tile_ready', label:'Home tile: Ready to Dispatch'},
-  {key:'tile_packed', label:'Home tile: Packed'},
+  {key:'tile_ready', label:'Home tile: Under Packing'},
+  {key:'tile_packed', label:'Home tile: Ready to Dispatch'},
 ];
 function canViewTile(role, tileKey){
   if(role==='admin') return true;
@@ -6205,7 +6241,7 @@ function openPermissionConfirm(role, viewChecked, entryChecked){
 // current user being checked.
 const NOTIFICATION_KINDS = [
   {key:'newOrder', label:'New Order', desc:'Jab koi naya order aaye.'},
-  {key:'statusChange', label:'Order Status Change', desc:'Jab order Accept/Ready/Packed/Dispatched/Reject ho.'},
+  {key:'statusChange', label:'Order Status Change', desc:'Jab order Accept/Under Packing/Ready to Dispatch/Dispatched/Reject ho.'},
   {key:'chatMessage', label:'Chat Message (Announcements)', desc:'Jab koi announcement bheje. (1-to-1 personal message hamesha sirf jisko bheja gaya hai use hi jaata hai — ye list us par apply nahi hoti.)'},
   {key:'lowStock', label:'Low Stock Alert', desc:'Jab koi item apni low-stock limit se neeche jaaye.'},
 ];
@@ -8377,13 +8413,25 @@ let loadAllPromise = null;
   if(S.currentUser){ primeDevicePermissions(); lastKnownNotifCount = myNotifCount(getStockAlerts()); }
   flushOfflineQueue(); // in case saves were queued from a previous session
   flushExpenseDeltaQueue(); // in case an expense-balance delta was left pending from a previous session
-  window.addEventListener('online', ()=>{ showToast('Back online — syncing…'); flushOfflineQueue(); flushExpenseDeltaQueue(); reverifyOneSignalLogin(); });
+  window.addEventListener('online', ()=>{ showToast('Back online — syncing…'); doSyncTick(); reverifyOneSignalLogin(); });
   window.addEventListener('offline', ()=>{ showToast('No connection — changes will be saved and synced automatically', true); });
   // Installed PWAs can stay open (backgrounded) for days without a real page
   // reload -- if the very first OneSignal.login() attempt lost its race
   // (see ensureOneSignalLogin above), this is the other natural moment to
   // quietly retry it, matching how the offline save queue self-heals.
-  document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') reverifyOneSignalLogin(); });
+  //
+  // BUGFIX (2026-08-26, "site auto update nahi ho rahi, refresh karna padta
+  // hai" -- app doesn't reflect other devices' changes without a manual
+  // refresh): a backgrounded/minimized tab or phone-screen-off session gets
+  // its JS execution suspended by the browser/OS -- setInterval(doSyncTick)
+  // simply doesn't run at all while frozen, so whatever changed elsewhere
+  // (new orders, status moves, etc.) sits unfetched until the NEXT tick
+  // happens to land after the page wakes back up, which can be a long,
+  // unpredictable wait (confirmed live: a backgrounded tab sat with zero
+  // successful syncs until something woke it). Forcing an immediate tick
+  // the instant the tab becomes visible again closes that gap -- the person
+  // sees this device catch up right away instead of only on a hard refresh.
+  document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible'){ reverifyOneSignalLogin(); doSyncTick(); } });
   // Re-render (debounced) when the window crosses the desktop-sidebar
   // breakpoint, so resizing a browser window updates the nav split
   // (bottom-bar "More" overflow <-> full sidebar list) without waiting
