@@ -699,7 +699,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-28-firestore-preview4"; // Task #54 test build -- wires openUserModal's Add user/Reset password and the "Clear lockout" button to the deployed createStaffUser/resetStaffPassword/clearLoginLockout Cloud Functions (see fsFunctions above); fixes a real crash in autoAdvanceFillingPackaging/autoAdvanceOrders (dangling call to a nonexistent savePartitionDay -- see those functions' own comments) that would have broken order status auto-advancement the moment any filling/packing entry was recorded; ALSO requires firestore.rules to be re-deployed (the orders update rule needed a matching fix -- see its own comment) and functions/index.js to be re-deployed once more (it changed after the first deploy -- see CLOUD_FUNCTIONS_DEPLOY.md / ORDER_OPS_FIRESTORE_REWRITE_STATUS.md). Still NOT deployed to staff.maproductsindia.com itself.
+const APP_BUILD = "2026-08-28-firestore-preview5"; // LIVE-PRODUCTION INCIDENT FIXES (2026-08-28) -- the user deployed preview4 straight to staff.maproductsindia.com themselves (ahead of the planned full-testing/go-no-go step) and reported: (a) repeatedly asked for password, (b) data not updating after actions, (c) a chat message sent from one device not visibly arriving on another, (d) notifications not working. Live investigation via an already-authenticated admin session found and fixed TWO real bugs so far: 1) fsSetStaticSubKey (used by activeSessions/rolePermissions/holidays/batchReferences writes, including the login-session heartbeat) used a non-merge .set(), which could silently wipe a just-issued session's token/at fields if this device's local cache of that doc was even slightly stale -- a plausible cause of (a); fixed to .set(data,{merge:true}). 2) The real-time chatMessages Firestore listener's onChange fell back to plain render(), which only rebuilds #root -- since showModal() appends the Messages modal OUTSIDE #root, a message arriving while the recipient already had the modal open produced no visible change until they closed/reopened it, exactly matching (c); fixed via the new renderOrRefreshMessagesModal() helper (restores the same modal-aware refresh the old, now-retired doSyncTick polling loop always did). (b) and (d) are not yet root-caused. See ORDER_OPS_FIRESTORE_REWRITE_STATUS.md for the full incident writeup.
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -2134,7 +2134,24 @@ function fsDeleteItem(entity, idOrKey){
 function fsSetStaticSubKey(collection, subKey, value){
   if(!subKey) return Promise.resolve();
   const data = (value && typeof value==='object' && !Array.isArray(value)) ? value : { value: value };
-  return fsDb.collection(collection).doc(String(subKey)).set(data);
+  // FIXED (found during a 2026-08-28 live-production incident investigation):
+  // was a plain .set(data) -- a FULL document overwrite. sendHeartbeat's
+  // entry is built as Object.assign({}, S.activeSessions[username],
+  // {lastSeen}) -- if THIS device's local copy of S.activeSessions is even
+  // slightly stale (e.g. right after finalizeLogin's own
+  // issueNewSessionToken write, before this device's own listener has
+  // echoed it back into S yet), that heartbeat write would silently WIPE
+  // the token/at fields a just-issued login just set, since a non-merge
+  // .set() replaces the whole doc with exactly what's in `data` and
+  // nothing else. {merge:true} makes this write only ever touch the keys
+  // actually present in `data`, leaving any field this device doesn't
+  // currently know about (written by another device, or by a write this
+  // device's own listener hasn't caught up to yet) untouched -- the
+  // correct behavior for a "single sub-key, built from a possibly-stale
+  // local snapshot" write, matching every other single-subkey write this
+  // rewrite already uses fsSetStaticSubKey for (rolePermissions, holidays,
+  // batchReferences), none of which need old fields actively cleared.
+  return fsDb.collection(collection).doc(String(subKey)).set(data, { merge: true });
 }
 function fsDeleteStaticSubKey(collection, subKey){
   if(!subKey) return Promise.resolve();
@@ -2230,6 +2247,25 @@ function fsDetachAllListeners(){
   fsUnsubscribers.forEach(u=>{ try{ u(); }catch(e){} });
   fsUnsubscribers = [];
 }
+// BUGFIX (2026-08-28 live-production incident, "message bheja ek jaga se
+// dusre ko, nahi aya"): the retired doSyncTick (see the comment on that
+// function below) always checked `if(messagesModalOpen) refreshMessagesModal();
+// else render();` before updating the screen -- because showModal() appends
+// the Messages modal OUTSIDE #root (see showModal/closeModal), a plain
+// render() only ever rebuilds #root and never touches an already-open
+// modal's HTML. When this file was rewritten to use real-time Firestore
+// listeners instead of doSyncTick, every listener's default onChange was
+// simplified back down to plain render() -- silently dropping that
+// modal-aware refresh. Net effect: if the RECEIVING device already has the
+// Messages modal open at the moment a new chat message/announcement
+// arrives, nothing on screen changes until they close and reopen it -- easy
+// to read as "the message never arrived" even though it saved to Firestore
+// correctly the whole time. This helper restores the exact old behavior;
+// used as the chatMessages listener's onChange below.
+function renderOrRefreshMessagesModal(){
+  const messagesModalOpen = !!document.getElementById('messagesModalBody');
+  if(messagesModalOpen) refreshMessagesModal(); else render();
+}
 function fsBindCollection(entity, query, sortFn, mapFn, onChange){
   const unsub = query.onSnapshot(snap=>{
     let items = snap.docs.map(d=>d.data());
@@ -2281,7 +2317,7 @@ function attachFirestoreListeners(){
   fsBindCollection('activityLog', db.collection('activityLog').where('at','>=', now-7*DAY_MS).orderBy('at'), (a,b)=>a.at-b.at);
   fsBindCollection('dominoPrints', db.collection('dominoPrints').orderBy('at'), (a,b)=>a.at-b.at); // never age-filtered — explicit exemption, see firebase_data_model.md
   fsBindCollection('loginLog', db.collection('loginLog').where('at','>=', now-7*DAY_MS).orderBy('at'), (a,b)=>a.at-b.at);
-  fsBindCollection('chatMessages', db.collection('chatMessages').where('at','>=', now-7*DAY_MS).orderBy('at'), (a,b)=>a.at-b.at);
+  fsBindCollection('chatMessages', db.collection('chatMessages').where('at','>=', now-7*DAY_MS).orderBy('at'), (a,b)=>a.at-b.at, null, renderOrRefreshMessagesModal);
   fsBindCollection('retailSales', db.collection('retailSales').where('at','>=', now-180*DAY_MS).orderBy('at'), (a,b)=>a.at-b.at, normalizeRetailEntry);
   fsBindCollection('trackingViewLogs', db.collection('trackingViewLogs').where('at','>=', now-7*DAY_MS).orderBy('at','desc'), (a,b)=>b.at-a.at);
   fsBindCollection('siteVisitLogs', db.collection('siteVisitLogs').where('at','>=', now-7*DAY_MS).orderBy('at','desc'), (a,b)=>b.at-a.at);
