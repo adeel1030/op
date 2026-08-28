@@ -699,7 +699,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-28-firestore-preview5"; // LIVE-PRODUCTION INCIDENT FIXES (2026-08-28) -- the user deployed preview4 straight to staff.maproductsindia.com themselves (ahead of the planned full-testing/go-no-go step) and reported: (a) repeatedly asked for password, (b) data not updating after actions, (c) a chat message sent from one device not visibly arriving on another, (d) notifications not working. Live investigation via an already-authenticated admin session found and fixed TWO real bugs so far: 1) fsSetStaticSubKey (used by activeSessions/rolePermissions/holidays/batchReferences writes, including the login-session heartbeat) used a non-merge .set(), which could silently wipe a just-issued session's token/at fields if this device's local cache of that doc was even slightly stale -- a plausible cause of (a); fixed to .set(data,{merge:true}). 2) The real-time chatMessages Firestore listener's onChange fell back to plain render(), which only rebuilds #root -- since showModal() appends the Messages modal OUTSIDE #root, a message arriving while the recipient already had the modal open produced no visible change until they closed/reopened it, exactly matching (c); fixed via the new renderOrRefreshMessagesModal() helper (restores the same modal-aware refresh the old, now-retired doSyncTick polling loop always did). (b) and (d) are not yet root-caused. See ORDER_OPS_FIRESTORE_REWRITE_STATUS.md for the full incident writeup.
+const APP_BUILD = "2026-08-28-firestore-preview6"; // ROUND 2 of the 2026-08-28 live-production incident fixes -- a 3-agent parallel audit (rules-vs-write-paths, push-notification pipeline, fsSetItem overwrite races) found and fixed the remaining root causes: (b) "data doesn't update" was firestore.rules rejecting stockTasks completion + activityLog/retailSales self-edits for non-admin roles, PLUS a retailSales listener permission-denied firing on every filling/packaging login -- all three fixed in firestore.rules (see its own comments). Also added: fsReportWriteError -- EVERY Firestore write now surfaces a visible toast on failure instead of silently reverting the screen with no explanation (the single biggest reason this whole class of bug was so hard to describe/diagnose). (d) notifications: found and fixed a real silent-failure bug in functions/index.js (onExpensePush read the wrong field name, suppressing admin-on-behalf-of-manager settlement notifications) -- the "notifications completely absent" symptom still most likely needs a live check of the OneSignal REST key's IP Allowlist setting (see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md) since that can't be diagnosed from code alone. Also hardened: order status auto-advance writes now use a scoped merge (fsSaveOrderStatusFields) instead of a full non-merge overwrite; chatMessages read-receipts now use arrayUnion/merge instead of a racy full resave; updatedByUsername is now actually written on order-status/stock changes (was always empty before, breaking self-exclusion from your own push notifications). See ORDER_OPS_FIRESTORE_REWRITE_STATUS.md for the full writeup.
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -2109,9 +2109,43 @@ function fsDocIdFor(entity, item){
 // no per-cell size limit, so (unlike the old Sheets day-partition scheme)
 // there's no reason to batch multiple items into one write — one item,
 // one doc, always.
+// SYSTEMIC FIX (2026-08-28, live-production incident, "kuch bhi karne ke
+// baad data update nahi ho raha" -- data doesn't update on screen after
+// ANY action): virtually no call site in this ~9000-line file ever awaits
+// or .catch()s a Firestore write -- the universal pattern everywhere is
+// "mutate S[...] locally, fire the save, immediately
+// closeModal()/render()/showToast('Saved')". Combined with Firestore's
+// offline-first local cache (a write is applied to the on-screen UI
+// OPTIMISTICALLY the instant it's issued, then silently rolled back once
+// the server actually rejects it), a genuine permission-denied error --
+// from a real rules gap (several were just found and fixed elsewhere this
+// same audit -- see firestore.rules) or any future one -- was completely
+// invisible: the screen shows success, a toast says "Saved", then moments
+// later the screen quietly reverts once the real-time listener catches up
+// to the server's true (unchanged) state, with nothing telling the person
+// what happened or why. That is very likely why this bug was so hard to
+// pin down from a description alone. Rather than thread a .catch() through
+// every one of the ~150 call sites across the file, every write already
+// funnels through a small number of primitives (this function and its
+// siblings just below: fsDeleteItem/fsSetStaticSubKey/
+// fsDeleteStaticSubKey/fsSetTransport/fsDeleteTransport/fsSetStockField)
+// -- wrapping THOSE catches every write in the app in one place. The
+// rejection is still re-thrown afterward, so the handful of call sites
+// that already do their own .then()/.catch() keep working exactly as
+// before; this only adds a visible toast as a new side effect for the
+// overwhelming majority of call sites that don't.
+function fsReportWriteError(err, label){
+  console.error(`Firestore write failed (${label})`, err);
+  const code = err && err.code;
+  const msg = code==='permission-denied'
+    ? `Save failed — you don't have permission for that. Nothing was actually saved; please tell an admin. (${label})`
+    : `Save failed — check your connection and try again. (${label})`;
+  showToast(msg, true);
+}
 function fsSetItem(entity, item){
   if(!item) return Promise.resolve();
-  return fsDb.collection(entity).doc(fsDocIdFor(entity, item)).set(item);
+  return fsDb.collection(entity).doc(fsDocIdFor(entity, item)).set(item)
+    .catch(err=>{ fsReportWriteError(err, entity); throw err; });
 }
 // Explicit delete — NOT the same thing as "remove it from the local array,
 // then re-save the container," which is what the old Sheets model did
@@ -2123,7 +2157,8 @@ function fsSetItem(entity, item){
 // the "EXPLICIT DELETE (Task #54)" comments at each such site.
 function fsDeleteItem(entity, idOrKey){
   if(!idOrKey) return Promise.resolve();
-  return fsDb.collection(entity).doc(String(idOrKey)).delete();
+  return fsDb.collection(entity).doc(String(idOrKey)).delete()
+    .catch(err=>{ fsReportWriteError(err, `delete ${entity}`); throw err; });
 }
 // Static object-shaped keys (rolePermissions, holidays, batchReferences,
 // dailyRecordMarks) fan out into one doc per sub-key, matching the
@@ -2151,16 +2186,18 @@ function fsSetStaticSubKey(collection, subKey, value){
   // local snapshot" write, matching every other single-subkey write this
   // rewrite already uses fsSetStaticSubKey for (rolePermissions, holidays,
   // batchReferences), none of which need old fields actively cleared.
-  return fsDb.collection(collection).doc(String(subKey)).set(data, { merge: true });
+  return fsDb.collection(collection).doc(String(subKey)).set(data, { merge: true })
+    .catch(err=>{ fsReportWriteError(err, collection); throw err; });
 }
 function fsDeleteStaticSubKey(collection, subKey){
   if(!subKey) return Promise.resolve();
-  return fsDb.collection(collection).doc(String(subKey)).delete();
+  return fsDb.collection(collection).doc(String(subKey)).delete()
+    .catch(err=>{ fsReportWriteError(err, `delete ${collection}`); throw err; });
 }
 // transports — array of plain strings, doc id = the string itself (see
 // scripts/export_to_firestore.js's identical handling).
-function fsSetTransport(name){ return fsDb.collection('transports').doc(name).set({name}); }
-function fsDeleteTransport(name){ return fsDb.collection('transports').doc(name).delete(); }
+function fsSetTransport(name){ return fsDb.collection('transports').doc(name).set({name}).catch(err=>{ fsReportWriteError(err, 'transports'); throw err; }); }
+function fsDeleteTransport(name){ return fsDb.collection('transports').doc(name).delete().catch(err=>{ fsReportWriteError(err, 'delete transports'); throw err; }); }
 // stock/current — 5 STATIC_KEYS merge into one document's top-level
 // fields. Firestore's per-field `merge` only replaces the NAMED top-level
 // field wholesale (it doesn't merge inside it), so writing the full
@@ -2168,7 +2205,35 @@ function fsDeleteTransport(name){ return fsDb.collection('transports').doc(name)
 // correctly handles both additions AND deletions of a sub-key within that
 // map — no separate delete primitive needed for these 5 fields.
 function fsSetStockField(field, value){
-  return fsDb.collection('stock').doc('current').set({ [field]: value }, { merge:true });
+  // Also stamps updatedByUsername on every stock write -- functions/index.js's
+  // onStockPush reads this (per its own FIELD CONTRACT comment) to exclude
+  // whoever made the change from their own low-stock push notification; it
+  // was never actually being written from here before (2026-08-28 push-
+  // notification pipeline audit).
+  return fsDb.collection('stock').doc('current').set({ [field]: value, updatedByUsername: S.currentUser ? S.currentUser.username : null }, { merge:true })
+    .catch(err=>{ fsReportWriteError(err, `stock.${field}`); throw err; });
+}
+// HARDENING (2026-08-28, live-production incident audit): autoAdvanceFillingPackaging/
+// autoAdvanceOrders/ackTask are the one place a filling/packaging-role
+// session writes to `orders` (firestore.rules scopes exactly this: they
+// may touch ONLY status/fillingStatus/packagingStatus -- see that rule's
+// own comment). They used to go through the general savePartitionForItem/
+// fsSetItem path, which does a full NON-MERGE `.set()` of the entire local
+// order object -- built from S.orders, which is only as fresh as this
+// device's last-received listener update. If another device's write to a
+// DIFFERENT field on the same order (e.g. a manager editing customer/item
+// details) landed on the server in the moment before this device's own
+// listener caught up, that full-object write would silently overwrite it
+// back to this device's stale value -- purely as collateral damage of a
+// write that only ever intended to touch these 3 fields. Using a scoped
+// merge write instead removes that risk entirely for this path, regardless
+// of how stale the rest of this device's local copy of the order is.
+function fsSaveOrderStatusFields(o){
+  if(!o || !o.id) return Promise.resolve();
+  return fsDb.collection('orders').doc(String(o.id)).set(
+    { status: o.status, fillingStatus: o.fillingStatus, packagingStatus: o.packagingStatus },
+    { merge: true }
+  ).catch(err=>{ fsReportWriteError(err, 'orders (status)'); throw err; });
 }
 // expenseBalances — a genuine atomic delta, same guarantee
 // applyKeyedNumberDelta_'s LockService gave server-side, but now scoped to
@@ -3574,7 +3639,7 @@ function autoAdvanceFillingPackaging(alerts){
       o.packagingStatus='done'; changed=true; touchedOrders.add(o);
     }
   });
-  touchedOrders.forEach(o=>savePartitionForItem('orders', o));
+  touchedOrders.forEach(o=>fsSaveOrderStatusFields(o));
   return changed;
 }
 function syncStockTasksFromAlerts(){
@@ -4405,7 +4470,7 @@ function autoAdvanceOrders(){
       o.status='ready'; changed=true; touchedOrders.add(o);
     }
   });
-  touchedOrders.forEach(o=>savePartitionForItem('orders', o));
+  touchedOrders.forEach(o=>fsSaveOrderStatusFields(o));
   return changed;
 }
 // Admin can jump straight to Ready before stock naturally catches up on
@@ -4432,6 +4497,7 @@ function markOrderReadyNow(orderId){
       }
     });
     o.status = 'ready';
+    o.updatedByUsername = S.currentUser.username; // FIELD CONTRACT (functions/index.js) -- excludes this device's own action from its push notification
     savePartitionForItem('orders', o);
     if(stockChanged){ safeSet('app:readyStock', S.readyStock); syncStockTasksFromAlerts(); }
     render();
@@ -4452,6 +4518,7 @@ function undoMarkOrderReady(orderId){
     }
   });
   o.status = 'processing';
+  o.updatedByUsername = S.currentUser.username;
   savePartitionForItem('orders', o);
   if(stockChanged){ safeSet('app:readyStock', S.readyStock); syncStockTasksFromAlerts(); }
   render();
@@ -4468,6 +4535,7 @@ function markOrderPacked(orderId){
   o.status = 'packed';
   o.packedAt = Date.now();
   o.packedBy = S.currentUser.name;
+  o.updatedByUsername = S.currentUser.username;
   savePartitionForItem('orders', o);
   render();
   showToast('Order marked Ready to Dispatch');
@@ -4478,6 +4546,7 @@ function undoMarkOrderPacked(orderId){
   if(o.status!=='packed') return;
   o.status = 'ready';
   delete o.packedAt; delete o.packedBy;
+  o.updatedByUsername = S.currentUser.username;
   savePartitionForItem('orders', o);
   render();
   showToast('Undone — back to Under Packing');
@@ -4514,6 +4583,19 @@ function openDispatchModal(orderId){
   const finalizeDispatch = async (includeLR)=>{
     const transportName = document.getElementById('dispatchTransport').value.trim();
     if(!transportName){ showAlert('Enter a transport name.'); return; }
+    // RACE FIX (2026-08-28, fsSetItem non-merge race audit): the outer `o`
+    // was captured once, back when this modal first opened -- but the LR
+    // photo upload just below can take several real seconds on a slow
+    // connection, during which another device could legitimately write to
+    // this SAME order (e.g. a filling/packaging entry closing out
+    // fillingStatus/packagingStatus). Re-resolving here, immediately
+    // before this modal's own mutations begin (shadows the outer `o` on
+    // purpose), keeps that staleness window as short as it can be --
+    // savePartitionForItem's full non-merge save below then carries the
+    // freshest fields this device can have for everything it doesn't
+    // itself touch, instead of whatever was true when the modal opened.
+    const o = S.orders.find(x=>x.id===orderId);
+    if(!o){ showAlert('This order no longer exists — it may have been deleted or already dispatched elsewhere.'); closeModal(); render(); return; }
     const casesVal = document.getElementById('dispatchCases').value.trim();
     const lrFile = includeLR ? document.getElementById('dispatchLRFile').files[0] : null;
     const lrNumber = includeLR ? document.getElementById('dispatchLRNumber').value.trim() : '';
@@ -4545,6 +4627,7 @@ function openDispatchModal(orderId){
     o.dispatchedAt = Date.now();
     o.status = 'processed';
     o.processedAt = Date.now(); // tracking link expires 7 days after this
+    o.updatedByUsername = S.currentUser.username;
     savePartitionForItem('orders', o);
     closeModal(); render();
     showToast('Order Processed & Dispatched ✅');
@@ -4582,6 +4665,7 @@ function setOrderStatus(id, status){
   }
   o.status = status;
   if(status==='processed') o.processedAt = Date.now(); // tracking link expires 7 days after this
+  o.updatedByUsername = S.currentUser.username; // FIELD CONTRACT (functions/index.js) -- excludes this device's own action from its push notification
   if(status==='processing') autoAdvanceOrders(); // may instantly become 'ready' if stock already covers it
   savePartitionForItem('orders', o);
   syncStockTasksFromAlerts(); // accepting reserves stock and can create shortages — always resync after
@@ -4592,7 +4676,7 @@ function setOrderStatus(id, status){
 function ackTask(id, kind){
   const o = S.orders.find(x=>x.id===id); if(!o) return;
   if(kind==='filling') o.fillingStatus='done'; else o.packagingStatus='done';
-  savePartitionForItem('orders', o);
+  fsSaveOrderStatusFields(o); // scoped write -- see fsSaveOrderStatusFields' own comment
   autoAdvanceOrders();
   showToast('Task confirmed');
 }
@@ -6020,6 +6104,7 @@ function undoDispatch(orderId){
   showConfirm('Undo dispatch and move this order back to Ready?', ()=>{
     o.status = 'ready';
     delete o.dispatchedAt; delete o.processedAt;
+    o.updatedByUsername = S.currentUser.username;
     savePartitionForItem('orders', o);
     render(); openStatModal('processed');
     showToast('Dispatch undone — order back in Ready');
@@ -7306,15 +7391,28 @@ function sendPersonalMessage(toUsername, text){
 function markAnnouncementRead(id){
   const m = S.chatMessages.find(x=>x.id===id && x.type==='announcement');
   if(m && !(m.readBy||[]).includes(S.currentUser.username)){
-    m.readBy = m.readBy || []; m.readBy.push(S.currentUser.username);
-    savePartitionForItem('chatMessages', m);
+    // RACE FIX (2026-08-28, fsSetItem non-merge race audit): used to mutate
+    // the local `readBy` array then savePartitionForItem -> fsSetItem's
+    // full non-merge .set() -- two staff opening the same announcement
+    // around the same time could race, and whichever device's full-object
+    // write landed last would silently overwrite the other's readBy entry
+    // (a classic lost update on a shared array). arrayUnion is an atomic,
+    // additive server-side operation -- immune to this regardless of how
+    // stale either device's local copy of readBy is.
+    m.readBy = m.readBy || []; m.readBy.push(S.currentUser.username); // optimistic local update for instant UI feedback
+    fsDb.collection('chatMessages').doc(String(id)).set(
+      { readBy: firebase.firestore.FieldValue.arrayUnion(S.currentUser.username) }, { merge: true }
+    ).catch(err=>{ fsReportWriteError(err, 'chatMessages (read receipt)'); });
   }
 }
 function markThreadRead(otherUsername){
   S.chatMessages.forEach(m=>{
     if(m.type==='personal' && m.toUsername===S.currentUser.username && m.fromUsername===otherUsername && !m.read){
-      m.read = true;
-      savePartitionForItem('chatMessages', m);
+      // Same race fix as markAnnouncementRead above -- a scoped merge write
+      // touching only `read` instead of a full non-merge object resave.
+      m.read = true; // optimistic local update
+      fsDb.collection('chatMessages').doc(String(m.id)).set({ read: true }, { merge: true })
+        .catch(err=>{ fsReportWriteError(err, 'chatMessages (read receipt)'); });
     }
   });
 }
