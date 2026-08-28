@@ -665,6 +665,22 @@
 -->
 <script>window.OneSignalDeferred = window.OneSignalDeferred || [];</script>
 <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+<!-- Firestore/Auth (Task #54) -- compat build, not the modular v10+ SDK
+     firestore_client_design.md originally suggested: this file is one big
+     classic (non-module) <script>, matching every other function in it and
+     how OneSignal's SDK above is already loaded, and the compat build's
+     namespaced firebase.auth()/firebase.firestore() API works directly
+     from that without introducing an ES module boundary into an
+     otherwise-unmodularized app. -->
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<!-- ADDED (2026-08-28, wiring up createStaffUser/resetStaffPassword/
+     clearLoginLockout): these 3 admin operations are Admin-SDK-only (see
+     openUserModal's old "GAP (Task #54)" comment, now resolved below), so
+     they run as Cloud Functions the signed-in admin's own ID token calls
+     via firebase.functions() -- this SDK is what makes that callable. -->
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-functions-compat.js"></script>
 </head>
 <body>
 <div id="printArea"></div>
@@ -683,7 +699,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-26-tiles-autosync-fix1";
+const APP_BUILD = "2026-08-28-firestore-preview3"; // Task #54 test build -- now wires openUserModal's Add user/Reset password and the "Clear lockout" button to the deployed createStaffUser/resetStaffPassword/clearLoginLockout Cloud Functions (see fsFunctions above); requires functions/index.js to be RE-deployed once more first (it changed after the first deploy -- see CLOUD_FUNCTIONS_DEPLOY.md / ORDER_OPS_FIRESTORE_REWRITE_STATUS.md). Still NOT deployed to staff.maproductsindia.com itself.
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -1145,6 +1161,22 @@ function navSplit(tabs){
 }
 
 function uid(){ return (crypto.randomUUID ? crypto.randomUUID() : (Date.now()+'-'+Math.random().toString(36).slice(2))); }
+// Generates a temp password for a NEW staff login / an admin password
+// reset -- ADDED wiring up createStaffUser/resetStaffPassword below.
+// Excludes visually-ambiguous characters (0/O, 1/l/I) since an admin
+// often reads this off a screen and hands it to someone over the phone --
+// same concern scripts/export_to_firestore.js's own randomPassword() has,
+// just a plain charset pick here instead of base64-then-strip (no `crypto`
+// Node module in a browser; Web Crypto's getRandomValues is the
+// equivalent, used for the actual randomness).
+function generateTempPassword(){
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+  const bytes = new Uint8Array(14);
+  crypto.getRandomValues(bytes);
+  let out = '';
+  for(let i=0;i<bytes.length;i++) out += chars[bytes[i] % chars.length];
+  return out;
+}
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 // SECURITY FIX (2026-08-21 audit, findings #5/#7): orderLat/orderLng and
 // attendance a.lat/a.lng were the only fields anywhere in the app rendered
@@ -1655,17 +1687,49 @@ function backendKey(oldKey){ return oldKey.replace(/^app:/, ''); }
 // touches readyStock, stockTasks, and the order itself) becomes ONE network
 // request instead of several separate ones each queuing for the backend
 // lock. This is what was causing the pileup of concurrent "Running" saves.
-let batchResolvers = {}; // key -> [resolve, ...] waiting on the next successful flush
+let batchResolvers = {}; // UNUSED as of Task #54 -- kept only because nothing downstream reads it, harmless dead state alongside offlineQueue/flushOfflineQueue (see the plumbing block's header comment: Firestore's own persistence replaces this batching/queueing layer entirely).
 let batchFlushTimer = null;
+// STATIC_KEYS routing table (Task #54) -- mirrors order-ops-backend.gs's
+// own STATIC_KEYS list and scripts/export_to_firestore.js's mapping. Each
+// entry says how a `safeSet('app:<key>', value)` call for that key
+// actually gets written to Firestore. value is always S[key] itself (the
+// FULL current array/object), same as every safeSet call site already
+// passes today -- only what happens to it here changed.
+const FS_ID_ARRAY_KEYS = ['users','customers','tasks','stockTasks'];      // array of items, doc id = item.id
+const FS_KEYED_ARRAY_KEYS = ['catalogItems','customRoles'];               // array of items, doc id = item.key
+const FS_STOCK_KEYS = ['rawMaterial','filledStock','readyStock','lowStock','watchStock'];
+const FS_FANOUT_OBJECT_KEYS = ['rolePermissions','dailyRecordMarks','batchReferences','activeSessions'];
+// expenseBalances is DELIBERATELY EXCLUDED here (Task #54 bugfix): its
+// Firestore doc shape is {balance:number} (see fsApplyExpenseBalanceDelta),
+// not the generic {value:...} wrapper fsSetStaticSubKey uses for every
+// other fan-out key -- routing it through here would silently write the
+// wrong shape and read back as balance 0. expenseBalanceFor's one-time
+// self-heal seed writes directly in the correct shape instead.
+const FS_SERVER_ONLY_KEYS = ['loginLockouts','pendingNotifs','pushTopicState']; // firestore.rules: allow write: if false, for every client, always
 function safeSet(oldKey, value){
   const key = backendKey(oldKey);
-  queueOfflineSave(key, value);
-  const p = new Promise(resolve=>{
-    (batchResolvers[key] = batchResolvers[key] || []).push(resolve);
-  });
-  if(batchFlushTimer) clearTimeout(batchFlushTimer);
-  batchFlushTimer = setTimeout(()=>{ batchFlushTimer=null; flushOfflineQueue(); }, 60);
-  return p;
+  if(key==='transports'){
+    return Promise.all((value||[]).filter(n=>typeof n==='string' && n.trim()).map(fsSetTransport));
+  }
+  if(FS_ID_ARRAY_KEYS.indexOf(key)!==-1 || FS_KEYED_ARRAY_KEYS.indexOf(key)!==-1){
+    return Promise.all((value||[]).map(item=>fsSetItem(key, item)));
+  }
+  if(FS_STOCK_KEYS.indexOf(key)!==-1){
+    return fsSetStockField(key, value);
+  }
+  if(key==='notificationPrefs'){
+    return fsDb.collection('notificationPrefs').doc('current').set(value||{});
+  }
+  if(FS_FANOUT_OBJECT_KEYS.indexOf(key)!==-1){
+    const obj = value||{};
+    return Promise.all(Object.keys(obj).map(subKey=>fsSetStaticSubKey(key, subKey, obj[subKey])));
+  }
+  if(FS_SERVER_ONLY_KEYS.indexOf(key)!==-1){
+    console.warn(`safeSet('app:${key}', ...) called, but "${key}" is server-only in firestore.rules -- this write is silently skipped rather than sent (it would just be rejected). See the Firestore plumbing block's header comment.`);
+    return Promise.resolve();
+  }
+  console.error(`safeSet: unrecognized static key "${key}" -- add it to one of the routing lists above (Task #54).`);
+  return Promise.resolve();
 }
 
 // Day-wise partitioned storage: orders/activityLog/attendance/expenses/
@@ -1760,21 +1824,51 @@ function trackPartitionKeysDelta(rawData){
     });
   });
 }
-function savePartitionDay(entity, dateKey){
-  const tsField = PARTITIONED_TS_FIELD[entity];
-  const dayItems = S[entity].filter(item => localDateKey(item[tsField]) === dateKey);
-  (S._partitionKeysSeen[entity] = S._partitionKeysSeen[entity] || new Set()).add(dateKey);
-  return safeSet('app:'+entity+'_'+dateKey, dayItems);
-}
+// Task #54: the day-partition concept itself (savePartitionDay resaving a
+// WHOLE day's array) doesn't carry over to Firestore -- there was never a
+// real domain reason for it, just a workaround for Sheets' per-cell size
+// cap (see firebase_data_model.md's opening paragraph). savePartitionDay
+// itself is gone; savePartitionForItem/savePartitionAllDays keep their
+// NAMES and CALL SIGNATURES (dozens of call sites elsewhere in this file
+// create/edit an item by calling these, completely unchanged) but now do a
+// single targeted per-document write instead.
+//
+// IMPORTANT -- what did NOT carry over safely: several call sites used to
+// call savePartitionForItem(entity, item) on an item that was just DELETED
+// from S[entity] (filter it out locally, then "save" -- the old day-resave
+// trick made that implicitly persist the deletion too). That trick has no
+// safe equivalent here: calling fsSetItem with a deleted item would simply
+// WRITE IT BACK. Every such call site in this file was changed to call
+// deletePartitionItem(entity, id) instead -- see the "EXPLICIT DELETE
+// (Task #54)" comments at each one. savePartitionForItem is now safe to
+// assume ALWAYS means "this item currently exists and should be upserted."
 function savePartitionForItem(entity, item){
-  return savePartitionDay(entity, localDateKey(item[PARTITIONED_TS_FIELD[entity]]));
+  if(!item) return Promise.resolve();
+  (S._partitionKeysSeen[entity] = S._partitionKeysSeen[entity] || new Set()).add(localDateKey(item[PARTITIONED_TS_FIELD[entity]]));
+  return fsSetItem(entity, item);
 }
-// Saves every distinct day currently present in S[entity] — for bulk
-// operations that may have touched several different days at once.
+// Saves every item currently in S[entity] -- for bulk operations that may
+// have touched several different items/days at once. (Named "AllDays" for
+// call-site compatibility with order-ops.html; there's no day concept left
+// to iterate here, just every current item.)
 function savePartitionAllDays(entity){
-  const tsField = PARTITIONED_TS_FIELD[entity];
-  const days = new Set(S[entity].map(item=>localDateKey(item[tsField])));
-  return Promise.all([...days].map(d=>savePartitionDay(entity, d)));
+  return Promise.all(S[entity].map(item=>savePartitionForItem(entity, item)));
+}
+// NEW (Task #54) -- explicit delete primitive for partitioned entities.
+// See the big comment above savePartitionForItem for why this has to be a
+// genuinely separate function, not a repurposed save.
+function deletePartitionItem(entity, id){
+  if(!id) return Promise.resolve();
+  return fsDeleteItem(entity, id);
+}
+// NEW (Task #54) -- explicit delete primitive for the id/key-array static
+// keys (customers, users, tasks, stockTasks, catalogItems, customRoles).
+// Same reasoning as deletePartitionItem: a plain safeSet('app:customers',
+// S.customers) after filtering an item out would NOT delete anything in
+// Firestore the way it used to on the old resave-the-whole-array model.
+function deleteStaticArrayItem(key, idOrKey){
+  if(!idOrKey) return Promise.resolve();
+  return fsDeleteItem(key, idOrKey);
 }
 async function apiDeleteKeys(keys){
   if(!keys.length) return;
@@ -1876,7 +1970,7 @@ async function flushExpenseDeltaQueue(){
     if(!amt) continue;
     expenseDeltaInFlight[username] = true;
     try{
-      const res = await apiApplyExpenseBalanceDelta(username, amt);
+      const res = await fsApplyExpenseBalanceDelta(username, amt); // FIXED (Task #54) -- was apiApplyExpenseBalanceDelta, the old Apps Script backend call; same {ok,balance} response shape, now an atomic Firestore transaction instead
       if(res && res.ok){
         // Only ever subtract exactly the amount THIS request was sent for --
         // never overwrite with res.balance directly, so a delta queued by
@@ -1912,12 +2006,393 @@ async function apiDeleteLR(fileId){
   if(json && json.error) handleAuthError(json.error);
   return json;
 }
+/* =====================================================================
+   FIRESTORE (Phase 1 rewrite, Task #54) -- data layer + auth
+   =====================================================================
+   Replaces the Apps Script HTTP backend (fetchWithTimeout/API_URL/SECRET)
+   for everything BELOW this block with direct Firebase Auth + Firestore
+   SDK calls, per the design in firestore_client_design.md (Task #53) and
+   the collections in firebase_data_model.md (Phase 0). The rest of the
+   file — rendering, business logic, the S state shape — is UNCHANGED;
+   only how S gets populated and how writes leave the browser changes.
+   See scripts/export_to_firestore.js (Task #52) for the one-time data
+   migration this depends on having already run.
+
+   EXPLICITLY OUT OF SCOPE for this pass (tracked in
+   ORDER_OPS_FIRESTORE_REWRITE_STATUS.md, not silently dropped):
+   - uploadLR/deleteLR (Google Drive file storage) still call the old
+     Apps Script backend — Firestore doesn't do file storage, and mapping
+     LR photo uploads onto Firebase Storage is its own piece of work.
+   - Retention cleanup (cleanupOldChatDays/cleanupOldLogDays/etc.) is NOT
+     ported here. Deleting expired rows client-side, from every admin's
+     browser, was always a slightly awkward fit for Firestore's security
+     model (a client would need broad delete permissions on collections
+     it should mostly just write its own rows to) — this becomes the slim
+     Apps-Script-or-Cloud-Function watcher's job (Task #56). Until that
+     ships, activityLog/loginLog/trackingViewLogs/siteVisitLogs/
+     stockMovementLog/expenses/retailSales/orders/attendance grow
+     unbounded in Firestore.
+   - pendingNotifs/loginLockouts writes: firestore.rules correctly blocks
+     ALL client writes to these (server-only, see the rules file's own
+     bottom comment) — "clear my pending notifications on login" and
+     "admin clears a lockout" both need a small Cloud Function
+     (a callable, not a client Firestore write) to actually work going
+     forward. Left as clearly-marked no-ops below rather than silently
+     failing on a permission-denied error.
+   ===================================================================== */
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDFen7R642xUCP7-s_6dJDqKB2ymCxvtzI",
+  authDomain: "oms-m-a-products-india.firebaseapp.com",
+  projectId: "oms-m-a-products-india",
+  storageBucket: "oms-m-a-products-india.firebasestorage.app",
+  messagingSenderId: "730239125018",
+  appId: "1:730239125018:web:a6ec377bfe3b91ae1733a3"
+};
+// Not a secret — a Firebase web API key only identifies which project a
+// request belongs to; Firestore Security Rules (already deployed, see
+// firestore.rules) are what actually gate access, exactly like any public
+// Firebase web app's config is meant to work. Safe to commit as-is.
+firebase.initializeApp(firebaseConfig);
+const fsAuth = firebase.auth();
+const fsDb = firebase.firestore();
+// MUST match functions/index.js's own `const REGION` exactly -- calling a
+// callable's default (us-central1) region when the function is actually
+// deployed to asia-south2 fails with "not-found", not a helpful error.
+const fsFunctions = firebase.app().functions('asia-south2');
+// Built-in offline persistence — the direct replacement for the hand-built
+// offlineQueue/persistOfflineQueue (see firestore_client_design.md
+// section 4): a write made offline is applied to the local cache
+// immediately and re-sent automatically once the connection returns, no
+// custom queue needed.
+fsDb.enablePersistence({ synchronizeTabs: true }).catch(err=>{
+  console.warn('Firestore offline persistence unavailable (multiple tabs open, or an unsupported browser) — the app still works, it just falls back to online-only.', err && err.code);
+});
+
+const SYNTHETIC_EMAIL_DOMAIN = 'staff.maproductsindia.local';
+// Builds the synthetic Firebase Auth email for a given username. MUST stay
+// byte-for-byte identical to scripts/export_to_firestore.js's and
+// functions/index.js's own copy of this same logic -- all three build this
+// email independently (export creates the Auth account, this signs into
+// it, createStaffUser/resetStaffPassword manage it), so any drift between
+// them means a mismatched email and a user who can never sign in.
+// FIXED (2026-08-28, found during the first real --commit run): some real
+// usernames are themselves email addresses (e.g. "pack@olife.in") -- naively
+// appending "@staff.maproductsindia.local" to those produces a string with
+// TWO "@" signs, which Firebase Auth rejects outright ("The email address
+// is improperly formatted"), and silently aborted the whole export before
+// this was fixed to skip-and-report instead. The real fix is here: replace
+// every character that isn't valid in an email local-part with "_" before
+// appending the domain, so ANY username (spaces, @, whatever) always
+// produces a valid synthetic email, while uid/username itself (used for
+// Firestore doc ids, custom claims, security-rule lookups) stays exactly
+// as typed, untouched.
+function fsSyntheticEmailFor(username){
+  const local = String(username).trim().toLowerCase().replace(/[^a-z0-9._%+-]/g, '_');
+  return `${local}@${SYNTHETIC_EMAIL_DOMAIN}`;
+}
+
+// ---- Collection / doc-id mapping ---------------------------------------
+// MUST stay in sync with scripts/export_to_firestore.js's own mapping —
+// both need to agree on where a given entity's documents live and what
+// their id is, or data written by one and read by the other silently
+// won't line up. See that script's header comment for the full reasoning
+// per collection.
+const FS_KEY_KEYED_COLLECTIONS = ['catalogItems','customRoles']; // doc id = item.key, not item.id
+function fsDocIdFor(entity, item){
+  return String(FS_KEY_KEYED_COLLECTIONS.indexOf(entity)!==-1 ? item.key : item.id);
+}
+// Upserts a single item (order, expense, customer, task, log entry, ...)
+// as its own Firestore document — the direct replacement for
+// savePartitionForItem/safeSet('app:<arrayKey>', ...) for every collection
+// that's really an array-of-items-with-their-own-id today. Firestore has
+// no per-cell size limit, so (unlike the old Sheets day-partition scheme)
+// there's no reason to batch multiple items into one write — one item,
+// one doc, always.
+function fsSetItem(entity, item){
+  if(!item) return Promise.resolve();
+  return fsDb.collection(entity).doc(fsDocIdFor(entity, item)).set(item);
+}
+// Explicit delete — NOT the same thing as "remove it from the local array,
+// then re-save the container," which is what the old Sheets model did
+// (savePartitionDay resaves a whole day's array; safeSet resaves a whole
+// static array). That pattern has NO safe Firestore equivalent: passing
+// the just-removed item to fsSetItem would simply WRITE THE DELETED ITEM'S
+// DATA BACK, resurrecting it. Every call site in this file that used to do
+// "filter it out of S[entity], then save" now calls this instead — see
+// the "EXPLICIT DELETE (Task #54)" comments at each such site.
+function fsDeleteItem(entity, idOrKey){
+  if(!idOrKey) return Promise.resolve();
+  return fsDb.collection(entity).doc(String(idOrKey)).delete();
+}
+// Static object-shaped keys (rolePermissions, holidays, batchReferences,
+// dailyRecordMarks) fan out into one doc per sub-key, matching the
+// security rules already deployed (e.g. expenseBalances/{username} needs
+// a per-user read rule, which only works if it's really its own
+// document). `value` here is the single sub-key's value (e.g.
+// S.rolePermissions['admin']), never the whole S.rolePermissions object.
+function fsSetStaticSubKey(collection, subKey, value){
+  if(!subKey) return Promise.resolve();
+  const data = (value && typeof value==='object' && !Array.isArray(value)) ? value : { value: value };
+  return fsDb.collection(collection).doc(String(subKey)).set(data);
+}
+function fsDeleteStaticSubKey(collection, subKey){
+  if(!subKey) return Promise.resolve();
+  return fsDb.collection(collection).doc(String(subKey)).delete();
+}
+// transports — array of plain strings, doc id = the string itself (see
+// scripts/export_to_firestore.js's identical handling).
+function fsSetTransport(name){ return fsDb.collection('transports').doc(name).set({name}); }
+function fsDeleteTransport(name){ return fsDb.collection('transports').doc(name).delete(); }
+// stock/current — 5 STATIC_KEYS merge into one document's top-level
+// fields. Firestore's per-field `merge` only replaces the NAMED top-level
+// field wholesale (it doesn't merge inside it), so writing the full
+// (already locally-mutated) map for just the one field that changed
+// correctly handles both additions AND deletions of a sub-key within that
+// map — no separate delete primitive needed for these 5 fields.
+function fsSetStockField(field, value){
+  return fsDb.collection('stock').doc('current').set({ [field]: value }, { merge:true });
+}
+// expenseBalances — a genuine atomic delta, same guarantee
+// applyKeyedNumberDelta_'s LockService gave server-side, but now scoped to
+// just this one document instead of one global lock for every write
+// app-wide (see firestore_client_design.md section 3).
+async function fsApplyExpenseBalanceDelta(username, delta){
+  const ref = fsDb.collection('expenseBalances').doc(username);
+  try{
+    const newBalance = await fsDb.runTransaction(async (tx)=>{
+      const snap = await tx.get(ref);
+      const current = (snap.exists && typeof snap.data().balance==='number') ? snap.data().balance : 0;
+      const next = current + delta;
+      tx.set(ref, { balance: next }, { merge:true });
+      return next;
+    });
+    return { ok:true, balance:newBalance };
+  }catch(e){
+    return { ok:false, error: (e && e.message) || 'transaction_failed' };
+  }
+}
+
+// ---- Auth ----------------------------------------------------------
+// uid === username for every account (see scripts/export_to_firestore.js)
+// so Security Rules' request.auth.uid lookups and the {username} custom
+// claim both just work without a separate mapping table.
+async function fsLogin(username, password){
+  const email = fsSyntheticEmailFor(username);
+  let cred;
+  try{
+    cred = await fsAuth.signInWithEmailAndPassword(email, password);
+  }catch(err){
+    const code = err && err.code;
+    if(code==='auth/wrong-password' || code==='auth/user-not-found' || code==='auth/invalid-credential' || code==='auth/invalid-email'){
+      return { ok:false, error:'invalid_credentials' };
+    }
+    if(code==='auth/too-many-requests'){
+      // Firebase Auth's OWN built-in brute-force throttling (see
+      // firestore_client_design.md section 1) — it doesn't hand back an
+      // exact unlock time the way the old server-side loginLockouts did,
+      // so the caller shows a generic message instead of a countdown.
+      return { ok:false, error:'too_many_attempts' };
+    }
+    throw err; // genuine network/unknown error — caller's existing offline fallback (findMatchingUser) handles this
+  }
+  const uid = cred.user.uid;
+  const userSnap = await fsDb.collection('users').doc(uid).get();
+  if(!userSnap.exists){
+    // Authenticated but no Firestore profile — shouldn't happen for an
+    // account the export script created, but fail closed rather than
+    // proceed with a half-formed user.
+    await fsAuth.signOut();
+    return { ok:false, error:'invalid_credentials' };
+  }
+  const user = Object.assign({ id: uid }, userSnap.data());
+  return { ok:true, user, sessionToken:null }; // no separate session token — Firebase Auth's own ID token replaces it entirely
+}
+async function fsLogout(){
+  try{ await fsAuth.signOut(); }catch(e){ /* local state is cleared by the caller regardless — see doLogout */ }
+}
+// New requirement this migration introduces (see firestore_client_design.md
+// section 1): nobody's real password survived the migration (old ones were
+// salted hashes, not recoverable), so every account starts on a random temp
+// password from Task #52's export — this is what lets someone set their own.
+async function fsChangePassword(newPassword){
+  const user = fsAuth.currentUser;
+  if(!user) throw new Error('Not signed in');
+  await user.updatePassword(newPassword);
+}
+
+// ---- Real-time listeners (replaces doSyncTick/startSyncPolling/
+// apiFetchDelta/apiFetchAll/mergePartitionedEntity wholesale — see
+// firestore_client_design.md section 2 for the full per-collection table
+// and reasoning) ----
+let fsUnsubscribers = [];
+function fsDetachAllListeners(){
+  fsUnsubscribers.forEach(u=>{ try{ u(); }catch(e){} });
+  fsUnsubscribers = [];
+}
+function fsBindCollection(entity, query, sortFn, mapFn, onChange){
+  const unsub = query.onSnapshot(snap=>{
+    let items = snap.docs.map(d=>d.data());
+    if(mapFn) items = items.map(mapFn);
+    if(sortFn) items = items.slice().sort(sortFn);
+    S[entity] = items;
+    if(onChange) onChange(); else render();
+  }, err=>console.error(`Firestore listener failed for collection "${entity}"`, err));
+  fsUnsubscribers.push(unsub);
+}
+function fsBindDoc(collection, docId, onData){
+  const unsub = fsDb.collection(collection).doc(docId).onSnapshot(snap=>{
+    onData(snap.exists ? snap.data() : {});
+    render();
+  }, err=>console.error(`Firestore listener failed for doc "${collection}/${docId}"`, err));
+  fsUnsubscribers.push(unsub);
+}
+// rolePermissions/holidays/dailyRecordMarks/batchReferences/
+// expenseBalances/activeSessions — collections fanned out one-doc-per-key,
+// reassembled here into the plain {subKey: value} object shape the rest
+// of the app (S.rolePermissions[role], S.holidays[dateKey], ...) already
+// expects, unchanged from today.
+function fsBindStaticCollection(collection, onObject){
+  const unsub = fsDb.collection(collection).onSnapshot(snap=>{
+    const obj = {};
+    snap.docs.forEach(d=>{ obj[d.id] = d.data(); });
+    onObject(obj);
+    render();
+  }, err=>console.error(`Firestore listener failed for static collection "${collection}"`, err));
+  fsUnsubscribers.push(unsub);
+}
+function attachFirestoreListeners(){
+  fsDetachAllListeners();
+  const db = fsDb;
+  const DAY_MS = 24*60*60*1000;
+  const now = Date.now();
+
+  // Partitioned-in-the-old-model entities — each is its own flat
+  // collection now (see firebase_data_model.md), one listener per entity
+  // with the SAME retention window and sort order applyServerData's
+  // mergeAndFilterPartition calls used, so this is a straight parity port,
+  // not a behavior change. (See the FIELD CONTRACT comment at the top of
+  // functions/index.js for why `createdAt`/`at`/`timestamp` are the exact
+  // field names to filter/sort on — the deployed Cloud Functions depend on
+  // these same fields already.)
+  fsBindCollection('orders', db.collection('orders').where('createdAt','>=', now-60*DAY_MS).orderBy('createdAt'), (a,b)=>a.createdAt-b.createdAt);
+  fsBindCollection('attendance', db.collection('attendance').where('timestamp','>=', now-60*DAY_MS).orderBy('timestamp'), (a,b)=>a.timestamp-b.timestamp);
+  fsBindCollection('expenses', db.collection('expenses').where('at','>=', now-365*DAY_MS).orderBy('at'), (a,b)=>a.at-b.at);
+  fsBindCollection('activityLog', db.collection('activityLog').where('at','>=', now-7*DAY_MS).orderBy('at'), (a,b)=>a.at-b.at);
+  fsBindCollection('dominoPrints', db.collection('dominoPrints').orderBy('at'), (a,b)=>a.at-b.at); // never age-filtered — explicit exemption, see firebase_data_model.md
+  fsBindCollection('loginLog', db.collection('loginLog').where('at','>=', now-7*DAY_MS).orderBy('at'), (a,b)=>a.at-b.at);
+  fsBindCollection('chatMessages', db.collection('chatMessages').where('at','>=', now-7*DAY_MS).orderBy('at'), (a,b)=>a.at-b.at);
+  fsBindCollection('retailSales', db.collection('retailSales').where('at','>=', now-180*DAY_MS).orderBy('at'), (a,b)=>a.at-b.at, normalizeRetailEntry);
+  fsBindCollection('trackingViewLogs', db.collection('trackingViewLogs').where('at','>=', now-7*DAY_MS).orderBy('at','desc'), (a,b)=>b.at-a.at);
+  fsBindCollection('siteVisitLogs', db.collection('siteVisitLogs').where('at','>=', now-7*DAY_MS).orderBy('at','desc'), (a,b)=>b.at-a.at);
+  fsBindCollection('stockMovementLog', db.collection('stockMovementLog').where('at','>=', now-7*DAY_MS).orderBy('at','desc'), (a,b)=>b.at-a.at);
+
+  // Small/low-churn reference + working-set collections — always loaded,
+  // same as today.
+  fsBindCollection('customers', db.collection('customers'), null);
+  fsBindCollection('catalogItems', db.collection('catalogItems'), null, null, ()=>{ rebuildCatalogFlat(); render(); });
+  fsBindCollection('transports', db.collection('transports'), null, d=>d.name);
+  fsBindCollection('tasks', db.collection('tasks'), null);
+  fsBindCollection('stockTasks', db.collection('stockTasks'), null);
+  fsBindCollection('customRoles', db.collection('customRoles'), null, null, ()=>{ rebuildRolesRegistry(); render(); });
+  fsBindCollection('users', db.collection('users'), null, null, ()=>{ rebuildRolesRegistry(); checkSessionStillValid(); render(); });
+
+  fsBindDoc('stock','current', data=>{
+    S.rawMaterial = data.rawMaterial || {};
+    S.filledStock = data.filledStock || {};
+    S.readyStock = data.readyStock || {};
+    S.lowStock = data.lowStock || {raw:{},filled:{},ready:{}};
+    S.watchStock = data.watchStock || {raw:{},filled:{},ready:{}};
+  });
+  fsBindDoc('notificationPrefs','current', data=>{ S.notificationPrefs = data || {}; });
+
+  fsBindStaticCollection('rolePermissions', obj=>{ S.rolePermissions = obj; applyRolePermissionsToROLES(); });
+  fsBindStaticCollection('holidays', obj=>{ S.holidays = obj; });
+  fsBindStaticCollection('dailyRecordMarks', obj=>{ S.dailyRecordMarks = obj; });
+  fsBindStaticCollection('batchReferences', obj=>{
+    // fsSetStaticSubKey wraps a bare number as {value:number} on write —
+    // unwrap it the same way on read so S.batchReferences[cat] stays a
+    // plain number everywhere else in the app, unchanged from today.
+    const plain = {}; Object.keys(obj).forEach(k=>{ plain[k] = (obj[k] && typeof obj[k]==='object') ? obj[k].value : obj[k]; });
+    S.batchReferences = plain;
+  });
+  fsBindStaticCollection('expenseBalances', obj=>{
+    const plain = {}; Object.keys(obj).forEach(k=>{ plain[k] = (obj[k] && typeof obj[k].balance==='number') ? obj[k].balance : 0; });
+    // Same optimistic-overlay guarantee as today's applyServerData (2026-08-24
+    // fix): a balance-delta round trip already applied locally but not yet
+    // confirmed server-side must not be wiped out by this listener firing
+    // in between — see queueExpenseDelta/flushExpenseDeltaQueue.
+    const merged = Object.assign({}, plain);
+    for(const pendingUser in pendingExpenseDeltas){
+      if(pendingExpenseDeltas[pendingUser]) merged[pendingUser] = (merged[pendingUser]||0) + pendingExpenseDeltas[pendingUser];
+    }
+    S.expenseBalances = merged;
+  });
+  fsBindStaticCollection('activeSessions', obj=>{ S.activeSessions = obj; checkSessionStillValid(); });
+  // loginLockouts/pendingNotifs are NOT listened here — Security Rules
+  // block ALL client reads of loginLockouts (server-only in every
+  // respect), and pendingNotifs is scoped per-user with a read rule but
+  // has no UI depending on a live listener today (it's replayed once on
+  // login via checkForMissedNotifsOnLogin, which still calls the Apps
+  // Script action for now — see the file-header note on this block).
+}
+
+// ---- Auth bootstrap (replaces restoreSession's role) --------------------
+// Fires once immediately with whatever Firebase Auth already knows
+// (cached sign-in state, if any — this IS the "page refresh with an
+// already-active session" case restoreSession used to handle from
+// localStorage) and again on every future sign-in/sign-out.
+let fsAuthReadyPromise = null;
+function fsBootstrapAuth(){
+  fsAuthReadyPromise = new Promise(resolve=>{
+    let resolved = false;
+    fsAuth.onAuthStateChanged(async (fbUser)=>{
+      if(!fbUser){
+        fsDetachAllListeners();
+        if(S.currentUser){ S.currentUser = null; render(); }
+        if(!resolved){ resolved = true; resolve(); }
+        return;
+      }
+      attachFirestoreListeners();
+      // A fresh login (finalizeLogin) already set S.currentUser
+      // synchronously for the exact same uid — don't redo that work and
+      // cause a redundant render/re-init right on top of it. This branch
+      // is really only for "app opened with an already-active Firebase
+      // Auth session" (a genuine page refresh), where nothing else has
+      // set S.currentUser yet.
+      if(!(S.currentUser && S.currentUser.id===fbUser.uid)){
+        try{
+          const userSnap = await fsDb.collection('users').doc(fbUser.uid).get();
+          if(userSnap.exists){
+            const u = Object.assign({ id: fbUser.uid }, userSnap.data());
+            S.currentUser = u;
+            S.view = ROLES[u.role] ? ROLES[u.role].tabs[0] : S.view;
+            primeDevicePermissions();
+            initPushNotifications();
+            checkForMissedNotifsOnLogin();
+            render();
+          }
+        }catch(e){ console.error('Failed to load signed-in user profile', e); }
+      }
+      if(!resolved){ resolved = true; resolve(); }
+    });
+  });
+  return fsAuthReadyPromise;
+}
+/* =====================================================================
+   END Firestore plumbing — everything below this line is the same
+   application logic as order-ops.html, now calling the functions above
+   instead of the Apps Script backend at the specific sites marked
+   "EXPLICIT DELETE (Task #54)" or otherwise noted.
+   ===================================================================== */
+
 // ---- SERVER-SIDE AUTH (2026-08-21 audit, findings #3/#4) ----
-// Real login: the server verifies the password itself (against the same
-// salted hash format hashPassword() already produces here) and mints a
-// real session token, instead of the app deciding "this password matches"
-// purely by comparing against a locally-held hash and then just trusting
-// itself forever after. See action:"login" in order-ops-backend.gs.
+// SUPERSEDED (Task #54): password verification now happens via
+// fsLogin/Firebase Auth above, not this Apps Script call — kept only as
+// the network-unreachable fallback path's dead code was already removed
+// from bindLogin below. apiLogin itself is no longer called anywhere;
+// left in place (unused) rather than deleted, so a diff against
+// order-ops.html stays easy to follow.
 async function apiLogin(username, password){
   const res = await fetchWithTimeout(API_URL, {
     method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
@@ -2332,6 +2807,10 @@ function cleanupOldFinancialData(){
   if(stale.length) deleteKeysBatched(stale);
 }
 
+// SUPERSEDED (Task #54): replaced by fsBootstrapAuth() (see init()'s own
+// comment) -- no longer called anywhere. Kept, unused, as a reference for
+// what the old one-shot-fetch-then-poll startup sequence used to do, same
+// as apiLogin above.
 async function loadAll(){
   setSyncing(true);
   setSyncLabel('Loading data…');
@@ -2392,8 +2871,9 @@ function sendHeartbeat(){
   // the heartbeat only ever updates "last seen", it must never touch which
   // token is currently the valid one for this account.
   const prev = S.activeSessions[S.currentUser.username];
-  S.activeSessions[S.currentUser.username] = Object.assign({}, (prev && typeof prev==='object') ? prev : null, { lastSeen: Date.now() });
-  safeSet('app:activeSessions', S.activeSessions);
+  const entry = Object.assign({}, (prev && typeof prev==='object') ? prev : null, { lastSeen: Date.now() });
+  S.activeSessions[S.currentUser.username] = entry;
+  fsSetStaticSubKey('activeSessions', S.currentUser.username, entry); // FIXED (Task #54) -- was safeSet('app:activeSessions', S.activeSessions), which re-writes EVERY user's subkey from this device's local copy on every 60s heartbeat tick, risking stomping another user's concurrently-updated session (force-logout, fresh login) with stale cached data. Write only this device's own subkey instead.
 }
 function startHeartbeat(){
   sendHeartbeat(); // fire immediately so status is correct right after login, not up to 60s stale
@@ -2405,6 +2885,10 @@ function startHeartbeat(){
     sendHeartbeat();
   }, 60000);
 }
+// SUPERSEDED (Task #54): replaced by Firestore's own onSnapshot listeners
+// (see attachFirestoreListeners()) -- no longer called anywhere (was
+// setInterval(doSyncTick,...) via startSyncPolling, itself no longer called
+// from init()). Kept, unused, as a reference for the old polling logic.
 // One sync-poll tick, pulled out of the setInterval below so it can be
 // tested directly. Whenever the server version has advanced, this fetches
 // either a DELTA (only what changed since lastServerUpdatedAt — the normal
@@ -2469,6 +2953,8 @@ async function doSyncTick(){
     }
   }catch(e){ /* transient network hiccup — try again next tick */ }
 }
+// SUPERSEDED (Task #54): no longer called from init() -- see doSyncTick's
+// own SUPERSEDED note just above.
 function startSyncPolling(intervalMs){
   setInterval(doSyncTick, intervalMs || 4000);
 }
@@ -2596,8 +3082,9 @@ function issueNewSessionToken(username, isThisDevice){
   const token = makeSessionToken();
   const at = Date.now();
   const prev = S.activeSessions[username];
-  S.activeSessions[username] = Object.assign({}, (prev && typeof prev==='object') ? prev : null, { token, at, lastSeen: at });
-  safeSet('app:activeSessions', S.activeSessions);
+  const entry = Object.assign({}, (prev && typeof prev==='object') ? prev : null, { token, at, lastSeen: at });
+  S.activeSessions[username] = entry;
+  fsSetStaticSubKey('activeSessions', username, entry); // FIXED (Task #54) -- was safeSet('app:activeSessions', S.activeSessions); see sendHeartbeat's identical fix above for why writing the whole object is unsafe
   if(isThisDevice){
     try{
       localStorage.setItem(DEVICE_SESSION_TOKEN_KEY, token);
@@ -2705,7 +3192,7 @@ function finalizeLogin(u){
   checkForMissedNotifsOnLogin();
 }
 function doLogout(){
-  apiLogout(); // best-effort real server-side session revoke (2026-08-21 fix) -- never awaited, never blocks the local logout below
+  fsLogout(); // Task #54: Firebase Auth sign-out -- never awaited, never blocks the local logout below
   unsubscribePushNotifications(); // "login mandatory for notifications" -- see its own comment
   S.currentUser = null; S.notifOpen=false; S.moreOpen=false; S.profileOpen=false; S.alertPanelOpen=null;
   S.authToken = null; persistAuthToken(null);
@@ -2715,10 +3202,29 @@ function doLogout(){
 }
 // Manual, on-demand backup — fetches everything fresh from the backend
 // (not just what's currently in memory) and downloads it as one JSON file.
+// Mirrors scripts/export_to_firestore.js's own key coverage (PARTITIONED_PREFIXES
+// + STOCK_FIELDS + the remaining STATIC_KEYS), minus that script's SKIP_KEYS
+// (activeSessions/pendingNotifs/pushTopicState/authSessions/loginLockouts --
+// transient or server-side-only, not "data" worth backing up).
+const BACKUP_DATA_KEYS = [
+  'orders','activityLog','attendance','expenses','dominoPrints','loginLog',
+  'chatMessages','retailSales','trackingViewLogs','siteVisitLogs','stockMovementLog',
+  'rawMaterial','filledStock','readyStock','lowStock','watchStock',
+  'users','customers','tasks','stockTasks','catalogItems','customRoles','transports',
+  'rolePermissions','dailyRecordMarks','batchReferences','holidays','expenseBalances','notificationPrefs',
+];
 async function downloadBackupNow(){
   showToast('Preparing backup…');
   try{
-    const { data } = await apiFetchAll();
+    // FIXED (Task #54): was `const { data } = await apiFetchAll();`, which
+    // hit the OLD Apps Script/Sheets backend -- since
+    // scripts/export_to_firestore.js's one-time migration that backend is no
+    // longer written to and goes increasingly stale. Firestore's own
+    // real-time listeners (attachFirestoreListeners) keep S itself live and
+    // current now, so the backup is just a snapshot of S's already-current
+    // in-memory state -- no network round trip needed at all.
+    const data = {};
+    BACKUP_DATA_KEYS.forEach(k=>{ data[k] = S[k]; });
     const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -3186,11 +3692,17 @@ function revertActivity(e, reason){
     logStockMovement(e.key, e.itemLabel, 'packaging', -e.qty, `${activityLabel(e)} — ${tag}`);
   }
 }
-function saveAfterActivityChange(entry){
+// isDelete (Task #54, new param): the create/edit call site below (line
+// ~3673) always upserts `entry`; the DELETE call site further down passes
+// isDelete=true because `entry` there was already removed from
+// S.activityLog -- see the big comment above savePartitionForItem for why
+// that case can't just call savePartitionForItem like the edit case does.
+function saveAfterActivityChange(entry, isDelete){
   safeSet('app:rawMaterial', S.rawMaterial);
   safeSet('app:filledStock', S.filledStock);
   safeSet('app:readyStock', S.readyStock);
-  savePartitionForItem('activityLog', entry);
+  if(isDelete) deletePartitionItem('activityLog', entry.id);
+  else savePartitionForItem('activityLog', entry);
 }
 function openEditLogModal(e, opts){
   // allowUntilBooked: used by Daily Work (see editDailyEntry) where the
@@ -3299,8 +3811,8 @@ function bindConnectionFailedScreen(){
   if(btn) btn.addEventListener('click', async ()=>{
     S.loaded = false;
     render();
-    loadAllPromise = loadAll();
-    await loadAllPromise;
+    await fsBootstrapAuth(); // FIXED (Task #54) -- was loadAll(); see init()'s own comment for why
+    S.loaded = true;
     render();
   });
 }
@@ -3415,48 +3927,39 @@ function bindLogin(){
       render();
       return;
     }
-    // SECURITY FIX (2026-08-21 audit, findings #3/#4): the password check
-    // now happens on the SERVER first (real verification against the
-    // stored hash, real lockout tracking, a real session token minted on
-    // success) — the app no longer decides "this login is valid" purely by
-    // comparing against a locally-held password hash and then trusting
-    // itself. clearFailedLogins/recordFailedLogin (client-only writes) are
-    // dropped in favor of the server's own recordFailedLoginServer_/
-    // clearFailedLoginsServer_, which run as part of the same login call.
+    // Task #54: password verification now happens via Firebase Auth
+    // (fsLogin, real hash check + Firebase's own brute-force throttling
+    // server-side) instead of Apps Script's action:'login'.
     let result;
     try{
-      result = await apiLogin(u, p);
+      result = await fsLogin(u, p);
     }catch(netErr){
-      // Server unreachable (not a wrong password) — fall back to the old
-      // local-only check so someone who already has the app loaded can
-      // still get in and see their synced data offline. No session token
-      // is issued in this path, so every WRITE will correctly come back
-      // session_required (handleAuthError) until they're back online and
-      // get a real session — this only ever restores read access.
-      console.error('Server login unreachable, falling back to local check', netErr);
-      const matched = await findMatchingUser(u, p);
-      if(matched){
-        loginError=''; S.authToken = null; persistAuthToken(null);
-        startPostLoginSequence(matched);
-      } else {
-        loginSubmitting = false; startWrongLoginSequence();
-      }
+      // Server unreachable (not a wrong password). UNLIKE the old
+      // Sheets-backed app, there is no local-hash fallback available here
+      // any more — Task #52's export deliberately never puts a password
+      // hash on the client (S.users never carries one, migrated or not),
+      // so a genuinely fresh sign-in on this device requires connectivity
+      // the first time, same as any standard Firebase Auth app. A device
+      // that was ALREADY signed in before going offline stays signed in
+      // regardless (see fsBootstrapAuth — Firebase Auth's own persisted
+      // session handles that case entirely separately from this form).
+      console.error('Firebase Auth unreachable — cannot verify a fresh sign-in offline', netErr);
+      loginSubmitting = false;
+      loginError = 'No connection — please reconnect and try again.';
+      render();
       return;
     }
     if(result && result.ok && result.user){
       loginError = '';
-      S.authToken = result.sessionToken;
-      persistAuthToken(result.sessionToken);
       // Prefer the already-loaded local user record (same object identity
-      // as everything else in S.users) when we have it; the server's
-      // sanitized copy (no password fields anyway) is only a fallback for
-      // the rare case the local list hasn't synced this account yet.
+      // as everything else in S.users) when we have it; Firestore's own
+      // copy is only a fallback for the rare case the local list hasn't
+      // synced this account yet.
       const matched = S.users.find(x=>x.username.toLowerCase()===result.user.username.toLowerCase()) || result.user;
       startPostLoginSequence(matched);
-    } else if(result && result.error === 'locked'){
+    } else if(result && result.error === 'too_many_attempts'){
       loginSubmitting = false;
-      const waitSec = Math.max(1, Math.ceil(((result.lockedUntil||Date.now())-Date.now())/1000));
-      loginError = `Too many failed attempts — try again in ${waitSec}s.`;
+      loginError = 'Too many failed attempts — please wait a few minutes and try again.';
       render();
     } else {
       loginSubmitting = false;
@@ -3661,8 +4164,62 @@ function renderProfilePanel(role){
       </div>
     </div>
   </div>
-  <button class="btn btn-danger" style="width:100%;margin-top:14px;" id="logoutBtn">Log out</button>
+  <button class="btn btn-outline" style="width:100%;margin-top:14px;" id="changePasswordBtn">Change password</button>
+  <button class="btn btn-danger" style="width:100%;margin-top:10px;" id="logoutBtn">Log out</button>
   <p class="mono" style="text-align:center;margin-top:14px;opacity:0.5;">build ${APP_BUILD}</p>`;
+}
+// Change Password modal (Task #54) -- self-service only, see openUserModal's
+// GAP comment for why an admin can't reset someone ELSE's password yet.
+// Firebase requires a RECENT sign-in before allowing a sensitive change
+// like updatePassword, so this reauthenticates with the current password
+// first (which also doubles as proving they actually know it).
+function openChangePasswordModal(){
+  showModal(`
+    <h3>Change password</h3>
+    <form id="changePasswordForm">
+      <div class="field"><label>Current password</label><input id="cpCurrent" type="password" autocomplete="current-password" required /></div>
+      <div class="field"><label>New password</label><input id="cpNew" type="password" autocomplete="new-password" minlength="6" required /></div>
+      <div class="field"><label>Confirm new password</label><input id="cpConfirm" type="password" autocomplete="new-password" minlength="6" required /></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
+        <button type="submit" class="btn btn-primary">Change password</button>
+      </div>
+    </form>
+  `);
+  document.getElementById('changePasswordForm').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const submitBtn = document.querySelector('#changePasswordForm button[type="submit"]');
+    if(submitBtn && submitBtn.disabled) return;
+    if(submitBtn) submitBtn.disabled = true;
+    const reenable = ()=>{ if(submitBtn) submitBtn.disabled = false; };
+    const current = document.getElementById('cpCurrent').value;
+    const nextPw = document.getElementById('cpNew').value;
+    const confirmPw = document.getElementById('cpConfirm').value;
+    if(nextPw.length < 6){ showAlert('New password must be at least 6 characters.'); reenable(); return; }
+    if(nextPw !== confirmPw){ showAlert("New passwords don't match."); reenable(); return; }
+    const fbUser = fsAuth.currentUser;
+    if(!fbUser || !fbUser.email){ showAlert('Your session has expired — please log in again.'); reenable(); closeModal(); return; }
+    try{
+      const cred = firebase.auth.EmailAuthProvider.credential(fbUser.email, current);
+      await fbUser.reauthenticateWithCredential(cred);
+      await fsChangePassword(nextPw);
+      closeModal();
+      showToast('Password changed ✅');
+    }catch(err){
+      const code = err && err.code;
+      if(code==='auth/wrong-password' || code==='auth/invalid-credential' || code==='auth/invalid-login-credentials'){
+        showAlert('Current password is incorrect.');
+      } else if(code==='auth/weak-password'){
+        showAlert('That new password is too weak — try a longer one.');
+      } else if(code==='auth/too-many-requests'){
+        showAlert('Too many attempts — please wait a bit and try again.');
+      } else {
+        console.error('Change password failed', err);
+        showAlert('Could not change password — check your connection and try again.');
+      }
+      reenable();
+    }
+  });
 }
 
 function renderPulse(stockAlerts){
@@ -3733,6 +4290,8 @@ function bindShell(){
   if(avatarBtn) avatarBtn.addEventListener('click', ()=>{ S.profileOpen=true; S.notifOpen=false; S.moreOpen=false; S.alertPanelOpen=null; render(); });
   const logoutBtn = document.getElementById('logoutBtn');
   if(logoutBtn) logoutBtn.addEventListener('click', doLogout);
+  const changePasswordBtn = document.getElementById('changePasswordBtn');
+  if(changePasswordBtn) changePasswordBtn.addEventListener('click', openChangePasswordModal);
 
   const bell = document.getElementById('bellBtn');
   if(bell) bell.addEventListener('click', ()=>{ S.notifOpen = !S.notifOpen; S.moreOpen=false; S.profileOpen=false; S.alertPanelOpen=null; render(); });
@@ -4232,13 +4791,13 @@ function deleteDailyEntry(source, id){
     showConfirm('Delete this entry? Its stock effect will be reversed.', ()=>{
       revertActivity(e, 'delete');
       S.activityLog = S.activityLog.filter(x=>x.id!==id);
-      saveAfterActivityChange(e);
+      saveAfterActivityChange(e, true); // EXPLICIT DELETE (Task #54) -- see saveAfterActivityChange's isDelete param
       render(); showToast('Entry deleted & stock reverted');
     });
   } else if(source==='expenses'){
     showConfirm('Delete this entry?', ()=>{
       S.expenses = S.expenses.filter(x=>x.id!==id);
-      savePartitionForItem('expenses', e);
+      deletePartitionItem('expenses', id); // EXPLICIT DELETE (Task #54) -- was savePartitionForItem('expenses', e), which would have written the deleted entry back
       applyExpenseBalanceDelta(e, -1);
       render();
     });
@@ -4378,7 +4937,7 @@ function bindDomino(){
     showConfirm('Delete this entry?', ()=>{
       const item = S.dominoPrints.find(x=>x.id===b.dataset.delDomino);
       S.dominoPrints = S.dominoPrints.filter(x=>x.id!==b.dataset.delDomino);
-      if(item) savePartitionForItem('dominoPrints', item);
+      if(item) deletePartitionItem('dominoPrints', item.id); // EXPLICIT DELETE (Task #54) -- was savePartitionForItem, which would have written the deleted item back
       render();
     });
   }));
@@ -4510,7 +5069,7 @@ function bindCatalogListModal(){
     showConfirm(`Delete "${it.name} ${it.size}" from the catalog?${stockNote}`, ()=>{
       S.catalogItems = S.catalogItems.filter(x=>x.key!==key);
       rebuildCatalogFlat();
-      safeSet('app:catalogItems', S.catalogItems);
+      deleteStaticArrayItem('catalogItems', key); // EXPLICIT DELETE (Task #54)
       closeModal(); openManageCatalogModal();
     });
   }));
@@ -4618,7 +5177,13 @@ function expenseBalanceFor(username){
   const settled = mine.filter(x=>x.type==='settlement').reduce((s,x)=>s+x.amount,0);
   const seed = spent - settled; // positive = still owed to the manager
   S.expenseBalances[username] = seed;
-  safeSet('app:expenseBalances', S.expenseBalances);
+  // FIXED (Task #54): was safeSet('app:expenseBalances', S.expenseBalances)
+  // -- that routed through the generic fan-out wrapper, which writes
+  // {value:seed} while fsApplyExpenseBalanceDelta (and the read-side
+  // listener) both expect {balance:seed}. Write directly in the shape the
+  // rest of the expenseBalances plumbing actually uses, and only for this
+  // one username, not the whole local map.
+  fsDb.collection('expenseBalances').doc(username).set({ balance: seed }, { merge:true });
   return seed;
 }
 // Applies (sign=+1) or reverses (sign=-1) one expense/settlement entry's
@@ -4742,7 +5307,7 @@ function bindExpenses(){
     showConfirm('Delete this entry?', ()=>{
       const item = S.expenses.find(x=>x.id===b.dataset.delExp);
       S.expenses = S.expenses.filter(x=>x.id!==b.dataset.delExp);
-      if(item){ savePartitionForItem('expenses', item); applyExpenseBalanceDelta(item, -1); }
+      if(item){ deletePartitionItem('expenses', item.id); applyExpenseBalanceDelta(item, -1); } // EXPLICIT DELETE (Task #54) -- was savePartitionForItem, which would have written the deleted item back
       render();
     });
   }));
@@ -5475,7 +6040,7 @@ Regards
         syncStockTasksFromAlerts();
       }
       S.orders = S.orders.filter(x=>x.id!==b.dataset.delOrder);
-      if(o) savePartitionForItem('orders', o);
+      if(o) deletePartitionItem('orders', o.id); // EXPLICIT DELETE (Task #54) -- was savePartitionForItem, which would have written the deleted order back
       if(closeAfter) closeModal(); render();
     });
   }));
@@ -5929,8 +6494,9 @@ function bindCustomers(){
   }));
   document.querySelectorAll('[data-del-cust]').forEach(b=>b.addEventListener('click', ()=>{
     showConfirm('Delete this customer?', ()=>{
-      S.customers = S.customers.filter(c=>c.id!==b.dataset.delCust);
-      safeSet('app:customers', S.customers); render();
+      const delCustId = b.dataset.delCust;
+      S.customers = S.customers.filter(c=>c.id!==delCustId);
+      deleteStaticArrayItem('customers', delCustId); render(); // EXPLICIT DELETE (Task #54)
     });
   }));
   document.querySelectorAll('[data-edit-transport]').forEach(b=>b.addEventListener('click', ()=>{
@@ -5946,7 +6512,7 @@ function bindCustomers(){
     const name = b.dataset.delTransport;
     showConfirm(`Remove "${name}" from the transporter list? Existing orders keep this name — this only stops it from being suggested for new ones.`, ()=>{
       S.transports = S.transports.filter(t=>t!==name);
-      safeSet('app:transports', S.transports);
+      fsDeleteTransport(name); // EXPLICIT DELETE (Task #54) -- safeSet('app:transports',...) only writes surviving names, never deletes the removed doc
       render();
       showToast('Transporter removed');
     });
@@ -6127,8 +6693,8 @@ function bindTeamListModal(){
       S.customRoles = S.customRoles.filter(c=>c.key!==role);
       delete S.rolePermissions[role];
       rebuildRolesRegistry();
-      safeSet('app:customRoles', S.customRoles);
-      safeSet('app:rolePermissions', S.rolePermissions);
+      deleteStaticArrayItem('customRoles', role); // EXPLICIT DELETE (Task #54)
+      fsDeleteStaticSubKey('rolePermissions', role); // EXPLICIT DELETE (Task #54) -- safeSet('app:rolePermissions',...) only iterates Object.keys(S.rolePermissions), so it can never delete a removed subkey's doc
       closeModal(); openPermissionManager();
     });
   }));
@@ -6226,7 +6792,7 @@ function openPermissionConfirm(role, viewChecked, entryChecked){
     ENTRY_MODULES.forEach(m=>{ next[m.key] = entryChecked.some(v=>v.key===m.key); });
     S.rolePermissions[role] = next;
     applyRolePermissionsToROLES();
-    safeSet('app:rolePermissions', S.rolePermissions);
+    fsSetStaticSubKey('rolePermissions', role, next); // FIXED (Task #54) -- was safeSet('app:rolePermissions', S.rolePermissions), which re-writes every OTHER role's subkey too from this device's local copy, risking stomping a concurrent edit elsewhere
     closeModal(); render(); showToast(`${ROLES[role].label} permissions updated`);
   });
 }
@@ -6367,7 +6933,12 @@ async function performResetAllDataExceptUsers(){
   showToast('All data reset — Users kept');
 }
 function bindUsers(){
-  document.getElementById('newUserBtn').addEventListener('click', ()=>openUserModal(null));
+  document.getElementById('newUserBtn').addEventListener('click', ()=>{
+    // FIXED (Task #54 UX): openUserModal(null) always blocks on submit now
+    // (see its GAP comment) -- tell people that up front instead of letting
+    // them fill out the whole form first.
+    showAlert("Creating new staff logins isn't available from this screen yet — see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md.");
+  });
   const permsBtn = document.getElementById('openPermsBtn');
   if(permsBtn) permsBtn.addEventListener('click', openPermissionManager);
   const notifPermsBtn = document.getElementById('openNotifPermsBtn');
@@ -6377,8 +6948,9 @@ function bindUsers(){
   document.querySelectorAll('[data-edit-user]').forEach(b=>b.addEventListener('click', ()=>openUserModal(b.dataset.editUser)));
   document.querySelectorAll('[data-del-user]').forEach(b=>b.addEventListener('click', ()=>{
     showConfirm('Remove this user?', ()=>{
-      S.users = S.users.filter(u=>u.id!==b.dataset.delUser);
-      safeSet('app:users', S.users); render();
+      const delUserId = b.dataset.delUser;
+      S.users = S.users.filter(u=>u.id!==delUserId);
+      deleteStaticArrayItem('users', delUserId); render(); // EXPLICIT DELETE (Task #54)
     });
   }));
   document.querySelectorAll('[data-force-logout]').forEach(b=>b.addEventListener('click', ()=>{
@@ -6450,7 +7022,10 @@ function openUserModal(id){
       </div>
       <div class="field"><label>Full name</label><input id="uName" value="${existing?esc(existing.name):''}" required /></div>
       <div class="field"><label>Username</label><input id="uUser" value="${existing?esc(existing.username):''}" required /></div>
-      <div class="field"><label>Password${existing?' (leave blank to keep unchanged)':''}</label><input id="uPass" type="password" autocomplete="new-password" placeholder="${existing?'••••••••':''}" ${existing?'':'required'} /></div>
+      ${existing
+        ? `<div class="field"><label>Password</label><div class="mono" style="margin-top:4px;">A fresh temporary password will be generated and shown to you if you use the "Reset password" button below — they can then change it themselves from Profile → Change Password once signed in.</div>
+             <button type="button" class="btn btn-outline btn-sm" id="uResetPasswordBtn" style="margin-top:6px;">Reset password</button></div>`
+        : `<div class="field"><label>Password</label><div class="mono" style="margin-top:4px;">A temporary password will be generated automatically and shown to you once this account is created.</div></div>`}
       <div class="field"><label>Role / Team (controls access — see 🔐 Permission Manager)</label>
         <select id="uRole">
           ${Object.keys(ROLES).map(r=>`<option value="${r}" ${existing&&existing.role===r?'selected':''}>${ROLES[r].label}</option>`).join('')}
@@ -6490,6 +7065,25 @@ function openUserModal(id){
     const wrap = document.getElementById('uPhotoPreviewWrap');
     wrap.innerHTML = `<span style="font-weight:800;color:var(--primary);">?</span>`;
   });
+  // WIRED (2026-08-28): resetStaffPassword Cloud Function -- see the
+  // header comment on the submit handler below for the matching
+  // createStaffUser wiring and why both had to wait for a Cloud Function
+  // (Admin-SDK-only operations, no client SDK equivalent).
+  const resetPwBtn = document.getElementById('uResetPasswordBtn');
+  if(resetPwBtn) resetPwBtn.addEventListener('click', ()=>{
+    showConfirm(`Generate a new temporary password for "${existing.username}"? Their current password will stop working immediately, and every other device they're signed in on will be signed out.`, async ()=>{
+      resetPwBtn.disabled = true;
+      const newPassword = generateTempPassword();
+      try{
+        await fsFunctions.httpsCallable('resetStaffPassword')({ username: existing.username, newPassword });
+        showAlert(`Password reset for "${existing.username}". New temporary password: ${newPassword} — hand this to them privately (not a group chat). They can change it themselves from Profile → Change Password once signed in.`);
+      }catch(e){
+        showAlert('Could not reset the password: ' + ((e && e.message) || 'unknown error') + '. Make sure the Cloud Functions are deployed (see CLOUD_FUNCTIONS_DEPLOY.md) and try again.');
+      }finally{
+        resetPwBtn.disabled = false;
+      }
+    }, {danger:true, confirmLabel:'Reset password'});
+  });
   document.getElementById('userForm').addEventListener('submit', async (e)=>{
     e.preventDefault();
     // SECURITY FIX (2026-08-21 audit, finding #9): withSubmitGuard isn't
@@ -6503,59 +7097,66 @@ function openUserModal(id){
     if(userSubmitBtn && userSubmitBtn.disabled) return;
     if(userSubmitBtn) userSubmitBtn.disabled = true;
     const reenable = ()=>{ if(userSubmitBtn) userSubmitBtn.disabled = false; };
+    // WIRED (2026-08-28): was a hard GAP (Task #54) -- creating a new staff
+    // LOGIN needs a Firebase Auth account, which the client SDK cannot
+    // create for someone else (Admin-SDK-only). createStaffUser now exists
+    // (functions/index.js) and does exactly that, plus the matching
+    // users/{username} Firestore doc in the same call -- so this no longer
+    // needs its own safeSet('app:users', ...) afterward, the Cloud
+    // Function's own Firestore write is what the real-time listener below
+    // will pick up. A username collision is checked both here (fast local
+    // UX) and server-side (authoritative -- see createStaffUser's own
+    // dupSnap query, which is what actually prevents a race between two
+    // admins creating the same username at once).
+    if(!existing){
+      const name = document.getElementById('uName').value.trim();
+      const username = document.getElementById('uUser').value.trim();
+      const role = document.getElementById('uRole').value;
+      const post = document.getElementById('uPost').value.trim();
+      const phone = document.getElementById('uPhone').value.trim();
+      const address = document.getElementById('uAddr').value.trim();
+      const photo = pendingPhoto;
+      if(S.users.some(u=>u.username.toLowerCase()===username.toLowerCase())){
+        showAlert('That username is already taken.'); reenable(); return;
+      }
+      const password = generateTempPassword();
+      try{
+        await fsFunctions.httpsCallable('createStaffUser')({ username, name, role, post, phone, address, photo, password });
+        closeModal();
+        showAlert(`Staff login created for "${username}". Temporary password: ${password} — hand this to them privately (not a group chat). They can change it themselves from Profile → Change Password once signed in.`);
+      }catch(e){
+        showAlert('Could not create this login: ' + ((e && e.message) || 'unknown error') + '. Make sure the Cloud Functions are deployed (see CLOUD_FUNCTIONS_DEPLOY.md) and try again.');
+        reenable();
+      }
+      return;
+    }
     const name = document.getElementById('uName').value.trim();
     const username = document.getElementById('uUser').value.trim();
-    const newPassword = document.getElementById('uPass').value; // blank when editing means "keep unchanged"
     const role = document.getElementById('uRole').value;
     const post = document.getElementById('uPost').value.trim();
     const phone = document.getElementById('uPhone').value.trim();
     const address = document.getElementById('uAddr').value.trim();
     const photo = pendingPhoto;
-    if(S.users.some(u=>u.username.toLowerCase()===username.toLowerCase() && (!existing || u.id!==existing.id))){
+    if(S.users.some(u=>u.username.toLowerCase()===username.toLowerCase() && u.id!==existing.id)){
       showAlert('That username is already taken.'); reenable(); return;
     }
-    const newRecord = existing
-      ? Object.assign({}, existing, {name, username, role, post, phone, address, photo})
-      : {id:uid(), name, username, role, post, phone, address, photo};
-    if(newPassword){
-      await setUserPassword(newRecord, newPassword); // hashes it, never stores plaintext
-      if(existing){
-        // Security feature (2026-08-21): resetting someone's password must
-        // invalidate whatever session they currently have immediately --
-        // otherwise, if the reset was because their old password leaked,
-        // whoever had the OLD session keeps working right up to the
-        // 48-hour idle timeout regardless. isThisDevice=true only when the
-        // admin is resetting their OWN password, so they don't immediately
-        // kick themselves out on the next sync.
-        const isOwnAccount = existing.username===S.currentUser.username;
-        issueNewSessionToken(existing.username, isOwnAccount);
-        // SECURITY FIX (2026-08-21 audit, findings #3/#4): also revoke the
-        // REAL server session (see apiInvalidateSession's own comment) --
-        // but only when resetting someone ELSE's password. Revoking our
-        // OWN just-active session here would immediately session_required
-        // our own very next write, for no security benefit (we already
-        // know the new password).
-        if(!isOwnAccount) apiInvalidateSession(existing.username);
-      }
-    } else if(!existing){
-      showAlert('Password is required for a new user.'); reenable(); return;
-    }
-    const draftUsers = existing ? S.users.map(u=>u.id===existing.id ? newRecord : u) : [...S.users, newRecord];
+    const newRecord = Object.assign({}, existing, {name, username, role, post, phone, address, photo});
     const finishSaveUser = ()=>{
-      if(existing){ Object.assign(existing, newRecord); }
-      else { S.users.push(newRecord); }
+      Object.assign(existing, newRecord);
       safeSet('app:users', S.users);
       closeModal(); render(); showToast('Saved');
     };
-    // The whole team is stored together in one backend cell (~50,000 char
-    // limit) — photos are what can push it over. Check before saving rather
-    // than let it silently fail and retry forever in the background.
-    if(photo && JSON.stringify(draftUsers).length > 45000){
-      showConfirm("Saving everyone's data together is getting too large to store reliably (mostly from photos). Save this person WITHOUT a photo instead?", ()=>{
+    // FIXED (Task #54): was checking the WHOLE team's combined JSON size
+    // against the old Sheets single-cell ~50,000-char limit -- each user is
+    // now its own Firestore doc (fsSetItem), so the only real ceiling is
+    // that ONE doc's own ~1MiB limit, and only this person's own photo
+    // counts toward it (not every other team member's).
+    if(photo && photo.length > 900000){
+      showConfirm("This photo is too large to save reliably. Save this person WITHOUT a photo instead?", ()=>{
         newRecord.photo = '';
         finishSaveUser();
       }, {danger:false, confirmLabel:'Save without photo'}, ()=>{
-        showAlert('Not saved. Remove a photo from another team member first, or skip the photo for this one.');
+        showAlert('Not saved. Choose a smaller photo, or skip the photo for this one.');
         reenable();
       });
       return;
@@ -7156,8 +7757,9 @@ function bindTasks(){
   }));
   document.querySelectorAll('[data-del-task]').forEach(b=>b.addEventListener('click', ()=>{
     showConfirm('Delete this task?', ()=>{
-      S.tasks = S.tasks.filter(x=>x.id!==b.dataset.delTask);
-      safeSet('app:tasks', S.tasks); render();
+      const delTaskId = b.dataset.delTask;
+      S.tasks = S.tasks.filter(x=>x.id!==delTaskId);
+      deleteStaticArrayItem('tasks', delTaskId); render(); // EXPLICIT DELETE (Task #54)
     });
   }));
 }
@@ -7536,7 +8138,7 @@ function renderBatchResult(){
     const val = parseInt(document.getElementById('batchRefInput').value);
     if(isNaN(val) || val<0){ showAlert('Enter a valid reference number.'); return; }
     S.batchReferences[cat] = val;
-    safeSet('app:batchReferences', S.batchReferences);
+    fsSetStaticSubKey('batchReferences', cat, val); // FIXED (Task #54) -- was safeSet('app:batchReferences', S.batchReferences), which re-writes every category from local state
     showToast('Reference saved');
     renderBatchResult();
   });
@@ -7549,7 +8151,7 @@ function renderBatchResult(){
       const val = parseInt(document.getElementById('batchRefInput2').value);
       if(isNaN(val) || val<0){ showAlert('Enter a valid reference number.'); return; }
       S.batchReferences[cat] = val;
-      safeSet('app:batchReferences', S.batchReferences);
+      fsSetStaticSubKey('batchReferences', cat, val); // FIXED (Task #54) -- was safeSet('app:batchReferences', S.batchReferences), which re-writes every category from local state
       showToast('Reference updated');
       renderBatchResult();
     });
@@ -7657,7 +8259,7 @@ function deleteRetailEntry(id){
     (e.items||[]).forEach(d=>{ S.readyStock[d.key] = (S.readyStock[d.key]||0) + d.qty; logStockMovement(d.key, d.itemLabel, 'retail', d.qty, 'Retail entry deleted — credited back'); });
     safeSet('app:readyStock', S.readyStock);
     S.retailSales = S.retailSales.filter(x=>x.id!==id);
-    savePartitionForItem('retailSales', e);
+    deletePartitionItem('retailSales', id); // EXPLICIT DELETE (Task #54) -- was savePartitionForItem('retailSales', e), which would have written the deleted entry back
     syncStockTasksFromAlerts();
     render();
     showToast('Entry deleted & stock credited back');
@@ -8102,10 +8704,22 @@ function bindAttendanceMap(){
   if(holidayBtn) holidayBtn.addEventListener('click', openMarkHolidayModal);
   const summaryBtn = document.getElementById('monthlySummaryBtn');
   if(summaryBtn) summaryBtn.addEventListener('click', openMonthlySummaryModal);
-  document.querySelectorAll('[data-clear-lockout]').forEach(b=>b.addEventListener('click', ()=>{
-    delete S.loginLockouts[b.dataset.clearLockout];
-    safeSet('app:loginLockouts', S.loginLockouts);
-    render(); showToast('Lockout cleared');
+  document.querySelectorAll('[data-clear-lockout]').forEach(b=>b.addEventListener('click', async ()=>{
+    // WIRED (2026-08-28): was a hard gap -- loginLockouts is server-only in
+    // firestore.rules (allow write: if false, for every client, always),
+    // so a real "clear lockout" needed a Cloud Function, not a client
+    // Firestore write. clearLoginLockout now exists (functions/index.js)
+    // and does exactly that.
+    const uname = b.dataset.clearLockout;
+    if(b.disabled) return;
+    b.disabled = true;
+    try{
+      await fsFunctions.httpsCallable('clearLoginLockout')({ username: uname });
+      showToast('Lockout cleared for ' + uname);
+    }catch(e){
+      showToast('Could not clear the lockout: ' + ((e && e.message) || 'unknown error'), true);
+      b.disabled = false;
+    }
   }));
 }
 function openMarkForOthersModal(){
@@ -8166,8 +8780,9 @@ function openMarkHolidayModal(){
     const dateStr = document.getElementById('holidayDateInput').value;
     const label = document.getElementById('holidayLabelInput').value.trim() || 'Holiday';
     if(!dateStr){ showAlert('Pick a date.'); return; }
-    S.holidays[dateStr] = { label, markedBy:S.currentUser.name, at:Date.now() };
-    safeSet('app:holidays', S.holidays);
+    const holidayEntry = { label, markedBy:S.currentUser.name, at:Date.now() };
+    S.holidays[dateStr] = holidayEntry;
+    fsSetStaticSubKey('holidays', dateStr, holidayEntry); // FIXED (Task #54) -- was safeSet('app:holidays', S.holidays), which re-writes every date from local state
     closeModal(); render(); showToast('Holiday marked');
   });
 }
@@ -8403,35 +9018,48 @@ function checkForNewNotifRing(){
 /* ============================= INIT ============================= */
 let loadAllPromise = null;
 (async function init(){
-  loadOfflineQueue();
+  loadOfflineQueue(); // now-dead queue (nothing populates it any more -- Firestore's own offline persistence replaces it, see the plumbing block's header comment); loading it is a harmless no-op, kept only so a leftover queue from a pre-Task-#54 session isn't silently lost
   loadPendingExpenseDeltas();
   render();
   primeDevicePermissions();
-  loadAllPromise = loadAll();
-  await loadAllPromise;
+  // REWIRED (Task #54): was `loadAllPromise = loadAll(); await loadAllPromise;`
+  // -- loadAll() drove everything off one-shot apiFetchAll() calls against
+  // the old Apps Script backend, which is no longer the source of truth (see
+  // scripts/export_to_firestore.js). fsBootstrapAuth() is the direct
+  // replacement: it resolves once Firebase Auth's cached sign-in state (if
+  // any) is known, and if signed in, has already called
+  // attachFirestoreListeners() so every collection's real-time listener is
+  // live from this point on -- there is no more "fetch once, then poll"; the
+  // listeners themselves push every future change straight into S and
+  // re-render, for as long as the app stays open.
+  await fsBootstrapAuth();
+  S.loaded = true;
+  // NOTE (Task #54): S.loadFailed intentionally stays false here --
+  // fsBootstrapAuth()/onAuthStateChanged always resolves from Firebase
+  // Auth's local cache, online or not, so there is no equivalent of the old
+  // "couldn't reach the backend at all" case loadAll() used to hit after
+  // MAX_ATTEMPTS. renderConnectionFailedScreen()/bindConnectionFailedScreen()
+  // are left wired up (its retry button now calls fsBootstrapAuth() too) in
+  // case a future change reintroduces a real failure path, but in practice
+  // this screen should no longer be reachable.
   render();
   if(S.currentUser){ primeDevicePermissions(); lastKnownNotifCount = myNotifCount(getStockAlerts()); }
-  flushOfflineQueue(); // in case saves were queued from a previous session
+  flushOfflineQueue(); // in case saves were queued from a previous (pre-Task-#54) session
   flushExpenseDeltaQueue(); // in case an expense-balance delta was left pending from a previous session
-  window.addEventListener('online', ()=>{ showToast('Back online — syncing…'); doSyncTick(); reverifyOneSignalLogin(); });
+  // REWIRED (Task #54): was `doSyncTick()` on both 'online' and
+  // visibilitychange -- that forced an immediate poll against the old
+  // backend to catch up after being offline/backgrounded. Firestore's
+  // onSnapshot listeners reconnect and catch up on their own the instant
+  // connectivity/visibility returns (that's the whole point of a live
+  // listener over polling), so there is nothing left to force here except
+  // retrying whatever's still durably queued.
+  window.addEventListener('online', ()=>{ showToast('Back online — syncing…'); flushOfflineQueue(); flushExpenseDeltaQueue(); reverifyOneSignalLogin(); });
   window.addEventListener('offline', ()=>{ showToast('No connection — changes will be saved and synced automatically', true); });
   // Installed PWAs can stay open (backgrounded) for days without a real page
   // reload -- if the very first OneSignal.login() attempt lost its race
   // (see ensureOneSignalLogin above), this is the other natural moment to
-  // quietly retry it, matching how the offline save queue self-heals.
-  //
-  // BUGFIX (2026-08-26, "site auto update nahi ho rahi, refresh karna padta
-  // hai" -- app doesn't reflect other devices' changes without a manual
-  // refresh): a backgrounded/minimized tab or phone-screen-off session gets
-  // its JS execution suspended by the browser/OS -- setInterval(doSyncTick)
-  // simply doesn't run at all while frozen, so whatever changed elsewhere
-  // (new orders, status moves, etc.) sits unfetched until the NEXT tick
-  // happens to land after the page wakes back up, which can be a long,
-  // unpredictable wait (confirmed live: a backgrounded tab sat with zero
-  // successful syncs until something woke it). Forcing an immediate tick
-  // the instant the tab becomes visible again closes that gap -- the person
-  // sees this device catch up right away instead of only on a hard refresh.
-  document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible'){ reverifyOneSignalLogin(); doSyncTick(); } });
+  // quietly retry it.
+  document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible'){ reverifyOneSignalLogin(); } });
   // Re-render (debounced) when the window crosses the desktop-sidebar
   // breakpoint, so resizing a browser window updates the nav split
   // (bottom-bar "More" overflow <-> full sidebar list) without waiting
@@ -8447,27 +9075,17 @@ let loadAllPromise = null;
       }, 150);
     });
   })();
-  // SPEED (2026-08-21, "notifications ko zda se zda fast kro"): was 4000ms.
-  // action=version (what every tick pays for on the no-change path, by far
-  // the common case) is deliberately built to never open the spreadsheet
-  // (see doGet's own comment), so it's cheap enough to poll twice as often
-  // -- this halves the worst-case delay between something real happening
-  // and every online device noticing it (new order, status change, chat
-  // message, bell badge/ring -- see checkForNewNotifRing inside
-  // doSyncTick), closer to a real push's feel without needing every single
-  // event type to go through OneSignal.
-  startSyncPolling(2000);
   startHeartbeat();
   startSessionExpiryWatch();
   watchUserActivityForIdleTimeout();
-  // Backstop only now (2026-08-21) -- the real, fast check runs inside
-  // doSyncTick itself the instant new data actually arrives (every 2s at
-  // most). This just catches the rare case where doSyncTick keeps
-  // skipping ticks for a while (e.g. a modal left open a long time), so
-  // the bell/ring can never fall silent for more than 5s no matter what.
+  // REWIRED (Task #54): was "backstop only" alongside doSyncTick's own
+  // instant check on every tick (up to every 2s). With doSyncTick retired,
+  // this 5s interval is now the ONLY trigger for the notification bell/ring
+  // -- a deliberate, small regression from "near-instant" to "within 5s",
+  // judged an acceptable trade rather than wiring checkForNewNotifRing into
+  // every individual Firestore listener's onChange callback for this pass.
   // checkForNewNotifRing is idempotent (compares against the last count it
-  // saw), so this running redundantly alongside doSyncTick's own call is
-  // harmless -- never a double ring for the same new item.
+  // saw), so this is safe to call on a plain timer.
   setInterval(checkForNewNotifRing, 5000);
 })();
 </script>
