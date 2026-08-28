@@ -699,7 +699,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-28-firestore-preview3"; // Task #54 test build -- now wires openUserModal's Add user/Reset password and the "Clear lockout" button to the deployed createStaffUser/resetStaffPassword/clearLoginLockout Cloud Functions (see fsFunctions above); requires functions/index.js to be RE-deployed once more first (it changed after the first deploy -- see CLOUD_FUNCTIONS_DEPLOY.md / ORDER_OPS_FIRESTORE_REWRITE_STATUS.md). Still NOT deployed to staff.maproductsindia.com itself.
+const APP_BUILD = "2026-08-28-firestore-preview4"; // Task #54 test build -- wires openUserModal's Add user/Reset password and the "Clear lockout" button to the deployed createStaffUser/resetStaffPassword/clearLoginLockout Cloud Functions (see fsFunctions above); fixes a real crash in autoAdvanceFillingPackaging/autoAdvanceOrders (dangling call to a nonexistent savePartitionDay -- see those functions' own comments) that would have broken order status auto-advancement the moment any filling/packing entry was recorded; ALSO requires firestore.rules to be re-deployed (the orders update rule needed a matching fix -- see its own comment) and functions/index.js to be re-deployed once more (it changed after the first deploy -- see CLOUD_FUNCTIONS_DEPLOY.md / ORDER_OPS_FIRESTORE_REWRITE_STATUS.md). Still NOT deployed to staff.maproductsindia.com itself.
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -3515,17 +3515,30 @@ function reconcileStockTasks(){
 // a fact about the stock, not a claim someone has to remember to make.
 function autoAdvanceFillingPackaging(alerts){
   let changed = false;
-  const touchedDays = new Set();
+  // FIXED (found during a 2026-08-28 security-rules audit, never caught by
+  // this build's own test suite): this called `savePartitionDay('orders',
+  // d)` -- a function that does not exist anywhere in this file (a
+  // leftover from an incomplete Task #54 port; the old Sheets model's
+  // "resave a whole day partition" concept has no Firestore equivalent,
+  // see savePartitionForItem's own header comment). Every call threw a
+  // ReferenceError, which is EVERY time this ran -- i.e. after essentially
+  // any filling/packing entry -- silently breaking order auto-advancement
+  // and leaving the triggering UI handler's own closeModal()/render()/
+  // showToast() calls never reached (uncaught throw). Fixed to track the
+  // touched ORDER OBJECTS (not day keys -- there's no day concept left)
+  // and save each one via savePartitionForItem, exactly like
+  // markOrderReadyNow/markOrderPacked/etc. already correctly do.
+  const touchedOrders = new Set();
   S.orders.forEach(o=>{
     if(o.status!=='processing') return;
     if(o.fillingStatus!=='done' && !orderNeedsRoleWork(o,'filling',alerts)){
-      o.fillingStatus='done'; changed=true; touchedDays.add(localDateKey(o.createdAt));
+      o.fillingStatus='done'; changed=true; touchedOrders.add(o);
     }
     if(o.fillingStatus==='done' && o.packagingStatus!=='done' && !orderNeedsRoleWork(o,'packaging',alerts)){
-      o.packagingStatus='done'; changed=true; touchedDays.add(localDateKey(o.createdAt));
+      o.packagingStatus='done'; changed=true; touchedOrders.add(o);
     }
   });
-  touchedDays.forEach(d=>savePartitionDay('orders', d));
+  touchedOrders.forEach(o=>savePartitionForItem('orders', o));
   return changed;
 }
 function syncStockTasksFromAlerts(){
@@ -4348,13 +4361,15 @@ function orderIsFullyStocked(o){
 // Record Packaging flow, no separate manual step needed.
 function autoAdvanceOrders(){
   let changed = false;
-  const touchedDays = new Set();
+  // FIXED (same bug/fix as autoAdvanceFillingPackaging above -- see its
+  // comment for the full explanation): `savePartitionDay` doesn't exist.
+  const touchedOrders = new Set();
   S.orders.forEach(o=>{
     if(o.status==='processing' && orderIsFullyStocked(o)){
-      o.status='ready'; changed=true; touchedDays.add(localDateKey(o.createdAt));
+      o.status='ready'; changed=true; touchedOrders.add(o);
     }
   });
-  touchedDays.forEach(d=>savePartitionDay('orders', d));
+  touchedOrders.forEach(o=>savePartitionForItem('orders', o));
   return changed;
 }
 // Admin can jump straight to Ready before stock naturally catches up on
