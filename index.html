@@ -714,7 +714,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-29-firestore-preview10"; // ROUND 5 (2026-08-29): the REAL fix for "bar bar password mang raha hai" -- root-caused to a SEPARATE bug from the Round 3 fix (which was real but only solved the single-device-login/activeSessions half of it). This half: handleAuthError('session_required') used to pop a blocking "enter your password to refresh your session" prompt whenever a call to order-ops-backend.gs's OLD (pre-Firestore) doPost endpoint failed -- and several still-live call sites were GUARANTEED to fail it every time, because a Firestore/Firebase-Auth login never holds one of that old endpoint's session tokens: checkForMissedNotifsOnLogin (fires on EVERY login), Force Logout, and LR photo upload/delete. Typing the password back in didn't even fix anything real -- it just minted an old token nothing in this app depends on anymore; the actual (Firestore) session was never broken. Fixed at the root: handleAuthError no longer shows that prompt for session_required (logs quietly instead); checkForMissedNotifsOnLogin now reads/clears pendingNotifs via Firestore + the new clearMyPendingNotifs Cloud Function instead of the old endpoint; Force Logout's redundant old-endpoint call removed (the real enforcement already happens via issueNewSessionToken's Firestore write). Requires BOTH a client (this file) and a Cloud Functions redeploy -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md / the Round 5 deploy guide. (Rounds 1-4: session-token adoption, FIFO stock allocation, Daily Work resync, System Health panel removal, modal animations, live-listener reconnect -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md for full history.)
+const APP_BUILD = "2026-08-29-firestore-preview11"; // ROUND 6 (2026-08-29): messaging + password reset + back button, CLIENT-ONLY (no Cloud Functions changes this round). (1) "reply uske niche hona chahiye lekin upar ho raha hai" -- chat message ordering was keyed off each sender's own (possibly clock-skewed) device time; added an additive serverAt (Firestore serverTimestamp()) field + chatSortKey() helper used by every chat sort/group/display call site, immune to device clock skew, without touching the existing at-based 7-day query. (2) Live read receipts -- refreshMessagesModal now re-marks the currently-open thread/announcements tab read on every refresh (not just when first opened), so a message arriving while you're already looking at it shows as read immediately instead of only after you leave and come back. (3) "Password Reset ka option sirf admins ko hi do, bina purana password daale" -- removed the self-service Change Password button/flow entirely; the ONLY way to change a password now is Admin -> Users -> Reset Password (already admin-only, already doesn't need the old password), matching the old pre-Firestore system. (4) "phone me back krne pr app bnd hojati hai" -- added syncBackStack(): a phone/gesture back press now closes whatever's open (a dialog, a modal, a side sheet) instead of exiting the whole app; only exits at the true home screen with nothing open, like a normal app. (Rounds 1-5: session-token adoption, FIFO stock allocation, Daily Work resync, System Health panel removal, modal animations, live-listener reconnect, the real bar-bar-password root cause -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md for full history.)
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -2327,10 +2327,12 @@ async function fsLogin(username, password){
 async function fsLogout(){
   try{ await fsAuth.signOut(); }catch(e){ /* local state is cleared by the caller regardless — see doLogout */ }
 }
-// New requirement this migration introduces (see firestore_client_design.md
-// section 1): nobody's real password survived the migration (old ones were
-// salted hashes, not recoverable), so every account starts on a random temp
-// password from Task #52's export — this is what lets someone set their own.
+// SUPERSEDED (2026-08-29): was used by the self-service Change Password
+// modal (openChangePasswordModal), which has been removed -- see that
+// function's header comment for why (only admins can reset a password
+// now, matching the old pre-Firestore system). Kept here, unused, only as
+// a reference for a possible future admin-driven "force password change"
+// flow -- nothing in this file calls it anymore.
 async function fsChangePassword(newPassword){
   const user = fsAuth.currentUser;
   if(!user) throw new Error('Not signed in');
@@ -2416,7 +2418,7 @@ function attachFirestoreListeners(){
   fsBindCollection('activityLog', db.collection('activityLog').where('at','>=', now-7*DAY_MS).orderBy('at'), (a,b)=>a.at-b.at);
   fsBindCollection('dominoPrints', db.collection('dominoPrints').orderBy('at'), (a,b)=>a.at-b.at); // never age-filtered — explicit exemption, see firebase_data_model.md
   fsBindCollection('loginLog', db.collection('loginLog').where('at','>=', now-7*DAY_MS).orderBy('at'), (a,b)=>a.at-b.at);
-  fsBindCollection('chatMessages', db.collection('chatMessages').where('at','>=', now-7*DAY_MS).orderBy('at'), (a,b)=>a.at-b.at, null, renderOrRefreshMessagesModal);
+  fsBindCollection('chatMessages', db.collection('chatMessages').where('at','>=', now-7*DAY_MS).orderBy('at'), (a,b)=>chatSortKey(a)-chatSortKey(b), null, renderOrRefreshMessagesModal);
   fsBindCollection('retailSales', db.collection('retailSales').where('at','>=', now-180*DAY_MS).orderBy('at'), (a,b)=>a.at-b.at, normalizeRetailEntry);
   fsBindCollection('trackingViewLogs', db.collection('trackingViewLogs').where('at','>=', now-7*DAY_MS).orderBy('at','desc'), (a,b)=>b.at-a.at);
   fsBindCollection('siteVisitLogs', db.collection('siteVisitLogs').where('at','>=', now-7*DAY_MS).orderBy('at','desc'), (a,b)=>b.at-a.at);
@@ -4064,6 +4066,7 @@ function render(){
     newContent.scrollTop = savedScrollTop;
   }
   lastRenderedView = S.view;
+  syncBackStack(); // keep the phone back-button history stack in sync with whichever side sheet (notif/more/profile/alerts) is now showing -- see syncBackStack's header comment
 }
 
 /* ============================= LOGIN VIEW ============================= */
@@ -4364,15 +4367,24 @@ function renderProfilePanel(role){
       </div>
     </div>
   </div>
-  <button class="btn btn-outline" style="width:100%;margin-top:14px;" id="changePasswordBtn">Change password</button>
   <button class="btn btn-danger" style="width:100%;margin-top:10px;" id="logoutBtn">Log out</button>
   <p class="mono" style="text-align:center;margin-top:14px;opacity:0.5;">build ${APP_BUILD}</p>`;
 }
-// Change Password modal (Task #54) -- self-service only, see openUserModal's
-// GAP comment for why an admin can't reset someone ELSE's password yet.
-// Firebase requires a RECENT sign-in before allowing a sensitive change
-// like updatePassword, so this reauthenticates with the current password
-// first (which also doubles as proving they actually know it).
+// SUPERSEDED (2026-08-29, "Password Reset ka option sirf admins ko hi do,
+// bina purana password daale, jesa phle wale system me tha" -- old
+// order-ops-backend.gs system never let a regular staff member change
+// their own password at all; encrypted passwords could ONLY be changed
+// via the admin portal). This self-service Change Password modal (Task
+// #54) let ANY signed-in user change their own password (after proving
+// they knew the current one). The Profile screen's "Change password"
+// button that opened this has been removed -- self-service password
+// change is intentionally gone now, matching the old system. The ONLY way
+// to change a password is now Admin → Users → Reset Password
+// (resetStaffPassword Cloud Function, admin-only, does NOT require the
+// old password, generates a fresh temporary one). This function and
+// fsChangePassword are kept here, unwired, only for reference in case a
+// future request needs a similar reauth-then-updatePassword flow again --
+// neither is called from anywhere in this file anymore.
 function openChangePasswordModal(){
   showModal(`
     <h3>Change password</h3>
@@ -4490,8 +4502,8 @@ function bindShell(){
   if(avatarBtn) avatarBtn.addEventListener('click', ()=>{ S.profileOpen=true; S.notifOpen=false; S.moreOpen=false; S.alertPanelOpen=null; render(); });
   const logoutBtn = document.getElementById('logoutBtn');
   if(logoutBtn) logoutBtn.addEventListener('click', doLogout);
-  const changePasswordBtn = document.getElementById('changePasswordBtn');
-  if(changePasswordBtn) changePasswordBtn.addEventListener('click', openChangePasswordModal);
+  // NOTE: self-service Change Password button intentionally removed here
+  // (2026-08-29) -- see openChangePasswordModal's header comment above.
 
   const bell = document.getElementById('bellBtn');
   if(bell) bell.addEventListener('click', ()=>{ S.notifOpen = !S.notifOpen; S.moreOpen=false; S.profileOpen=false; S.alertPanelOpen=null; render(); });
@@ -7316,7 +7328,7 @@ function openUserModal(id){
       <div class="field"><label>Full name</label><input id="uName" value="${existing?esc(existing.name):''}" required /></div>
       <div class="field"><label>Username</label><input id="uUser" value="${existing?esc(existing.username):''}" required /></div>
       ${existing
-        ? `<div class="field"><label>Password</label><div class="mono" style="margin-top:4px;">A fresh temporary password will be generated and shown to you if you use the "Reset password" button below — they can then change it themselves from Profile → Change Password once signed in.</div>
+        ? `<div class="field"><label>Password</label><div class="mono" style="margin-top:4px;">A fresh temporary password will be generated and shown to you if you use the "Reset password" button below — hand it to them privately. Only an admin can reset a password; staff can't change their own.</div>
              <button type="button" class="btn btn-outline btn-sm" id="uResetPasswordBtn" style="margin-top:6px;">Reset password</button></div>`
         : `<div class="field"><label>Password</label><div class="mono" style="margin-top:4px;">A temporary password will be generated automatically and shown to you once this account is created.</div></div>`}
       <div class="field"><label>Role / Team (controls access — see 🔐 Permission Manager)</label>
@@ -7369,7 +7381,7 @@ function openUserModal(id){
       const newPassword = generateTempPassword();
       try{
         await fsFunctions.httpsCallable('resetStaffPassword')({ username: existing.username, newPassword });
-        showAlert(`Password reset for "${existing.username}". New temporary password: ${newPassword} — hand this to them privately (not a group chat). They can change it themselves from Profile → Change Password once signed in.`);
+        showAlert(`Password reset for "${existing.username}". New temporary password: ${newPassword} — hand this to them privately (not a group chat). If they need it changed again later, only an admin can reset it from here — there's no self-service change option.`);
       }catch(e){
         showAlert('Could not reset the password: ' + ((e && e.message) || 'unknown error') + '. Make sure the Cloud Functions are deployed (see CLOUD_FUNCTIONS_DEPLOY.md) and try again.');
       }finally{
@@ -7416,7 +7428,7 @@ function openUserModal(id){
       try{
         await fsFunctions.httpsCallable('createStaffUser')({ username, name, role, post, phone, address, photo, password });
         closeModal();
-        showAlert(`Staff login created for "${username}". Temporary password: ${password} — hand this to them privately (not a group chat). They can change it themselves from Profile → Change Password once signed in.`);
+        showAlert(`Staff login created for "${username}". Temporary password: ${password} — hand this to them privately (not a group chat). If it ever needs changing later, only an admin can reset it (Users → Reset Password) — there's no self-service change option.`);
       }catch(e){
         showAlert('Could not create this login: ' + ((e && e.message) || 'unknown error') + '. Make sure the Cloud Functions are deployed (see CLOUD_FUNCTIONS_DEPLOY.md) and try again.');
         reenable();
@@ -7532,7 +7544,8 @@ function unreadMessageCount(){
 function sendAnnouncement(text){
   text = (text||'').trim();
   if(!text || S.currentUser.role!=='admin') return;
-  const msg = { id:uid(), type:'announcement', fromUsername:S.currentUser.username, fromName:S.currentUser.name, text, at:Date.now(), readBy:[S.currentUser.username] };
+  // serverAt: see chatSortKey's comment above -- clock-skew-proof ordering.
+  const msg = { id:uid(), type:'announcement', fromUsername:S.currentUser.username, fromName:S.currentUser.name, text, at:Date.now(), serverAt:firebase.firestore.FieldValue.serverTimestamp(), readBy:[S.currentUser.username] };
   S.chatMessages.push(msg);
   savePartitionForItem('chatMessages', msg);
 }
@@ -7541,7 +7554,8 @@ function sendPersonalMessage(toUsername, text){
   if(!text) return;
   const toUser = S.users.find(u=>u.username===toUsername);
   if(!toUser || !canChatWith(S.currentUser.role, toUser.role)) return;
-  const msg = { id:uid(), type:'personal', fromUsername:S.currentUser.username, fromName:S.currentUser.name, toUsername, toName:toUser.name, text, at:Date.now(), read:false };
+  // serverAt: see chatSortKey's comment above -- clock-skew-proof ordering.
+  const msg = { id:uid(), type:'personal', fromUsername:S.currentUser.username, fromName:S.currentUser.name, toUsername, toName:toUser.name, text, at:Date.now(), serverAt:firebase.firestore.FieldValue.serverTimestamp(), read:false };
   S.chatMessages.push(msg);
   savePartitionForItem('chatMessages', msg);
 }
@@ -7605,6 +7619,31 @@ function quickActionIcons(role){
   </div>`;
 }
 /* ============================= MESSAGES (announcements + personal chat) ============================= */
+// BUGFIX (2026-08-29, "naya message aata h, reply krte h, to reply uske
+// niche hona chahiye lekin upar ho raha hai"): every message's `at` was
+// stamped with Date.now() on whichever PHONE sent it -- if two devices'
+// clocks aren't in sync (extremely common on real staff phones -- auto
+// time-sync off, wrong timezone, a few minutes fast/slow), a reply sent
+// AFTER a message could still get an `at` value LOWER than the message it
+// replies to, and every sort in this file is a plain a.at-b.at, so it
+// would render ABOVE the message it's replying to -- permanently, since
+// nothing ever corrected it. Changing the STORED `at` field itself to
+// Firestore's serverTimestamp() would fix this cleanly, but chatMessages'
+// existing 7-day query (`where('at','>=', ...)`) filters on that exact
+// field, and Firestore comparison queries require a consistent type --
+// switching `at` from number to Timestamp would make every ALREADY-
+// STORED message (still a plain number) silently stop matching that query
+// and disappear from view. Too risky for live chat history. Instead: a
+// SEPARATE `serverAt` field (server-authoritative, immune to any device's
+// clock) is added alongside the existing `at` (unchanged, still what the
+// 7-day query filters on), and every place that sorts/groups/displays
+// chat messages uses this helper -- serverAt once Firestore has confirmed
+// it (self-correcting within about a second of sending), falling back to
+// the original client `at` only for the brief moment before that (or for
+// messages sent before this fix, which never got a serverAt at all).
+function chatSortKey(m){
+  return (m && m.serverAt && typeof m.serverAt.toMillis==='function') ? m.serverAt.toMillis() : ((m && m.at) || 0);
+}
 function openMessagesModal(){
   showModal(`<div id="messagesModalBody" class="msg-modal-body">${renderMessagesModalContent()}</div>
     <div class="modal-actions" style="flex:0 0 auto;"><button type="button" class="btn btn-outline" id="cancelModal">Close</button></div>`, 'modal-chat');
@@ -7629,7 +7668,7 @@ function renderMessagesModalContent(){
 function renderAnnouncementsTab(){
   const isAdmin = S.currentUser.role==='admin';
   const myUsername = S.currentUser.username;
-  const announcements = S.chatMessages.filter(m=>m.type==='announcement').sort((a,b)=>b.at-a.at);
+  const announcements = S.chatMessages.filter(m=>m.type==='announcement').sort((a,b)=>chatSortKey(b)-chatSortKey(a));
   return `
     <div class="chat-scroll">
       ${announcements.length===0?`<div class="empty">No announcements yet.</div>`:announcements.map(m=>{
@@ -7638,7 +7677,7 @@ function renderAnnouncementsTab(){
           ${unread?`<span class="notif-dot notif-pulse" style="top:-6px;right:-6px;">●</span>`:''}
           <div class="chat-avatar" style="width:34px;height:34px;font-size:15px;background:var(--accent);flex:0 0 auto;">📢</div>
           <div style="min-width:0;flex:1;">
-            <div style="font-size:11px;color:var(--ink-soft);margin-bottom:3px;"><b>${esc(m.fromName)}</b> · ${fmtDate(m.at)}</div>
+            <div style="font-size:11px;color:var(--ink-soft);margin-bottom:3px;"><b>${esc(m.fromName)}</b> · ${fmtDate(chatSortKey(m))}</div>
             <div style="font-size:13.5px;white-space:pre-wrap;word-break:break-word;">${esc(m.text)}</div>
           </div>
         </div>`;
@@ -7660,12 +7699,12 @@ function renderChatsListTab(){
     (threads[otherUsername] = threads[otherUsername] || []).push(m);
   });
   const threadList = Object.keys(threads).map(username=>{
-    const msgs = threads[username].sort((a,b)=>b.at-a.at);
+    const msgs = threads[username].sort((a,b)=>chatSortKey(b)-chatSortKey(a));
     const last = msgs[0];
     const other = S.users.find(u=>u.username===username);
     const unread = msgs.filter(m=>m.toUsername===myUsername && !m.read).length;
     return { username, user: other, name: other?other.name:(last.fromUsername===username?last.fromName:last.toName), last, unread };
-  }).sort((a,b)=>b.last.at-a.last.at);
+  }).sort((a,b)=>chatSortKey(b.last)-chatSortKey(a.last));
   const eligibleUsers = S.users.filter(u=>u.username!==myUsername && canChatWith(myRole, u.role));
   const q = (S.chatSearch||'').trim().toLowerCase();
   const visibleThreads = q ? threadList.filter(t=>t.name.toLowerCase().includes(q)) : threadList;
@@ -7690,7 +7729,7 @@ function renderChatsListTab(){
         <div style="min-width:0;flex:1;">
           <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;">
             <div style="font-weight:700;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(t.name)}</div>
-            <div style="font-size:10.5px;color:var(--ink-soft);flex:0 0 auto;">${fmtDateOnly(t.last.at)}</div>
+            <div style="font-size:10.5px;color:var(--ink-soft);flex:0 0 auto;">${fmtDateOnly(chatSortKey(t.last))}</div>
           </div>
           <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;">
             <div style="font-size:12px;color:var(--ink-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${t.last.fromUsername===myUsername?'You: ':''}${esc(t.last.text)}</div>
@@ -7704,8 +7743,8 @@ function renderChatsListTab(){
 function renderThreadView(otherUsername){
   const other = S.users.find(u=>u.username===otherUsername);
   const myUsername = S.currentUser.username;
-  const msgs = S.chatMessages.filter(m=>m.type==='personal' && ((m.fromUsername===myUsername && m.toUsername===otherUsername) || (m.fromUsername===otherUsername && m.toUsername===myUsername))).sort((a,b)=>a.at-b.at);
-  const sections = groupByDate(msgs, m=>m.at);
+  const msgs = S.chatMessages.filter(m=>m.type==='personal' && ((m.fromUsername===myUsername && m.toUsername===otherUsername) || (m.fromUsername===otherUsername && m.toUsername===myUsername))).sort((a,b)=>chatSortKey(a)-chatSortKey(b));
+  const sections = groupByDate(msgs, chatSortKey);
   let bubblesHtml = '';
   sections.forEach(sec=>{
     bubblesHtml += `<div style="text-align:center;margin:10px 0 8px;"><span style="background:var(--bg);color:var(--ink-soft);font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;">${esc(sec.heading)}</span></div>`;
@@ -7720,7 +7759,7 @@ function renderThreadView(otherUsername){
       const tick = mine ? (m.read ? `<span style="color:#4FC3F7;">✓✓</span>` : `<span>✓</span>`) : '';
       const cornerStyle = isLastInGroup ? (mine ? 'border-bottom-right-radius:4px;' : 'border-bottom-left-radius:4px;') : '';
       bubblesHtml += `<div class="bubble-row ${mine?'mine':'theirs'} ${isLastInGroup?'group-end':''}">
-        <div class="chat-bubble ${mine?'mine':'theirs'}" style="${cornerStyle}"><div class="bubble-text">${esc(m.text)}</div><div class="bubble-meta">${fmtTime(m.at)} ${tick}</div></div>
+        <div class="chat-bubble ${mine?'mine':'theirs'}" style="${cornerStyle}"><div class="bubble-text">${esc(m.text)}</div><div class="bubble-meta">${fmtTime(chatSortKey(m))} ${tick}</div></div>
       </div>`;
     });
   });
@@ -7839,6 +7878,25 @@ function bindMessagesModal(skipScroll){
 function refreshMessagesModal(){
   const body = document.getElementById('messagesModalBody');
   if(!body) return;
+  // LIVE READ RECEIPTS (2026-08-29, "perfect messaging app" audit): before
+  // this fix, markThreadRead/markAllAnnouncementsRead only ever ran ONCE,
+  // at the moment a thread/tab was first opened via a click handler (see
+  // the [data-open-thread]/[data-chat-tab] handlers in bindMessagesModal
+  // below). So a message/announcement that arrived WHILE that exact
+  // thread/tab was already open -- delivered here via the live Firestore
+  // listener through renderOrRefreshMessagesModal -> this function -- never
+  // got marked read until the person backed out and back in again: the
+  // sender's checkmark never turned blue, and the unread badge counts
+  // stayed inflated the whole time the person was actually looking right
+  // at the new message. Re-running the same mark-as-read call on every
+  // refresh (not just the initial click) fixes this. Both calls are
+  // already idempotent -- they only touch messages that are still
+  // unread/unseen by this user -- so redundant calls here (e.g. one from
+  // the click handler, then another from this refresh a moment later) are
+  // harmless. Runs before re-rendering so the tab badges below already
+  // reflect zero for whatever the person is currently looking at.
+  if(S.chatView==='announcements') markAllAnnouncementsRead();
+  else if(S.chatActiveThread) markThreadRead(S.chatActiveThread);
   const oldInput = document.getElementById('threadReplyInput');
   const draftText = oldInput ? oldInput.value : null;
   const wasFocused = oldInput && document.activeElement===oldInput;
@@ -9181,7 +9239,8 @@ function showAlert(message){
     </div>`;
   const host = document.querySelector('.device-screen') || document.body;
   host.appendChild(overlay);
-  const close = ()=>{ overlay.remove(); };
+  syncBackStack(); // give the phone's back button somewhere to land on while this alert is up — see syncBackStack's header comment
+  const close = ()=>{ overlay.remove(); syncBackStack(); };
   overlay.addEventListener('click', (e)=>{ if(e.target===overlay) close(); });
   overlay.querySelector('#appAlertOkBtn').addEventListener('click', close);
 }
@@ -9210,7 +9269,8 @@ function showConfirm(message, onConfirm, opts, onCancel){
     </div>`;
   const host = document.querySelector('.device-screen') || document.body;
   host.appendChild(overlay);
-  const close = ()=>{ overlay.remove(); };
+  syncBackStack(); // give the phone's back button somewhere to land on while this confirm dialog is up — see syncBackStack's header comment
+  const close = ()=>{ overlay.remove(); syncBackStack(); };
   overlay.addEventListener('click', (e)=>{ if(e.target===overlay){ close(); if(onCancel) onCancel(); } });
   overlay.querySelector('#appConfirmCancelBtn').addEventListener('click', ()=>{ close(); if(onCancel) onCancel(); });
   overlay.querySelector('#appConfirmOkBtn').addEventListener('click', ()=>{ close(); onConfirm(); });
@@ -9237,9 +9297,10 @@ function showPrompt(message, defaultValue, onSubmit, opts, onCancel){
     </div>`;
   const host = document.querySelector('.device-screen') || document.body;
   host.appendChild(overlay);
+  syncBackStack(); // give the phone's back button somewhere to land on while this prompt dialog is up — see syncBackStack's header comment
   const input = overlay.querySelector('#appPromptInput');
   setTimeout(()=>{ input.focus(); input.select(); }, 50);
-  const close = ()=>{ overlay.remove(); };
+  const close = ()=>{ overlay.remove(); syncBackStack(); };
   overlay.addEventListener('click', (e)=>{ if(e.target===overlay){ close(); if(onCancel) onCancel(); } });
   overlay.querySelector('#appPromptCancelBtn').addEventListener('click', ()=>{ close(); if(onCancel) onCancel(); });
   const submit = ()=>{ const val = input.value.trim(); close(); onSubmit(val); };
@@ -9259,7 +9320,19 @@ function showPrompt(message, defaultValue, onSubmit, opts, onCancel){
 let __lastTapX = null, __lastTapY = null, __lastTapAt = 0;
 document.addEventListener('pointerdown', (e)=>{ __lastTapX = e.clientX; __lastTapY = e.clientY; __lastTapAt = Date.now(); }, true);
 function showModal(innerHtml, extraClass){
-  closeModal(true); // never stack modals — opening a new one while one is already showing used to leave two overlays behind, needing two closes to get rid of both. Instant (no exit animation): a new modal is about to cover this spot immediately anyway, so animating the old one out would just make two overlays visibly overlap for a moment.
+  // Bypasses closeModal()/syncBackStack() deliberately -- this is only ever
+  // a same-instant REPLACE (one modal's content swapped for another's, e.g.
+  // "back to team list" style navigation), not a real close, so the phone's
+  // back-button history stack shouldn't move at all here: syncBackStack()
+  // runs once, below, after the new overlay is in place, and by then a
+  // modal is (still) open either way -- net depth unchanged, nothing to
+  // push or pop. (Calling history.back() here and history.pushState() again
+  // a few lines later, in the same synchronous turn, is exactly the kind
+  // of History-API race that leaves the back-button bookkeeping out of
+  // sync with what's really on screen -- avoided by not touching history
+  // during a same-instant replace at all.)
+  const existingOverlay = document.getElementById('modalOverlay');
+  if(existingOverlay) existingOverlay.remove(); // never stack modals — opening a new one while one is already showing used to leave two overlays behind, needing two closes to get rid of both.
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   overlay.id = 'modalOverlay';
@@ -9275,21 +9348,100 @@ function showModal(innerHtml, extraClass){
   overlay.addEventListener('click', (e)=>{ if(e.target===overlay) closeModal(); });
   const cancelBtn = overlay.querySelector('#cancelModal');
   if(cancelBtn) cancelBtn.addEventListener('click', closeModal);
+  syncBackStack(); // a modal is open now (whether freshly opened or replacing another) -- make sure the phone's back button has somewhere of ours to land on. See syncBackStack's own header comment for the full "phone back band ho jati hai" story.
 }
-// instant=true skips the closing animation (see showModal's own
-// replace-in-place call above). Default (real close: X/Cancel/tap-outside/
-// after-save) plays a matching shrink-back-down exit before removal, so
-// modals no longer just vanish -- guarded against being called twice on
-// the same overlay (e.g. two closeModal() calls racing) via the 'closing'
-// class check.
+// instant=true skips the closing animation (only ever used internally by
+// showModal's own same-instant replace, above -- see its comment for why
+// that path bypasses closeModal() entirely and never reaches here).
+// Default (real close: X/Cancel/tap-outside/after-save) plays a matching
+// shrink-back-down exit before removal, so modals no longer just vanish --
+// guarded against being called twice on the same overlay (e.g. two
+// closeModal() calls racing) via the 'closing' class check.
 function closeModal(instant){
   const o = document.getElementById('modalOverlay');
   if(!o) return;
-  if(instant){ o.remove(); return; }
+  if(instant){ o.remove(); syncBackStack(); return; }
   if(o.classList.contains('closing')) return;
   o.classList.add('closing');
-  setTimeout(()=>{ if(o.parentNode) o.remove(); }, 180);
+  setTimeout(()=>{ if(o.parentNode) o.remove(); syncBackStack(); }, 180);
 }
+
+// ---- Phone/gesture back-button handling (2026-08-29, "phone me back krne
+// pr app bnd hojati hai, back dabane par back hi ana chahiye") ----
+// This app has exactly ONE real URL/page -- every "screen" inside it
+// (a modal, the notification/profile/more side sheets) is just JS state
+// (S.notifOpen etc, or an appended .modal-overlay div), never a real
+// browser navigation. So the phone's hardware/gesture back button had
+// NOTHING of its own to step back through, and the OS just closed or
+// backgrounded the whole PWA instead -- exactly what was reported.
+//
+// Fix: keep a small stack of dummy history.pushState() entries in sync
+// with what's actually on screen (a modal open = 1 entry; a side sheet
+// open = 1 entry; both at once = 2), via syncBackStack() below. That
+// gives the phone's back button somewhere of ours to land on. When a real
+// back press fires 'popstate', we intercept it and close whatever is
+// currently topmost (a modal first, else a side sheet) instead of letting
+// the browser actually navigate anywhere -- there's nowhere for it to
+// really go, this is a single-page app. Only when NOTHING of ours is open
+// does a back press fall through with no interception, which at the true
+// home screen is correct: that's when the app should actually exit/go to
+// background, same as any normal app.
+//
+// syncBackStack() is called from a small, fixed set of "single choke
+// point" spots -- the same pattern already used for the modal-open
+// animation and the live-listener reconnect fix -- so every single
+// open/close path in the whole file (~50+ modal call sites, all the
+// side-sheet toggles, every showAlert/showConfirm/showPrompt) is covered
+// automatically, with no changes needed at any individual call site: the
+// end of showModal() and both removal points in closeModal() (modals);
+// the end of render() (side sheets, since S.notifOpen/moreOpen/
+// profileOpen/alertPanelOpen only ever take visible effect through a
+// render() call); and showAlert/showConfirm/showPrompt's shared
+// append/close pattern (styled replacements for the native alert/confirm/
+// prompt popups).
+let __backDepth = 0; // how many of our OWN dummy history entries are currently pushed
+let __suppressNextPopstate = false; // true while WE are consuming a popstate we caused ourselves (via history.back() below), so the listener doesn't double-handle it
+function computeWantedBackDepth(){
+  const sheetOpen = !!(S.notifOpen || S.moreOpen || S.profileOpen || S.alertPanelOpen);
+  const modalOpen = !!document.getElementById('modalOverlay');
+  const alertOpen = !!document.getElementById('appAlertOverlay'); // showAlert/showConfirm/showPrompt — can be open ON TOP of an already-open modal (e.g. a validation error while filling a form), so this stacks as its own extra depth rather than replacing modalOpen
+  return (sheetOpen?1:0) + (modalOpen?1:0) + (alertOpen?1:0);
+}
+function syncBackStack(){
+  if(!S.currentUser) return; // nothing back-able exists before login (and doLogout() already resets all the sheet flags)
+  const wanted = computeWantedBackDepth();
+  while(__backDepth < wanted){
+    __backDepth++;
+    try{ history.pushState({ omsBackDepth: __backDepth }, '', location.href); }catch(e){}
+  }
+  while(__backDepth > wanted){
+    __backDepth--;
+    __suppressNextPopstate = true;
+    try{ history.back(); }catch(e){}
+  }
+}
+window.addEventListener('popstate', ()=>{
+  if(__suppressNextPopstate){ __suppressNextPopstate = false; return; } // this pop was US consuming our own entry (a UI close, e.g. tapping Cancel) — already handled, nothing more to do
+  if(__backDepth > 0) __backDepth--; // the browser just consumed one of our entries via a real back press — keep our own count in sync with it
+  const alertOverlay = document.getElementById('appAlertOverlay');
+  if(alertOverlay){
+    // showAlert/showConfirm/showPrompt sit on top of everything else --
+    // close whichever one is up first. Re-uses the exact same Cancel/OK
+    // click handlers already wired (including calling the dialog's own
+    // onCancel, for showConfirm/showPrompt) rather than duplicating that
+    // logic here, so back behaves identically to tapping outside the box.
+    const cancelBtn = alertOverlay.querySelector('#appConfirmCancelBtn, #appPromptCancelBtn');
+    const okBtn = alertOverlay.querySelector('#appAlertOkBtn');
+    if(cancelBtn) cancelBtn.click(); else if(okBtn) okBtn.click(); else alertOverlay.remove();
+  } else if(document.getElementById('modalOverlay')){
+    closeModal(); // close the modal next if one's open — matches "back closes the topmost thing", not the whole app
+  } else if(S.notifOpen || S.moreOpen || S.profileOpen || S.alertPanelOpen){
+    S.notifOpen=false; S.moreOpen=false; S.profileOpen=false; S.alertPanelOpen=null;
+    render();
+  }
+  // If neither was open, there was nothing of ours to intercept here — a
+  // genuine "leave the app" back press, left to the OS/browser as normal.
+});
 
 /* ============================= INIT ============================= */
 /* ============================= DEVICE PERMISSIONS (ask once, up front) ============================= */
