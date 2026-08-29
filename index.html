@@ -714,7 +714,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-29-firestore-preview11"; // ROUND 6 (2026-08-29): messaging + password reset + back button, CLIENT-ONLY (no Cloud Functions changes this round). (1) "reply uske niche hona chahiye lekin upar ho raha hai" -- chat message ordering was keyed off each sender's own (possibly clock-skewed) device time; added an additive serverAt (Firestore serverTimestamp()) field + chatSortKey() helper used by every chat sort/group/display call site, immune to device clock skew, without touching the existing at-based 7-day query. (2) Live read receipts -- refreshMessagesModal now re-marks the currently-open thread/announcements tab read on every refresh (not just when first opened), so a message arriving while you're already looking at it shows as read immediately instead of only after you leave and come back. (3) "Password Reset ka option sirf admins ko hi do, bina purana password daale" -- removed the self-service Change Password button/flow entirely; the ONLY way to change a password now is Admin -> Users -> Reset Password (already admin-only, already doesn't need the old password), matching the old pre-Firestore system. (4) "phone me back krne pr app bnd hojati hai" -- added syncBackStack(): a phone/gesture back press now closes whatever's open (a dialog, a modal, a side sheet) instead of exiting the whole app; only exits at the true home screen with nothing open, like a normal app. (Rounds 1-5: session-token adoption, FIFO stock allocation, Daily Work resync, System Health panel removal, modal animations, live-listener reconnect, the real bar-bar-password root cause -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md for full history.)
+const APP_BUILD = "2026-08-29-firestore-preview12"; // ROUND 7 (2026-08-29): full login/logout audit + duplicate-notification fix, CLIENT-ONLY (no Cloud Functions changes this round). Root cause of FOUR reported symptoms, all one race: fsBootstrapAuth's onAuthStateChanged fired almost immediately after every sign-in and, seeing S.currentUser still null (finalizeLogin is deliberately delayed behind the loading+"Tap to Continue" welcome screen), ALWAYS auto-set S.currentUser itself -- skipping straight to the portal ("delay nahi ata"), calling initPushNotifications/checkForMissedNotifsOnLogin a second time ("notification bar bar aa rahi hai"), and leaving finalizeLogin's own postLoginPhase-clearing line never reached -- stuck non-null until the NEXT logout, when it would suddenly reappear as a stray welcome screen. Fixed by also gating that branch on !S.postLoginPhase. Also fixed: a correct login retry submitted while a prior WRONG attempt's ~4s animation was still playing used to get silently dropped, then overwritten with "Invalid Login ID & Password" ("single click me kaam nahi karta") -- now uses a generation counter so a new attempt can supersede a stale wrong-login animation. Also: doLogout() now detaches Firestore listeners before signing out and sets a brief __intentionalLogoutInProgress flag so an in-flight write that loses the race against sign-out no longer pops a "Save failed" toast on the login screen. Also: checkForMissedNotifsOnLogin now guards against replaying the same missed-notification batch twice. (Rounds 1-6: session-token adoption, FIFO stock allocation, Daily Work resync, System Health panel removal, modal animations, live-listener reconnect, the real bar-bar-password root cause, chat ordering/read-receipts, admin-only password reset, phone back button -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md for full history.) (2026-08-29): messaging + password reset + back button, CLIENT-ONLY (no Cloud Functions changes this round). (1) "reply uske niche hona chahiye lekin upar ho raha hai" -- chat message ordering was keyed off each sender's own (possibly clock-skewed) device time; added an additive serverAt (Firestore serverTimestamp()) field + chatSortKey() helper used by every chat sort/group/display call site, immune to device clock skew, without touching the existing at-based 7-day query. (2) Live read receipts -- refreshMessagesModal now re-marks the currently-open thread/announcements tab read on every refresh (not just when first opened), so a message arriving while you're already looking at it shows as read immediately instead of only after you leave and come back. (3) "Password Reset ka option sirf admins ko hi do, bina purana password daale" -- removed the self-service Change Password button/flow entirely; the ONLY way to change a password now is Admin -> Users -> Reset Password (already admin-only, already doesn't need the old password), matching the old pre-Firestore system. (4) "phone me back krne pr app bnd hojati hai" -- added syncBackStack(): a phone/gesture back press now closes whatever's open (a dialog, a modal, a side sheet) instead of exiting the whole app; only exits at the true home screen with nothing open, like a normal app. (Rounds 1-5: session-token adoption, FIFO stock allocation, Daily Work resync, System Health panel removal, modal animations, live-listener reconnect, the real bar-bar-password root cause -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md for full history.)
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -1463,32 +1463,56 @@ function unsubscribePushNotifications(){
 // Cloud Function (writes to pendingNotifs are server-only, same as
 // loginLockouts -- see clearLoginLockout's own comment for the same
 // pattern).
+// BUGFIX (2026-08-29, "login ke baad notification aaye pe aaye ja rahi
+// hai" -- the Welcome toast and/or the missed-notification replay showing
+// more than once for one login): this function had no guard at all
+// against being called twice close together for the same login. Before
+// the onAuthStateChanged race fix above, it genuinely WAS getting called
+// twice for a single interactive login (once from that redundant branch,
+// once from finalizeLogin) -- and since it reads pendingNotifs BEFORE it
+// clears it (clearMyPendingNotifs only runs at the very end), two
+// overlapping calls would both read the SAME still-there batch and both
+// display it in full: every missed notification (and the "Welcome" toast
+// itself) showing twice. The race is fixed at the source now, but this
+// guard stays as defense-in-depth against any other future path that
+// might call this twice for the same login -- checkingMissedNotifsFor
+// stays set for exactly the dangerous window (read through clear); once
+// clearMyPendingNotifs has actually succeeded, pendingNotifs really is
+// empty server-side, so even a second, later, non-overlapping call would
+// correctly find nothing left to show.
+let checkingMissedNotifsFor = null;
 async function checkForMissedNotifsOnLogin(){
   if(!S.currentUser) return;
-  const firstName = (S.currentUser.name||'').split(' ')[0] || S.currentUser.name || '';
-  showToast(`Welcome, ${firstName}! 👋`);
-  // A fresh read straight from Firestore (not whatever S.pendingNotifs
-  // happens to hold in memory) -- for someone who just logged in after
-  // being logged out for a while (exactly the case this feature exists
-  // for), that in-memory copy could easily predate this exact moment and
-  // miss something recorded in between.
-  let mine = null;
+  if(checkingMissedNotifsFor === S.currentUser.username) return; // already replaying this exact login's missed notifications right now — never show the same Welcome/replay burst twice
+  checkingMissedNotifsFor = S.currentUser.username;
   try{
-    const snap = await fsDb.collection('pendingNotifs').doc(S.currentUser.username).get();
-    mine = snap.exists ? snap.data().items : null;
-  }catch(e){ /* fall back to whatever S.pendingNotifs already had -- better than nothing */ mine = S.pendingNotifs[S.currentUser.username]; }
-  if(!Array.isArray(mine) || !mine.length) return;
-  const queue = mine.slice().sort((a,b)=>a.at-b.at);
-  delete S.pendingNotifs[S.currentUser.username];
-  const showNext = (i)=>{
-    if(i >= queue.length) return;
-    const n = queue[i];
-    showToast(`${n.title || 'Notification'}${n.body ? ' — ' + n.body : ''}`);
-    if(i+1 < queue.length) setTimeout(()=>showNext(i+1), 2200);
-  };
-  setTimeout(()=>showNext(0), 1600); // let the welcome toast finish reading first
-  try{ await fsFunctions.httpsCallable('clearMyPendingNotifs')(); }
-  catch(e){ /* best-effort -- worst case this same batch shows again next login, never silently lost */ }
+    const firstName = (S.currentUser.name||'').split(' ')[0] || S.currentUser.name || '';
+    showToast(`Welcome, ${firstName}! 👋`);
+    // A fresh read straight from Firestore (not whatever S.pendingNotifs
+    // happens to hold in memory) -- for someone who just logged in after
+    // being logged out for a while (exactly the case this feature exists
+    // for), that in-memory copy could easily predate this exact moment and
+    // miss something recorded in between.
+    let mine = null;
+    try{
+      const snap = await fsDb.collection('pendingNotifs').doc(S.currentUser.username).get();
+      mine = snap.exists ? snap.data().items : null;
+    }catch(e){ /* fall back to whatever S.pendingNotifs already had -- better than nothing */ mine = S.pendingNotifs[S.currentUser.username]; }
+    if(!Array.isArray(mine) || !mine.length) return;
+    const queue = mine.slice().sort((a,b)=>a.at-b.at);
+    delete S.pendingNotifs[S.currentUser.username];
+    const showNext = (i)=>{
+      if(i >= queue.length) return;
+      const n = queue[i];
+      showToast(`${n.title || 'Notification'}${n.body ? ' — ' + n.body : ''}`);
+      if(i+1 < queue.length) setTimeout(()=>showNext(i+1), 2200);
+    };
+    setTimeout(()=>showNext(0), 1600); // let the welcome toast finish reading first
+    try{ await fsFunctions.httpsCallable('clearMyPendingNotifs')(); }
+    catch(e){ /* best-effort -- worst case this same batch shows again next login, never silently lost */ }
+  } finally {
+    checkingMissedNotifsFor = null;
+  }
 }
 // A raw fetch() has NO timeout of its own — on a slow/unreliable connection
 // (mobile data especially), a request that never gets a response just hangs
@@ -2168,8 +2192,26 @@ function fsDocIdFor(entity, item){
 // that already do their own .then()/.catch() keep working exactly as
 // before; this only adds a visible toast as a new side effect for the
 // overwhelming majority of call sites that don't.
+// BUGFIX (2026-08-29, "logout karte h to niche 'failed to save' likha ata
+// hai"): every write in this file is fire-and-forget (see the big comment
+// above), so a write that was already in flight (e.g. a chat read-receipt
+// mark from a message that just arrived) can still be sitting on the wire
+// at the exact instant doLogout() signs Firebase Auth out. Once
+// request.auth goes away, firestore.rules correctly (and harmlessly)
+// rejects that write with permission-denied -- but from this function's
+// point of view that looks identical to a REAL save failure, and it would
+// pop the scary "Save failed" toast right on the login screen the person
+// just asked to see, over something that was never actually a problem.
+// __intentionalLogoutInProgress (set by doLogout, cleared a few seconds
+// later) tells this function "we know writes are about to start failing
+// on purpose — log it for debugging, but don't alarm anyone about it."
+let __intentionalLogoutInProgress = false;
 function fsReportWriteError(err, label){
   console.error(`Firestore write failed (${label})`, err);
+  if(__intentionalLogoutInProgress){
+    console.warn(`(suppressed the usual "Save failed" toast for this one -- it landed during an intentional logout, so a permission-denied here is expected, not a real problem)`);
+    return;
+  }
   const code = err && err.code;
   const msg = code==='permission-denied'
     ? `Save failed — you don't have permission for that. Nothing was actually saved; please tell an admin. (${label})`
@@ -2497,7 +2539,39 @@ function fsBootstrapAuth(){
       // is really only for "app opened with an already-active Firebase
       // Auth session" (a genuine page refresh), where nothing else has
       // set S.currentUser yet.
-      if(!(S.currentUser && S.currentUser.id===fbUser.uid)){
+      //
+      // ROOT-CAUSE FIX (2026-08-29, "phone me back krne..." session follow-up
+      // -- "welcome screen ati hai jab hum logout karte h", "direct portal
+      // khulta h delay nahi ata", "notification bar bar aa rahi h"): the
+      // guard above ONLY checked S.currentUser, which finalizeLogin sets --
+      // but finalizeLogin is deliberately DELAYED behind the loading (~2.25s)
+      // + "Tap to Continue" welcome screen (startPostLoginSequence), and only
+      // runs once the person actually taps that button. Firebase fires
+      // onAuthStateChanged almost immediately after a successful sign-in --
+      // WAY before that tap ever happens -- so at the moment this callback
+      // ran, S.currentUser was still null every single time on a fresh
+      // interactive login, and this "already active session" branch below
+      // ALWAYS won the race: it set S.currentUser directly, which made
+      // render() jump straight into the portal (skipping the loading/welcome
+      // screens entirely -- "delay nahi ata"), and it called
+      // initPushNotifications()/checkForMissedNotifsOnLogin() on its own,
+      // duplicating whatever finalizeLogin would also try to do if its tap
+      // handler ever still fired (duplicate "Welcome" toast + duplicate
+      // missed-notification replay -- "notification bar bar aa rahi h").
+      // Worse, because finalizeLogin never got the chance to run, it never
+      // reached its own `S.postLoginPhase = null` line either -- so that
+      // field stayed stuck at 'loading' or 'welcome' for the rest of the
+      // session, invisible while logged in (render() only ever looks at
+      // postLoginPhase while S.currentUser is null) -- until the person
+      // eventually logged OUT, at which point render() suddenly rendered
+      // that stale welcome screen again out of nowhere. Fixed by also
+      // skipping this branch while a fresh interactive login sequence is
+      // already in progress (S.postLoginPhase truthy) -- let finalizeLogin
+      // own that login end-to-end, exactly as originally intended. This
+      // branch still runs correctly for its real purpose: a genuine page
+      // refresh with an already-active session, where postLoginPhase is
+      // always null (a reload starts S fresh).
+      if(!(S.currentUser && S.currentUser.id===fbUser.uid) && !S.postLoginPhase){
         try{
           const userSnap = await fsDb.collection('users').doc(fbUser.uid).get();
           if(userSnap.exists){
@@ -3370,9 +3444,34 @@ function finalizeLogin(u){
   checkForMissedNotifsOnLogin();
 }
 function doLogout(){
+  // DEFENSIVE HARDENING (2026-08-29, "logout karte h to welcome screen ati
+  // hai, niche 'failed to save' likha ata hai"): the real root cause of the
+  // stray welcome screen was a separate onAuthStateChanged race (see its
+  // big fix comment above) that could leave S.postLoginPhase stuck non-null
+  // for the rest of the session -- invisible while logged in, since render()
+  // only ever looks at postLoginPhase while S.currentUser is null, so it
+  // would suddenly reappear the moment THIS function set currentUser back
+  // to null. That race is fixed at the source now, but resetting it here
+  // too costs nothing and guards against any other future path that might
+  // leave it dangling. Also detaches every live Firestore listener BEFORE
+  // signing out (rather than only later, async, once onAuthStateChanged's
+  // own fbUser-null branch gets around to it) -- shrinks the window where a
+  // listener-triggered background write (e.g. a read-receipt mark from an
+  // incoming message) could still be in flight right as auth goes away and
+  // get rejected by firestore.rules once request.auth is gone, which is
+  // exactly what was popping the "Save failed" toast during/right after
+  // logout. Any write that's already in flight at this exact instant can
+  // still lose that race — __intentionalLogoutInProgress (see
+  // fsReportWriteError) is the actual fix for that: it's expected and not
+  // worth alarming the person about on the login screen they just asked to
+  // see.
+  __intentionalLogoutInProgress = true;
+  setTimeout(()=>{ __intentionalLogoutInProgress = false; }, 5000); // generous window for any already-in-flight write to settle/fail silently before treating a future failure as a real problem again
+  fsDetachAllListeners();
   fsLogout(); // Task #54: Firebase Auth sign-out -- never awaited, never blocks the local logout below
   unsubscribePushNotifications(); // "login mandatory for notifications" -- see its own comment
   S.currentUser = null; S.notifOpen=false; S.moreOpen=false; S.profileOpen=false; S.alertPanelOpen=null;
+  S.postLoginPhase = null; S.pendingUser = null;
   S.authToken = null; persistAuthToken(null);
   persistSession(null);
   try{ localStorage.removeItem(DEVICE_SESSION_TOKEN_KEY); localStorage.removeItem(DEVICE_SESSION_TOKEN_AT_KEY); }catch(e){}
@@ -4154,6 +4253,14 @@ function bindLogin(){
     }
     if(result && result.ok && result.user){
       loginError = '';
+      // Defensive reset (matches the other two branches below) — normally
+      // unnecessary since a successful login moves on to the loading/welcome
+      // screens (no login form left to resubmit), but bindLogin() resetting
+      // it again is the ONLY thing that ever clears this otherwise, so if
+      // any future change ever lands back on the login form after a
+      // "successful" result without going through bindLogin again, this
+      // stops the submit button from staying permanently stuck disabled.
+      loginSubmitting = false;
       // Prefer the already-loaded local user record (same object identity
       // as everything else in S.users) when we have it; Firestore's own
       // copy is only a fallback for the rare case the local list hasn't
@@ -4172,15 +4279,43 @@ function bindLogin(){
 }
 
 /* ============================= POST-LOGIN SEQUENCE (loading -> welcome) ============================= */
+// BUGFIX (2026-08-29, "login single click me kaam nahi karta"): both
+// sequences below used to guard with a blanket `if(S.postLoginPhase)
+// return;`, and each one's own setTimeout tick chain ran to completion
+// unconditionally once started, sharing the SAME S.postLoginLoadingStep
+// counter. Concretely: someone mistypes their password -> startWrongLoginSequence
+// starts its ~4s "Fake login found... Report sent to company" animation,
+// but ALREADY resets loginSubmitting=false as soon as it starts (see the
+// submit handler above) -- so the form can be submitted again immediately,
+// while that animation is still playing. If their SECOND attempt (this
+// time correct) resolves during those ~4 seconds, startPostLoginSequence's
+// guard saw postLoginPhase==='wrongLogin' (truthy) and silently dropped
+// the successful login entirely -- then, a moment later, the still-running
+// wrongLogin tick chain finished on its own and overwrote the screen with
+// "Invalid Login ID & Password", even though the most recent attempt was
+// actually correct. From the person's side this looks exactly like "I
+// typed it right and it still said invalid" / "took multiple tries".
+// Fixed with a generation counter: a NEW sequence starting is always
+// allowed to supersede an in-progress 'wrongLogin' animation (it's just a
+// rejected-attempt animation, nothing worth protecting), which bumps the
+// generation so the OLD sequence's still-pending tick(s) recognize they've
+// been superseded and quietly no-op instead of corrupting the new
+// sequence's postLoginPhase/postLoginLoadingStep out from under it. A
+// genuinely in-progress 'loading'/'welcome' sequence (a real successful
+// login already under way) still can't be interrupted -- there's no
+// legitimate reason for a second one of those to start.
+let postLoginSequenceGen = 0;
 const POST_LOGIN_LOADING_MSGS = ['Loading Orders…','Loading Stock…','Updating other features…'];
 function startPostLoginSequence(user){
-  if(S.postLoginPhase) return; // a sequence is already running — never start a second one on top of it
+  if(S.postLoginPhase==='loading' || S.postLoginPhase==='welcome') return; // a genuine successful-login sequence is already running — never restart that one
+  const myGen = ++postLoginSequenceGen; // supersedes any still-ticking wrongLogin sequence from a moment ago
   S.pendingUser = user;
   S.postLoginPhase = 'loading';
   S.postLoginLoadingStep = 0;
   render();
   const stepMs = 750; // 3 steps ≈ 2.25s total, comfortably over the requested 2s
   const tick = ()=>{
+    if(myGen !== postLoginSequenceGen) return; // superseded by a newer sequence — let that one own postLoginPhase/postLoginLoadingStep instead
     S.postLoginLoadingStep++;
     if(S.postLoginLoadingStep < POST_LOGIN_LOADING_MSGS.length){
       render();
@@ -4194,12 +4329,14 @@ function startPostLoginSequence(user){
 }
 const WRONG_LOGIN_MSGS = ['Searching for employee ID…','Fake login found','Report sent to company'];
 function startWrongLoginSequence(){
-  if(S.postLoginPhase) return; // don't overlap with an already-running sequence
+  if(S.postLoginPhase==='loading' || S.postLoginPhase==='welcome') return; // never stomp a genuine successful-login sequence already in progress
+  const myGen = ++postLoginSequenceGen;
   S.postLoginPhase = 'wrongLogin';
   S.postLoginLoadingStep = 0;
   render();
   const stepMs = 1330; // 3 steps ≈ 4s total
   const tick = ()=>{
+    if(myGen !== postLoginSequenceGen) return; // superseded by a newer sequence (e.g. a correct retry submitted while this animation was still playing) — don't overwrite its state
     S.postLoginLoadingStep++;
     if(S.postLoginLoadingStep < WRONG_LOGIN_MSGS.length){
       render();
