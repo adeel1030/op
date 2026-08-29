@@ -714,7 +714,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-28-firestore-preview9"; // ROUND 4 of the 2026-08-28 live-production incident fixes (2026-08-28, night): (1) "System Health" panel on the admin Home tab removed -- its Backup/Sync rows read from apiFetchAll/apiFetchDelta/doSyncTick, all SUPERSEDED by Firestore's own onSnapshot listeners back in Task #54, so it was permanently showing false "Backup: never run yet" / "Sync: not yet synced" regardless of actual system health. The real backup still runs fine on its own daily trigger (order-ops-backup-watcher.gs); the one still-real signal (unsaved local changes) is already covered by the top bar's own "· N pending" label. (2) Modal open/close animations reworked for a more premium feel: modals now scale/settle in with a spring easing instead of a flat slide, actually animate BACK OUT when closed (they used to just vanish instantly), and on wider/desktop screens specifically grow outward from wherever you actually tapped/clicked to open them (see showModal's transform-origin tracking) instead of sliding up from nowhere. (3) "Live Messenger turant nahi aata" -- new messages/orders/etc. sometimes not showing up live until the app was closed and reopened: root cause was relying purely on the Firestore SDK's own reconnect timing after the tab/PWA had been backgrounded, which can lag noticeably; both the 'online' and visibilitychange('visible') handlers now force a fresh attachFirestoreListeners() call so a backgrounded device catches up immediately the moment it's looked at again, instead of waiting on the SDK to notice on its own. See ORDER_OPS_FIRESTORE_REWRITE_STATUS.md for the full writeup.
+const APP_BUILD = "2026-08-29-firestore-preview10"; // ROUND 5 (2026-08-29): the REAL fix for "bar bar password mang raha hai" -- root-caused to a SEPARATE bug from the Round 3 fix (which was real but only solved the single-device-login/activeSessions half of it). This half: handleAuthError('session_required') used to pop a blocking "enter your password to refresh your session" prompt whenever a call to order-ops-backend.gs's OLD (pre-Firestore) doPost endpoint failed -- and several still-live call sites were GUARANTEED to fail it every time, because a Firestore/Firebase-Auth login never holds one of that old endpoint's session tokens: checkForMissedNotifsOnLogin (fires on EVERY login), Force Logout, and LR photo upload/delete. Typing the password back in didn't even fix anything real -- it just minted an old token nothing in this app depends on anymore; the actual (Firestore) session was never broken. Fixed at the root: handleAuthError no longer shows that prompt for session_required (logs quietly instead); checkForMissedNotifsOnLogin now reads/clears pendingNotifs via Firestore + the new clearMyPendingNotifs Cloud Function instead of the old endpoint; Force Logout's redundant old-endpoint call removed (the real enforcement already happens via issueNewSessionToken's Firestore write). Requires BOTH a client (this file) and a Cloud Functions redeploy -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md / the Round 5 deploy guide. (Rounds 1-4: session-token adoption, FIFO stock allocation, Daily Work resync, System Health panel removal, modal animations, live-listener reconnect -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md for full history.)
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -1445,25 +1445,38 @@ function unsubscribePushNotifications(){
 // they were logged out -- oldest first, a beat apart so it reads like a
 // real notification burst landing (the way WhatsApp shows a catch-up
 // stream of messages) instead of one unreadable wall of text. Clears the
-// server-side queue afterward (apiClearPendingNotifs) so the same batch
-// never replays on a later login.
+// server-side queue afterward (clearMyPendingNotifs Cloud Function, see
+// below) so the same batch never replays on a later login.
+// BUGFIX (2026-08-29, "bar bar password mang raha hai" -- still happening
+// after the Round 3 session-token fix): this function used to call
+// order-ops-backend.gs's old doPost endpoint on EVERY login (apiFetchAll to
+// read, apiClearPendingNotifs to clear) -- a Task #54 leftover that was
+// never actually finished. A Firestore/Firebase-Auth login never obtains
+// one of that old endpoint's session tokens, so both calls were correctly
+// rejected every single time with {error:'session_required'}, and THAT is
+// what was popping the disruptive "enter your password to refresh your
+// session" prompt on every login, for every device -- not the single-
+// device-login bug the Round 3 fix actually addressed (a real, separate
+// bug). Rewired to talk to Firestore directly: reading is a plain client
+// .get() (pendingNotifs/{username} already has a rule letting you read
+// your OWN doc), and clearing goes through the new clearMyPendingNotifs
+// Cloud Function (writes to pendingNotifs are server-only, same as
+// loginLockouts -- see clearLoginLockout's own comment for the same
+// pattern).
 async function checkForMissedNotifsOnLogin(){
   if(!S.currentUser) return;
   const firstName = (S.currentUser.name||'').split(' ')[0] || S.currentUser.name || '';
   showToast(`Welcome, ${firstName}! 👋`);
-  // S.pendingNotifs in memory can be stale here -- it's whatever the app's
-  // last full sync happened to capture, which for someone who just logged
-  // in after being logged out for a while (exactly the case this feature
-  // exists for) could be from well before this exact moment, missing
-  // anything the backend recorded in between. pendingNotifs is a QUIET key
-  // (see order-ops-backend.gs), so the routine 2s version-poll never picks
-  // it up on its own either -- a fresh full fetch here is the only way to
-  // be sure nothing gets silently skipped.
+  // A fresh read straight from Firestore (not whatever S.pendingNotifs
+  // happens to hold in memory) -- for someone who just logged in after
+  // being logged out for a while (exactly the case this feature exists
+  // for), that in-memory copy could easily predate this exact moment and
+  // miss something recorded in between.
+  let mine = null;
   try{
-    const { data } = await apiFetchAll();
-    if(data && data.pendingNotifs) S.pendingNotifs = data.pendingNotifs;
-  }catch(e){ /* fall back to whatever S.pendingNotifs already had -- better than nothing */ }
-  const mine = S.pendingNotifs[S.currentUser.username];
+    const snap = await fsDb.collection('pendingNotifs').doc(S.currentUser.username).get();
+    mine = snap.exists ? snap.data().items : null;
+  }catch(e){ /* fall back to whatever S.pendingNotifs already had -- better than nothing */ mine = S.pendingNotifs[S.currentUser.username]; }
   if(!Array.isArray(mine) || !mine.length) return;
   const queue = mine.slice().sort((a,b)=>a.at-b.at);
   delete S.pendingNotifs[S.currentUser.username];
@@ -1474,7 +1487,7 @@ async function checkForMissedNotifsOnLogin(){
     if(i+1 < queue.length) setTimeout(()=>showNext(i+1), 2200);
   };
   setTimeout(()=>showNext(0), 1600); // let the welcome toast finish reading first
-  try{ await apiClearPendingNotifs(S.currentUser.username); }
+  try{ await fsFunctions.httpsCallable('clearMyPendingNotifs')(); }
   catch(e){ /* best-effort -- worst case this same batch shows again next login, never silently lost */ }
 }
 // A raw fetch() has NO timeout of its own — on a slow/unreliable connection
@@ -1903,6 +1916,12 @@ async function apiDeleteKeys(keys){
 // lose another staff member's own login clearing their entry at nearly
 // the same moment). Best-effort: if this fails, the same batch just shows
 // again next login, which is annoying but never loses anything.
+// SUPERSEDED (2026-08-29, "bar bar password mang raha hai"): no longer
+// called anywhere -- checkForMissedNotifsOnLogin now clears its queue via
+// the clearMyPendingNotifs Cloud Function instead (this old endpoint could
+// never succeed for a Firestore/Firebase-Auth login, which is exactly what
+// was popping the password-refresh prompt on every single login). Kept,
+// unused, as a reference for the old flow, same as apiLogin above.
 async function apiClearPendingNotifs(username){
   const res = await fetchWithTimeout(API_URL, {
     method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
@@ -2560,49 +2579,43 @@ async function apiResetAllData(){
   if(json && json.error) throw new Error(json.error);
   return json;
 }
-// ---- Graceful handling for the two new auth failure reasons a write can
-// come back with (2026-08-21 audit, findings #3/#4) ----
-//   "session_required": the session is missing/stale/expired — re-login
-//     (silently, without losing whatever screen the person is on) is the
-//     fix, and it's exactly what's needed, so prompt for it right here.
+// ---- Graceful handling for the two auth failure reasons order-ops-
+// backend.gs's OLD doPost endpoint can come back with (2026-08-21 audit,
+// findings #3/#4) ----
 //   "forbidden": the session IS valid, but this account's role doesn't
 //     allow the action — re-login won't help, so just say so.
-// Anything else (network errors, locked_busy, etc.) is left for the caller
-// to keep handling as it already did (returns false so callers can fall
-// back to their own generic message).
-let authErrorPromptOpen = false;
+//   "session_required": the OLD endpoint's custom session token is
+//     missing/stale.
+//
+// BUGFIX (2026-08-29, "bar bar password mang raha hai" -- STILL happening
+// after the Round 3 session-token fix): "session_required" used to pop a
+// blocking "enter your password to refresh your session" prompt right
+// here -- and it was popping constantly, on things as routine as every
+// single login (checkForMissedNotifsOnLogin) and every Force Logout,
+// because NEITHER of those callers' underlying API_URL calls could ever
+// actually succeed: this app's real login is Firebase Auth (fsLogin), which
+// never produces one of this OLD endpoint's session tokens in the first
+// place, so every remaining call into it was, in effect, guaranteed to
+// fail with exactly this error, every time. And even when "fixed" by
+// typing the password in, all that did was mint a fresh OLD token that
+// nothing in this app actually depends on anymore -- the REAL session
+// (Firebase Auth + firestore.rules) was never broken and didn't need it.
+// It was a dead end dressed up as a fix. The two call sites that were
+// actually hitting this on every login/every Force Logout are now properly
+// rewired to Firestore/Cloud Functions instead (see
+// checkForMissedNotifsOnLogin and the Force Logout button handler) -- the
+// couple of remaining OLD-endpoint calls left in this file (LR photo
+// upload/delete -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md, still not
+// migrated) now just fail quietly and cleanly through their own existing
+// "upload failed, try again" messaging instead of ALSO throwing this
+// pointless prompt in the person's face.
 function handleAuthError(errMsg){
   if(errMsg === 'forbidden'){
     showToast("You don't have permission to do that.", true);
     return true;
   }
   if(errMsg === 'session_required'){
-    if(!authErrorPromptOpen && S.currentUser){
-      authErrorPromptOpen = true;
-      showPrompt(
-        `Your session needs to be refreshed to keep saving changes, ${S.currentUser.name}. Enter your password to continue (anything already entered stays safely queued):`,
-        '',
-        async (pwd)=>{
-          authErrorPromptOpen = false;
-          if(!pwd) return;
-          try{
-            const result = await apiLogin(S.currentUser.username, pwd);
-            if(result && result.ok && result.sessionToken){
-              S.authToken = result.sessionToken;
-              persistAuthToken(result.sessionToken);
-              showToast('Session refreshed — syncing…');
-              flushOfflineQueue(); // retry whatever was queued, now with a valid token
-            } else {
-              showAlert('That password was not accepted. Please try again from the Team page, or log out and back in.');
-            }
-          }catch(e){
-            showAlert('Could not reach the server to refresh your session — will try again shortly.');
-          }
-        },
-        {password:true},
-        ()=>{ authErrorPromptOpen = false; } // cancelled — allow the prompt to reappear on the next failed write instead of being permanently silenced
-      );
-    }
+    console.warn('handleAuthError: a legacy order-ops-backend.gs call was rejected with session_required -- this is expected (no client here ever holds a valid old-style session token anymore) and intentionally silent now; see the comment above this function.');
     return true;
   }
   return false;
@@ -7231,13 +7244,21 @@ function bindUsers(){
       // isThisDevice=false -- this is ADMIN's device acting on someone
       // ELSE's account, so only the backend record changes; the affected
       // person's own device picks up the mismatch on its next sync (within
-      // a few seconds) and logs itself out there.
+      // a few seconds) and logs itself out there via checkSessionStillValid.
       issueNewSessionToken(uname, false);
-      // SECURITY FIX (2026-08-21 audit, findings #3/#4): also revoke the
-      // REAL server-side session, not just this client-visible flag --
-      // otherwise the affected device's WRITES kept working right up to
-      // the 48h idle timeout even after this button says "signed out".
-      apiInvalidateSession(uname);
+      // REMOVED (2026-08-29, "bar bar password mang raha hai"): this used
+      // to also call apiInvalidateSession(uname), the old Apps Script
+      // backend's session-revocation call -- a Task #54 leftover that
+      // hadn't been removed. In THIS (Firestore) app, real write access is
+      // already governed by Firebase Auth + firestore.rules, not by that
+      // old custom sessionToken concept, so there was no longer any "real
+      // server-side session" left for it to revoke -- it only ever got a
+      // {error:'session_required'} back (since a Firestore login never
+      // gets one of that old system's tokens), which popped the same
+      // disruptive "enter your password" prompt on the ADMIN's own screen
+      // every time Force Logout was used. The activeSessions Firestore
+      // write above (issueNewSessionToken) is already the real, live
+      // enforcement -- see checkSessionStillValid.
       showToast(`${uname} will be signed out shortly`);
     });
   }));
