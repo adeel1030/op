@@ -714,7 +714,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-29-firestore-preview13"; // ROUND 8 (2026-08-29): the REAL fix for "click krte hi foran kaam krni chahiye" -- Round 7's fsBootstrapAuth fix (gating its onAuthStateChanged auto-login branch on !S.postLoginPhase) was still too late: Firebase's signInWithEmailAndPassword() updates its own internal auth state and fires onAuthStateChanged as PART OF resolving, which can happen before bindLogin's submit handler even gets control back from `await fsLogin(...)` -- i.e. before S.postLoginPhase had been set to anything at all. So login could still skip straight to the portal with no loading/welcome screen (no "M A Products India" delay), exactly as reported. Fixed properly with interactiveLoginInFlight: set SYNCHRONOUSLY the instant the submit handler starts, strictly before fsLogin()/Firebase's own signIn call begins -- closing the race regardless of timing. Cleared on every login-attempt failure path and by finalizeLogin once a successful attempt's sequence actually completes; doLogout() also resets it defensively. This is the actual, complete fix for the login-skip/duplicate-notification/stray-welcome-at-logout family of bugs Round 7 partially addressed. (Rounds 1-7: session-token adoption, FIFO stock allocation, Daily Work resync, System Health panel removal, modal animations, live-listener reconnect, the real bar-bar-password root cause, chat ordering/read-receipts, admin-only password reset, phone back button, the first (incomplete) login-race fix -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md for full history.)
+const APP_BUILD = "2026-08-29-firestore-preview14"; // ROUND 9 (2026-08-29): "enter dabane par message send nahi ho raha" fix -- plain Enter now SENDS in both the personal-chat reply box (threadReplyInput) and the announcement composer (newAnnouncementText), matching WhatsApp-Web/Slack/iMessage-desktop convention (Shift+Enter still inserts a newline; guarded with !e.isComposing so IME/multi-byte input isn't broken). This reverses an earlier round's deliberate "Enter never sends, mobile-keyboard style" choice, per explicit user request. Routes through the existing sendReply()/postBtn.click() paths so the empty/disabled-button guard logic isn't duplicated. (Round 8: the real fix for the login-skip/duplicate-notification/stray-welcome-at-logout race via interactiveLoginInFlight. Rounds 1-7: session-token adoption, FIFO stock allocation, Daily Work resync, System Health panel removal, modal animations, live-listener reconnect, the real bar-bar-password root cause, chat ordering/read-receipts, admin-only password reset, phone back button, the first (incomplete) login-race fix -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md for full history.)
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -8005,6 +8005,19 @@ function bindMessagesModal(skipScroll){
       autoGrowTextarea(announcementInput);
       if(postBtn) postBtn.disabled = !announcementInput.value.trim();
     });
+    // BUGFIX (2026-08-29, "enter dabane par message send nahi ho raha"):
+    // plain Enter now posts (matching every mainstream chat app's desktop/
+    // physical-keyboard behavior -- WhatsApp Web, Slack, etc. all send on
+    // Enter), Shift+Enter still inserts a newline. Routes through postBtn's
+    // own click handler (via .click(), not calling sendAnnouncement
+    // directly) so the exact same empty/disabled guard applies -- no
+    // separate logic to keep in sync.
+    announcementInput.addEventListener('keydown', (e)=>{
+      if(e.key==='Enter' && !e.shiftKey && !e.isComposing){
+        e.preventDefault();
+        if(postBtn && !postBtn.disabled) postBtn.click();
+      }
+    });
   }
   document.querySelectorAll('[data-open-thread]').forEach(el=>el.addEventListener('click', ()=>{
     S.chatActiveThread = el.dataset.openThread;
@@ -8057,11 +8070,24 @@ function bindMessagesModal(skipScroll){
   if(sendReplyBtn) sendReplyBtn.addEventListener('click', sendReply);
   const replyInput = document.getElementById('threadReplyInput');
   if(replyInput){
-    // Enter always makes a new line here — like WhatsApp's mobile keyboard,
-    // where Enter never sends; only the Send button does. (No special
-    // keydown handling needed — a textarea's default Enter behavior IS a
-    // newline; we just don't intercept it anymore.) The box also grows to
-    // fit multiline text (up to a cap) instead of staying a single line.
+    // BUGFIX (2026-08-29, "enter dabane par message send nahi ho raha"):
+    // this used to deliberately leave Enter alone (a plain newline, mobile-
+    // keyboard style) -- but on a real/physical keyboard (desktop, or a
+    // Bluetooth keyboard on a tablet) every mainstream chat app sends on a
+    // plain Enter and only inserts a newline on Shift+Enter (WhatsApp Web,
+    // Slack, iMessage on Mac, etc.), so leaving Enter as a no-op there read
+    // as "the button doesn't work". Now matches that standard: plain Enter
+    // sends, Shift+Enter still inserts a newline. Mobile's on-screen
+    // keyboard "return" key sends the same plain Enter keydown, so this
+    // also finally makes a phone's own keyboard send the message, matching
+    // ordinary chat-app behavior there too — the Send button is still
+    // there for anyone who prefers tapping it.
+    replyInput.addEventListener('keydown', (e)=>{
+      if(e.key==='Enter' && !e.shiftKey && !e.isComposing){
+        e.preventDefault();
+        sendReply();
+      }
+    });
     replyInput.addEventListener('input', ()=>{
       autoGrowTextarea(replyInput);
       if(sendReplyBtn) sendReplyBtn.disabled = !replyInput.value.trim();
