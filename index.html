@@ -476,9 +476,15 @@
   .modal{
     background:var(--surface);border-radius:22px 22px 0 0;padding:10px 20px calc(20px + var(--sab));
     max-width:100%;width:100%;max-height:86%;overflow:auto;
-    animation:sheetUp .22s cubic-bezier(.2,.8,.3,1);
+    animation:sheetUp .26s cubic-bezier(.34,1.4,.4,1);
   }
-  @keyframes sheetUp{from{transform:translateY(24px);opacity:0.6;}to{transform:translateY(0);opacity:1;}}
+  @keyframes sheetUp{from{transform:translateY(28px) scale(0.98);opacity:0.5;}to{transform:translateY(0) scale(1);opacity:1;}}
+  /* Closing (2026-08-28): a matching exit instead of the dialog just
+     vanishing -- see closeModal()'s non-instant path. */
+  .modal-overlay.closing{animation:overlayFadeOut .18s ease forwards;}
+  @keyframes overlayFadeOut{from{opacity:1;}to{opacity:0;}}
+  .modal-overlay.closing .modal{animation:sheetDown .18s cubic-bezier(.4,0,1,1) forwards;}
+  @keyframes sheetDown{from{transform:translateY(0) scale(1);opacity:1;}to{transform:translateY(16px) scale(0.97);opacity:0;}}
   .success-pop{display:inline-block;animation:successPop .3s cubic-bezier(.3,1.5,.5,1);}
   @keyframes successPop{0%{transform:scale(0.4);opacity:0;}60%{transform:scale(1.15);}100%{transform:scale(1);opacity:1;}}
   .sheet-handle{width:36px;height:4px;border-radius:3px;background:var(--border);margin:4px auto 14px;}
@@ -645,6 +651,15 @@
     .modal{max-width:520px;border-radius:20px;max-height:80vh;}
     .modal.modal-chat{max-width:640px;height:78vh;max-height:78vh;}
     .modal.modal-wide{max-width:760px;}
+    /* Wide/desktop layout only: the dialog is centered rather than
+       pinned to the bottom edge, so it reads better growing OUT of
+       wherever the person actually tapped (see showModal()'s
+       transform-origin) than sliding up. transform-origin is set once by
+       JS per-open; only the scale/opacity are animated here. */
+    .modal{animation:modalGrowIn .22s cubic-bezier(.3,1.4,.4,1);}
+    @keyframes modalGrowIn{from{transform:scale(0.88);opacity:0;}to{transform:scale(1);opacity:1;}}
+    .modal-overlay.closing .modal{animation:modalGrowOut .16s cubic-bezier(.4,0,1,1) forwards;}
+    @keyframes modalGrowOut{from{transform:scale(1);opacity:1;}to{transform:scale(0.9);opacity:0;}}
   }
 </style>
 <!--
@@ -699,7 +714,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-28-firestore-preview6"; // ROUND 2 of the 2026-08-28 live-production incident fixes -- a 3-agent parallel audit (rules-vs-write-paths, push-notification pipeline, fsSetItem overwrite races) found and fixed the remaining root causes: (b) "data doesn't update" was firestore.rules rejecting stockTasks completion + activityLog/retailSales self-edits for non-admin roles, PLUS a retailSales listener permission-denied firing on every filling/packaging login -- all three fixed in firestore.rules (see its own comments). Also added: fsReportWriteError -- EVERY Firestore write now surfaces a visible toast on failure instead of silently reverting the screen with no explanation (the single biggest reason this whole class of bug was so hard to describe/diagnose). (d) notifications: found and fixed a real silent-failure bug in functions/index.js (onExpensePush read the wrong field name, suppressing admin-on-behalf-of-manager settlement notifications) -- the "notifications completely absent" symptom still most likely needs a live check of the OneSignal REST key's IP Allowlist setting (see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md) since that can't be diagnosed from code alone. Also hardened: order status auto-advance writes now use a scoped merge (fsSaveOrderStatusFields) instead of a full non-merge overwrite; chatMessages read-receipts now use arrayUnion/merge instead of a racy full resave; updatedByUsername is now actually written on order-status/stock changes (was always empty before, breaking self-exclusion from your own push notifications). See ORDER_OPS_FIRESTORE_REWRITE_STATUS.md for the full writeup.
+const APP_BUILD = "2026-08-28-firestore-preview9"; // ROUND 4 of the 2026-08-28 live-production incident fixes (2026-08-28, night): (1) "System Health" panel on the admin Home tab removed -- its Backup/Sync rows read from apiFetchAll/apiFetchDelta/doSyncTick, all SUPERSEDED by Firestore's own onSnapshot listeners back in Task #54, so it was permanently showing false "Backup: never run yet" / "Sync: not yet synced" regardless of actual system health. The real backup still runs fine on its own daily trigger (order-ops-backup-watcher.gs); the one still-real signal (unsaved local changes) is already covered by the top bar's own "· N pending" label. (2) Modal open/close animations reworked for a more premium feel: modals now scale/settle in with a spring easing instead of a flat slide, actually animate BACK OUT when closed (they used to just vanish instantly), and on wider/desktop screens specifically grow outward from wherever you actually tapped/clicked to open them (see showModal's transform-origin tracking) instead of sliding up from nowhere. (3) "Live Messenger turant nahi aata" -- new messages/orders/etc. sometimes not showing up live until the app was closed and reopened: root cause was relying purely on the Firestore SDK's own reconnect timing after the tab/PWA had been backgrounded, which can lag noticeably; both the 'online' and visibilitychange('visible') handlers now force a fresh attachFirestoreListeners() call so a backgrounded device catches up immediately the moment it's looked at again, instead of waiting on the SDK to notice on its own. See ORDER_OPS_FIRESTORE_REWRITE_STATUS.md for the full writeup.
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -3157,17 +3172,35 @@ function startSessionExpiryWatch(){
   }, 60000);
 }
 
-// ---- Single-device login: only one active session per user (security
-// feature, 2026-08-21, explicit user request) ----
-// A random token is (re)generated any time a login should invalidate every
-// OTHER device currently signed in as this user: a fresh login itself
-// (finalizeLogin), an admin's manual "Force logout" (Team page), and an
-// admin resetting that user's password (openUserModal's submit handler).
+// ---- Single-device login (2026-08-21, explicit user request) ----
+// REMOVED from a REGULAR login (2026-08-28, live-production incident --
+// user report: "bar bar password mang raha hai... kabhi nahi hona chahiye").
+// Root cause: in real day-to-day use, several staff share ONE role login
+// (e.g. "packaging") open on multiple tablets/phones around the warehouse
+// AT THE SAME TIME -- completely normal for this business. The old
+// behavior minted a BRAND NEW token on every single finalizeLogin() call,
+// which unconditionally invalidated every other device already signed in
+// as that account -- so any time a second device logged in as "packaging",
+// the first device got silently signed all the way out of Firebase Auth
+// (checkSessionStillValid -> doLogout) and had to type the password again,
+// often mid-task. That is exactly the "keeps asking for the password"
+// complaint, and it could happen many times a day purely from normal
+// shared-login usage, not any actual security event.
+// Fixed: a regular login now ADOPTS whatever token is already current for
+// that username (adoptOrIssueSessionToken) instead of minting a new one --
+// multiple simultaneous logins as the same account now simply coexist, and
+// none of them get force-logged-out of each other. The token mechanism
+// itself is kept (not deleted) because it still does something genuinely
+// useful: an ADMIN can explicitly kick a specific device via "Force logout"
+// (Team page) -- see issueNewSessionToken, still called from there with
+// isThisDevice=false. That remains a deliberate, explicit admin action, not
+// something a normal login triggers on its own any more.
 // The backend just stores whatever token is "current" for each username
 // (S.activeSessions[username].token) -- every device compares its own
 // remembered token against that on every regular sync (see
 // checkSessionStillValid, called at the end of applyServerData) and logs
-// itself out the moment it no longer matches.
+// itself out the moment it no longer matches (now only ever caused by an
+// explicit admin Force logout, not by another ordinary login).
 const DEVICE_SESSION_TOKEN_KEY = 'orderops_device_session_token';
 const DEVICE_SESSION_TOKEN_AT_KEY = 'orderops_device_session_token_at';
 function makeSessionToken(){
@@ -3176,9 +3209,12 @@ function makeSessionToken(){
   return Array.from(arr).map(b=>b.toString(16).padStart(2,'0')).join('');
 }
 // isThisDevice=true means the caller IS the affected user's own current
-// device (a fresh login, or an admin editing their own account) -- their
-// local copy is updated too so they don't immediately kick themselves out
-// on the very next sync.
+// device (an admin editing their own account) -- their local copy is
+// updated too so they don't immediately kick themselves out on the very
+// next sync. As of the 2026-08-28 fix above, the only remaining caller of
+// this with isThisDevice=false is the Team page's explicit "Force logout"
+// button -- a regular login no longer calls this at all (see
+// adoptOrIssueSessionToken below, which finalizeLogin calls instead).
 function issueNewSessionToken(username, isThisDevice){
   const token = makeSessionToken();
   const at = Date.now();
@@ -3193,6 +3229,26 @@ function issueNewSessionToken(username, isThisDevice){
     }catch(e){}
   }
   return token;
+}
+// Called from a REGULAR login (finalizeLogin) instead of issueNewSessionToken
+// -- see the big comment block above for why. If the account already has a
+// current session token (near-certain in practice -- some device somewhere
+// has logged into this account before), this device just adopts it locally
+// with NO Firestore write and NO effect on any other device. Only a
+// genuinely brand-new account with no session record at all gets a freshly
+// minted one (matches checkSessionStillValid's own "no local token yet"
+// adoption branch, which handles the same situation from the other side).
+function adoptOrIssueSessionToken(username){
+  const rec = S.activeSessions[username];
+  const remoteToken = (rec && typeof rec==='object') ? rec.token : null;
+  if(remoteToken){
+    try{
+      localStorage.setItem(DEVICE_SESSION_TOKEN_KEY, remoteToken);
+      localStorage.setItem(DEVICE_SESSION_TOKEN_AT_KEY, String(rec.at || Date.now()));
+    }catch(e){}
+    return remoteToken;
+  }
+  return issueNewSessionToken(username, true);
 }
 function checkSessionStillValid(){
   if(!S.currentUser) return;
@@ -3229,7 +3285,10 @@ function checkSessionStillValid(){
   // elsewhere is the only way remoteAt ends up newer with a different token.
   if(remoteToken && remoteToken!==myToken && remoteAt>myTokenAt){
     doLogout();
-    showAlert('This account was just logged in on another device or browser, so you have been signed out here automatically.');
+    // As of the 2026-08-28 fix (see issueNewSessionToken/adoptOrIssueSessionToken
+    // above), an ordinary login on another device no longer causes this --
+    // the only remaining trigger is an admin's explicit "Force logout".
+    showAlert('An admin signed this account out remotely, so you have been signed out here automatically.');
   }
 }
 // ---- Password hashing (Web Crypto API — built into every browser) ----
@@ -3277,10 +3336,13 @@ function finalizeLogin(u){
   S.currentUser = u;
   S.view = ROLES[u.role].tabs[0];
   persistSession(u);
-  // Single-device login: this fresh login becomes the ONE valid session for
-  // this account -- any other device still signed in as u will detect the
-  // mismatch on its next sync (checkSessionStillValid) and log itself out.
-  issueNewSessionToken(u.username, true);
+  // FIXED (2026-08-28, "bar bar password mang raha hai"): a regular login
+  // now ADOPTS the account's existing session token instead of minting a
+  // new one that force-logs-out every other device signed in as the same
+  // account -- see the big comment above issueNewSessionToken for why. An
+  // admin's explicit "Force logout" (Team page) is still the way to
+  // actually kick a specific device.
+  adoptOrIssueSessionToken(u.username);
   primeDevicePermissions();
   S.loginLog.push({id:uid(), username:u.username, name:u.name, role:u.role, at:Date.now()});
   if(S.loginLog.length>2000) S.loginLog = S.loginLog.slice(-2000); // day-partitioned now, but keep an overall sanity cap
@@ -3875,6 +3937,17 @@ function openEditLogModal(e, opts){
     }
     applyActivityForward(e); // already logs "entry edited" internally (see applyActivityForward)
     saveAfterActivityChange(e);
+    // FIXED (2026-08-28, "delete/edit se daily work/checklist bhi update
+    // ho" bugfix): the stock NUMBERS above were already correctly reverted
+    // + reapplied, but the derived filling/packaging stock-tasks checklist
+    // was never resynced to match -- every OTHER stock-changing flow in
+    // this file (the original filling/packaging entry, purchase, order
+    // accept/reject, etc.) calls this right after touching stock; editing
+    // an entry from Daily Work was the one place that didn't, so a task
+    // that should have reappeared (edit made the shortage worse) or
+    // disappeared (edit fixed it) silently stayed stale until some other,
+    // unrelated stock change happened to trigger a resync.
+    syncStockTasksFromAlerts();
     closeModal(); render(); showToast('Entry updated');
   });
 }
@@ -4927,6 +5000,7 @@ function deleteDailyEntry(source, id){
       revertActivity(e, 'delete');
       S.activityLog = S.activityLog.filter(x=>x.id!==id);
       saveAfterActivityChange(e, true); // EXPLICIT DELETE (Task #54) -- see saveAfterActivityChange's isDelete param
+      syncStockTasksFromAlerts(); // FIXED (2026-08-28) -- see the identical fix + comment in editLogSave's handler above; deleting can reintroduce a shortage the checklist needs to show again
       render(); showToast('Entry deleted & stock reverted');
     });
   } else if(source==='expenses'){
@@ -5618,24 +5692,24 @@ function fmtAgo(ts){
   if(diffMs < 86400000) return `${Math.floor(diffMs/3600000)}h ago`;
   return `${Math.floor(diffMs/86400000)}d ago`;
 }
+// REMOVED (2026-08-28, user report "System Health wla bar ab kaam ka nahi
+// h to hata do"): this panel's two headline rows (Backup/Sync) were both
+// permanently, misleadingly red on the Firestore build. `systemHealth`
+// (Backup) was only ever populated inside apiFetchAll/apiFetchDelta, and
+// `lastSuccessfulSyncAt` (Sync) was only ever set inside doSyncTick -- all
+// three of those were SUPERSEDED by Firestore's own onSnapshot listeners
+// (see attachFirestoreListeners()) back in Task #54 and have not run
+// since, so this panel showed "Backup: never run yet" / "Sync: not yet
+// synced" forever regardless of actual system health. The real backup now
+// runs independently via order-ops-backup-watcher.gs's own daily trigger
+// (not reported into this UI), and real-time sync health has no
+// equivalent single number worth showing -- the existing "· N pending"
+// label already in the top bar (see pendingSaveCount()) covers the one
+// signal (unsaved local changes) that's still real and worth surfacing.
+// Kept commented out (not deleted) as a reference in case a genuine
+// Firestore-based health panel is wanted later.
 function renderSystemHealthPanel(){
-  const pending = pendingSaveCount();
-  const backupAt = systemHealth.lastBackupAt ? parseInt(systemHealth.lastBackupAt) : null;
-  const backupStale = !backupAt || (Date.now()-backupAt) > 36*60*60*1000; // backup runs daily -- 36h gives some trigger-delay tolerance before flagging it
-  const backupHasError = systemHealth.lastBackupError && (!backupAt || parseInt(systemHealth.lastBackupError.split('@')[1]) > backupAt);
-  const syncAgo = fmtAgo(lastSuccessfulSyncAt);
-  const syncOk = lastSuccessfulSyncAt && (Date.now()-lastSuccessfulSyncAt) < 30000; // should tick every ~4s — 30s without one means something's actually stuck
-  const items = [
-    { label:'Backup', ok: !backupStale && !backupHasError, text: backupHasError ? 'failed — check Apps Script logs' : (backupAt ? fmtAgo(backupAt) : 'never run yet') },
-    { label:'Sync', ok: syncOk, text: syncAgo || 'not yet synced' },
-    { label:'Pending saves', ok: pending===0, text: pending===0 ? 'all saved' : `${pending} waiting` },
-  ];
-  return `<div class="card" style="padding:12px 14px;margin-bottom:12px;">
-    <div style="font-size:11px;font-weight:800;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px;">⚙️ System Health</div>
-    <div style="display:flex;gap:14px;flex-wrap:wrap;">
-      ${items.map(it=>`<div style="font-size:12px;"><span style="color:${it.ok?'var(--success)':'var(--danger)'};">${it.ok?'●':'●'}</span> <b>${esc(it.label)}</b>: <span style="color:var(--ink-soft);">${esc(it.text)}</span></div>`).join('')}
-    </div>
-  </div>`;
+  return '';
 }
 function renderHomeAdmin(){
   const pending = S.orders.filter(o=>o.status==='pending').length;
@@ -5933,6 +6007,56 @@ function orderDisplayLabel(o){
   if(transport) parts.push(`🚚 ${transport}`);
   return parts.join(' · ');
 }
+// FIFO stock allocation across orders sharing the same item (2026-08-28,
+// explicit user request/bugfix). Before this, renderOrderTile compared each
+// order's own item qty against the single GLOBAL S.readyStock[key] number
+// -- fine for one order, but once several orders accept against the same
+// item and push that shared global number negative (setOrderStatus really
+// does subtract from it at accept time, uncapped -- see there), EVERY order
+// holding that item shows the exact same "short by N" using that one
+// shared negative number, even orders that were fully covered when they
+// were accepted. Concretely: item has 170pc, order A(created first) needs
+// 100, B needs 50, C(created last) needs 40 -- accepting all three drives
+// readyStock to -20, and the old code showed "short by 20" on A, B, AND C
+// alike, instead of only on C (the one that actually ran out).
+// Fixed by reconstructing, per item, the shared pool those orders drew
+// from (current stock + everything they've collectively taken), then
+// handing it out oldest-order-first (o.createdAt) exactly like a real
+// warehouse fulfilling a queue -- only the order(s) that arrived after the
+// pool ran dry come up short, and only for the piece count actually
+// missing for THEM.
+// Returns a Map keyed `${orderId}::${itemKey}` -> shortfall (only present
+// when >0; absent/undefined means that order's claim on that item is fully
+// covered).
+function computeFifoShortages(){
+  const shortByOrderItem = new Map();
+  const demandByItem = {}; // itemKey -> [{orderId, qty, createdAt}]
+  S.orders.forEach(o=>{
+    if(!o.stockDeducted) return; // not yet accepted (or rejected/undone back) -- holds no claim on the pool
+    o.items.forEach(d=>{
+      if(d.cancelled) return;
+      (demandByItem[d.key] = demandByItem[d.key] || []).push({ orderId:o.id, qty:d.qty, createdAt:o.createdAt||0 });
+    });
+  });
+  Object.keys(demandByItem).forEach(key=>{
+    const claims = demandByItem[key];
+    const totalDemand = claims.reduce((sum,c)=>sum+c.qty, 0);
+    const currentStock = S.readyStock[key]||0; // reflects every one of these claims already subtracted, possibly negative
+    // Reconstruct the pool this set of orders started with: whatever's left
+    // now, plus everything they've collectively taken out of it. Clamped at
+    // 0 so a shortfall that already existed BEFORE these orders (a separate,
+    // older problem) doesn't make today's orders look worse than they are.
+    let pool = Math.max(0, currentStock + totalDemand);
+    claims.sort((a,b)=> a.createdAt - b.createdAt); // FIFO: whoever's order arrived first gets served first
+    claims.forEach(c=>{
+      const given = Math.min(c.qty, pool);
+      pool -= given;
+      const short = c.qty - given;
+      if(short > 0) shortByOrderItem.set(`${c.orderId}::${key}`, short);
+    });
+  });
+  return shortByOrderItem;
+}
 function orderMrpValue(o){
   return o.items.reduce((sum,i)=>{
     if(i.cancelled) return sum;
@@ -5943,6 +6067,7 @@ function orderMrpValue(o){
 function renderOrderTile(o, showUndoDispatch){
   const isAdmin = S.currentUser.role==='admin';
   const isLRUploader = S.currentUser.role==='admin' || S.currentUser.role==='manager';
+  const fifoShortages = computeFifoShortages();
   const tileCls = o.status==='ready' ? ' tile-ready' : o.status==='processing' ? ' tile-processing' : o.status==='packed' ? ' tile-packed' : '';
   return `<div class="order-tile${tileCls}">
     <div class="ot-top"><span class="ot-name">${esc(orderDisplayLabel(o))}${o.source==='website'?' <span class="mono" style="font-weight:400;">🌐 Website</span>':''}</span><span class="badge badge-${o.status}">${esc(ORDER_STAGE_LABEL[o.status]||o.status)}</span></div>
@@ -5957,11 +6082,22 @@ function renderOrderTile(o, showUndoDispatch){
       const stockNow = S.readyStock[i.key]||0;
       let avail, shortQty;
       if(!o.stockDeducted){
+        // Not yet accepted -- just a live preview of "would accepting right
+        // now be covered?", against whatever's left after every ALREADY-
+        // accepted order's claim (stockNow already reflects those).
         avail = stockNow >= i.qty;
         shortQty = avail ? 0 : (i.qty - Math.max(stockNow,0));
       } else {
-        avail = stockNow >= 0;
-        shortQty = avail ? 0 : -stockNow;
+        // FIXED (2026-08-28, "3 orders share one item, all 3 showed short"):
+        // was `avail = stockNow>=0; shortQty = -stockNow` -- that's the
+        // single GLOBAL stock number, so every order holding this item
+        // showed the SAME shortfall even if this particular order was fully
+        // covered when it was accepted. computeFifoShortages() allocates
+        // the shared pool oldest-order-first and reports only what THIS
+        // order specifically didn't get.
+        const short = fifoShortages.get(`${o.id}::${i.key}`) || 0;
+        avail = short === 0;
+        shortQty = short;
       }
       const mark = avail ? '<span class="success-pop" style="color:var(--success);">✔</span>' : `<span style="color:var(--danger);">✘ (short by ${fmtQtyPreferCase(shortQty, caseSize)})</span>`;
       return `${mark} ${qtyLabel}`;
@@ -9089,20 +9225,50 @@ function showPrompt(message, defaultValue, onSubmit, opts, onCancel){
   overlay.querySelector('#appPromptOkBtn').addEventListener('click', submit);
   input.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); submit(); } });
 }
+// ANIMATION (2026-08-28, "kisi cheez ko khole to vo hi screen par aa k
+// bada ho jaye" -- open animations, best effort): tracks where the user
+// last actually tapped/clicked, in the capture phase so it's recorded
+// before the click even reaches whatever button's own handler goes on to
+// call showModal(). showModal() then opens the dialog scaling out FROM
+// that exact point (see .modal-overlay.wide-center's modalGrowIn keyframe
+// below) instead of just appearing -- the "grows out of what you tapped"
+// effect. Falls back to growing from screen-center when there's no recent
+// real tap to anchor to (a modal opened programmatically, e.g. right after
+// a save completes, rather than from a direct click).
+let __lastTapX = null, __lastTapY = null, __lastTapAt = 0;
+document.addEventListener('pointerdown', (e)=>{ __lastTapX = e.clientX; __lastTapY = e.clientY; __lastTapAt = Date.now(); }, true);
 function showModal(innerHtml, extraClass){
-  closeModal(); // never stack modals — opening a new one while one is already showing used to leave two overlays behind, needing two closes to get rid of both
+  closeModal(true); // never stack modals — opening a new one while one is already showing used to leave two overlays behind, needing two closes to get rid of both. Instant (no exit animation): a new modal is about to cover this spot immediately anyway, so animating the old one out would just make two overlays visibly overlap for a moment.
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   overlay.id = 'modalOverlay';
   overlay.innerHTML = `<div class="modal${extraClass?' '+extraClass:''}"><div class="sheet-handle"></div>${innerHtml}</div>`;
   const host = document.querySelector('.device-screen') || document.body;
   host.appendChild(overlay);
+  const modalEl = overlay.querySelector('.modal');
+  const originFresh = __lastTapX!==null && (Date.now()-__lastTapAt) < 800;
+  const ox = originFresh ? Math.round(__lastTapX/window.innerWidth*100) : 50;
+  const oy = originFresh ? Math.round(__lastTapY/window.innerHeight*100) : 40;
+  modalEl.style.transformOrigin = `${ox}% ${oy}%`; // only visually used on the wide/desktop centered layout (see CSS) -- harmless no-op on the mobile bottom-sheet slide
   enhanceFormControls(overlay);
   overlay.addEventListener('click', (e)=>{ if(e.target===overlay) closeModal(); });
   const cancelBtn = overlay.querySelector('#cancelModal');
   if(cancelBtn) cancelBtn.addEventListener('click', closeModal);
 }
-function closeModal(){ const o = document.getElementById('modalOverlay'); if(o) o.remove(); }
+// instant=true skips the closing animation (see showModal's own
+// replace-in-place call above). Default (real close: X/Cancel/tap-outside/
+// after-save) plays a matching shrink-back-down exit before removal, so
+// modals no longer just vanish -- guarded against being called twice on
+// the same overlay (e.g. two closeModal() calls racing) via the 'closing'
+// class check.
+function closeModal(instant){
+  const o = document.getElementById('modalOverlay');
+  if(!o) return;
+  if(instant){ o.remove(); return; }
+  if(o.classList.contains('closing')) return;
+  o.classList.add('closing');
+  setTimeout(()=>{ if(o.parentNode) o.remove(); }, 180);
+}
 
 /* ============================= INIT ============================= */
 /* ============================= DEVICE PERMISSIONS (ask once, up front) ============================= */
@@ -9198,17 +9364,32 @@ let loadAllPromise = null;
   // REWIRED (Task #54): was `doSyncTick()` on both 'online' and
   // visibilitychange -- that forced an immediate poll against the old
   // backend to catch up after being offline/backgrounded. Firestore's
-  // onSnapshot listeners reconnect and catch up on their own the instant
-  // connectivity/visibility returns (that's the whole point of a live
-  // listener over polling), so there is nothing left to force here except
-  // retrying whatever's still durably queued.
-  window.addEventListener('online', ()=>{ showToast('Back online — syncing…'); flushOfflineQueue(); flushExpenseDeltaQueue(); reverifyOneSignalLogin(); });
+  // onSnapshot listeners are SUPPOSED to reconnect and catch up on their
+  // own the instant connectivity/visibility returns.
+  // BUGFIX (2026-08-28, "Messaging me Live Messenger turant nahi aata,
+  // dekhne ke liye band karke dobara kholna padta hai"): in practice that
+  // assumption doesn't always hold -- once a PWA/browser tab has sat
+  // backgrounded for a while (screen locked, phone switched to another
+  // app, laptop lid closed), the underlying real-time connection can go
+  // stale for noticeably longer than expected before the SDK's own
+  // reconnect logic notices, so a new message/order/etc. that arrived on
+  // the server while this device was away doesn't actually show up here
+  // until something forces a fresh listen -- which closing and reopening
+  // the Messages modal doesn't even really do (it just re-reads whatever
+  // is already in memory); only a full page reload reliably fixed it
+  // before. re-attaching every Firestore listener on 'online' and on
+  // becoming visible again is cheap and safe (a brand-new onSnapshot's
+  // very first event is always the collection's full current state, so
+  // this can never show stale/incomplete data -- it can only catch
+  // things up faster) and removes the need to reload anything.
+  window.addEventListener('online', ()=>{ showToast('Back online — syncing…'); flushOfflineQueue(); flushExpenseDeltaQueue(); reverifyOneSignalLogin(); if(S.currentUser) attachFirestoreListeners(); });
   window.addEventListener('offline', ()=>{ showToast('No connection — changes will be saved and synced automatically', true); });
   // Installed PWAs can stay open (backgrounded) for days without a real page
   // reload -- if the very first OneSignal.login() attempt lost its race
   // (see ensureOneSignalLogin above), this is the other natural moment to
-  // quietly retry it.
-  document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible'){ reverifyOneSignalLogin(); } });
+  // quietly retry it (and now also the moment to force-refresh live data --
+  // see the BUGFIX comment above).
+  document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible'){ reverifyOneSignalLogin(); if(S.currentUser) attachFirestoreListeners(); } });
   // Re-render (debounced) when the window crosses the desktop-sidebar
   // breakpoint, so resizing a browser window updates the nav split
   // (bottom-bar "More" overflow <-> full sidebar list) without waiting
