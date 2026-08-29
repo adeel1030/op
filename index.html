@@ -714,7 +714,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-29-firestore-preview12"; // ROUND 7 (2026-08-29): full login/logout audit + duplicate-notification fix, CLIENT-ONLY (no Cloud Functions changes this round). Root cause of FOUR reported symptoms, all one race: fsBootstrapAuth's onAuthStateChanged fired almost immediately after every sign-in and, seeing S.currentUser still null (finalizeLogin is deliberately delayed behind the loading+"Tap to Continue" welcome screen), ALWAYS auto-set S.currentUser itself -- skipping straight to the portal ("delay nahi ata"), calling initPushNotifications/checkForMissedNotifsOnLogin a second time ("notification bar bar aa rahi hai"), and leaving finalizeLogin's own postLoginPhase-clearing line never reached -- stuck non-null until the NEXT logout, when it would suddenly reappear as a stray welcome screen. Fixed by also gating that branch on !S.postLoginPhase. Also fixed: a correct login retry submitted while a prior WRONG attempt's ~4s animation was still playing used to get silently dropped, then overwritten with "Invalid Login ID & Password" ("single click me kaam nahi karta") -- now uses a generation counter so a new attempt can supersede a stale wrong-login animation. Also: doLogout() now detaches Firestore listeners before signing out and sets a brief __intentionalLogoutInProgress flag so an in-flight write that loses the race against sign-out no longer pops a "Save failed" toast on the login screen. Also: checkForMissedNotifsOnLogin now guards against replaying the same missed-notification batch twice. (Rounds 1-6: session-token adoption, FIFO stock allocation, Daily Work resync, System Health panel removal, modal animations, live-listener reconnect, the real bar-bar-password root cause, chat ordering/read-receipts, admin-only password reset, phone back button -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md for full history.) (2026-08-29): messaging + password reset + back button, CLIENT-ONLY (no Cloud Functions changes this round). (1) "reply uske niche hona chahiye lekin upar ho raha hai" -- chat message ordering was keyed off each sender's own (possibly clock-skewed) device time; added an additive serverAt (Firestore serverTimestamp()) field + chatSortKey() helper used by every chat sort/group/display call site, immune to device clock skew, without touching the existing at-based 7-day query. (2) Live read receipts -- refreshMessagesModal now re-marks the currently-open thread/announcements tab read on every refresh (not just when first opened), so a message arriving while you're already looking at it shows as read immediately instead of only after you leave and come back. (3) "Password Reset ka option sirf admins ko hi do, bina purana password daale" -- removed the self-service Change Password button/flow entirely; the ONLY way to change a password now is Admin -> Users -> Reset Password (already admin-only, already doesn't need the old password), matching the old pre-Firestore system. (4) "phone me back krne pr app bnd hojati hai" -- added syncBackStack(): a phone/gesture back press now closes whatever's open (a dialog, a modal, a side sheet) instead of exiting the whole app; only exits at the true home screen with nothing open, like a normal app. (Rounds 1-5: session-token adoption, FIFO stock allocation, Daily Work resync, System Health panel removal, modal animations, live-listener reconnect, the real bar-bar-password root cause -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md for full history.)
+const APP_BUILD = "2026-08-29-firestore-preview13"; // ROUND 8 (2026-08-29): the REAL fix for "click krte hi foran kaam krni chahiye" -- Round 7's fsBootstrapAuth fix (gating its onAuthStateChanged auto-login branch on !S.postLoginPhase) was still too late: Firebase's signInWithEmailAndPassword() updates its own internal auth state and fires onAuthStateChanged as PART OF resolving, which can happen before bindLogin's submit handler even gets control back from `await fsLogin(...)` -- i.e. before S.postLoginPhase had been set to anything at all. So login could still skip straight to the portal with no loading/welcome screen (no "M A Products India" delay), exactly as reported. Fixed properly with interactiveLoginInFlight: set SYNCHRONOUSLY the instant the submit handler starts, strictly before fsLogin()/Firebase's own signIn call begins -- closing the race regardless of timing. Cleared on every login-attempt failure path and by finalizeLogin once a successful attempt's sequence actually completes; doLogout() also resets it defensively. This is the actual, complete fix for the login-skip/duplicate-notification/stray-welcome-at-logout family of bugs Round 7 partially addressed. (Rounds 1-7: session-token adoption, FIFO stock allocation, Daily Work resync, System Health panel removal, modal animations, live-listener reconnect, the real bar-bar-password root cause, chat ordering/read-receipts, admin-only password reset, phone back button, the first (incomplete) login-race fix -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md for full history.)
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -2564,14 +2564,25 @@ function fsBootstrapAuth(){
       // session, invisible while logged in (render() only ever looks at
       // postLoginPhase while S.currentUser is null) -- until the person
       // eventually logged OUT, at which point render() suddenly rendered
-      // that stale welcome screen again out of nowhere. Fixed by also
-      // skipping this branch while a fresh interactive login sequence is
-      // already in progress (S.postLoginPhase truthy) -- let finalizeLogin
-      // own that login end-to-end, exactly as originally intended. This
-      // branch still runs correctly for its real purpose: a genuine page
-      // refresh with an already-active session, where postLoginPhase is
-      // always null (a reload starts S fresh).
-      if(!(S.currentUser && S.currentUser.id===fbUser.uid) && !S.postLoginPhase){
+      // that stale welcome screen again out of nowhere. Originally "fixed"
+      // by also skipping this branch while S.postLoginPhase was truthy --
+      // but that check alone turned out to still be TOO LATE: Firebase's
+      // signInWithEmailAndPassword() updates its own internal auth state
+      // and fires onAuthStateChanged as PART OF resolving that call, which
+      // happens before bindLogin's submit handler even gets control back
+      // from `await fsLogin(...)` -- so this callback could still fire (and
+      // find S.postLoginPhase still null, since startPostLoginSequence
+      // hadn't run yet either) before the login form's own handler had any
+      // chance to set anything at all. The ACTUAL fix is
+      // interactiveLoginInFlight (see bindLogin) -- set synchronously the
+      // instant an interactive login attempt begins, before fsLogin() (and
+      // therefore before Firebase's own signIn call) even starts, so no
+      // matter how early this callback fires, it's already true. Checking
+      // S.postLoginPhase too is now redundant but kept as harmless extra
+      // safety. This branch still runs correctly for its real purpose: a
+      // genuine page refresh with an already-active session, where both
+      // flags are always false/null (a reload starts everything fresh).
+      if(!(S.currentUser && S.currentUser.id===fbUser.uid) && !S.postLoginPhase && !interactiveLoginInFlight){
         try{
           const userSnap = await fsDb.collection('users').doc(fbUser.uid).get();
           if(userSnap.exists){
@@ -3437,6 +3448,7 @@ function finalizeLogin(u){
   if(S.loginLog.length>2000) S.loginLog = S.loginLog.slice(-2000); // day-partitioned now, but keep an overall sanity cap
   savePartitionForItem('loginLog', S.loginLog[S.loginLog.length-1]);
   S.postLoginPhase = null; S.pendingUser = null;
+  interactiveLoginInFlight = false; // this login attempt has now fully completed end-to-end -- safe to let onAuthStateChanged's auto-restore branch run again for any FUTURE sign-in event (e.g. a much later token refresh)
   render();
   backfillCatalogCaseSizes();
   sendHeartbeat();
@@ -3472,6 +3484,7 @@ function doLogout(){
   unsubscribePushNotifications(); // "login mandatory for notifications" -- see its own comment
   S.currentUser = null; S.notifOpen=false; S.moreOpen=false; S.profileOpen=false; S.alertPanelOpen=null;
   S.postLoginPhase = null; S.pendingUser = null;
+  interactiveLoginInFlight = false; // defensive reset, same reasoning as the S.postLoginPhase reset just above
   S.authToken = null; persistAuthToken(null);
   persistSession(null);
   try{ localStorage.removeItem(DEVICE_SESSION_TOKEN_KEY); localStorage.removeItem(DEVICE_SESSION_TOKEN_AT_KEY); }catch(e){}
@@ -4194,6 +4207,14 @@ function renderLogin(){
   </div>`;
 }
 let loginSubmitting = false;
+// See bindLogin's submit handler (below) and fsBootstrapAuth's
+// onAuthStateChanged handler (above) for the full story -- set true the
+// instant an interactive login attempt begins (before Firebase's own
+// signIn call, which can fire onAuthStateChanged before this async
+// function even gets control back), cleared on every failure path in the
+// submit handler and by finalizeLogin once a successful attempt's loading
+// + "Tap to Continue" sequence actually completes.
+let interactiveLoginInFlight = false;
 // ---- Failed-login lockout (security feature, 2026-08-21): 5 wrong
 // attempts in a row locks that USERNAME (not just this browser) out for
 // 120 seconds, synced via S.loginLockouts/app:loginLockouts so it's a real
@@ -4217,6 +4238,34 @@ function bindLogin(){
     // the delay look like it got skipped or cut short.
     if(loginSubmitting) return;
     loginSubmitting = true;
+    // BUGFIX (2026-08-29, "click krte hi foran kaam krni chahiye" -- the
+    // Round 7 onAuthStateChanged fix above turned out to be too late to
+    // actually close this race): the fix gated onAuthStateChanged's
+    // auto-login branch on S.postLoginPhase being unset -- but Firebase's
+    // signInWithEmailAndPassword() itself already updates its internal auth
+    // state and fires onAuthStateChanged as PART OF resolving, before this
+    // async function even gets control back from `await fsLogin(...)`
+    // below. So onAuthStateChanged was firing (and finding S.postLoginPhase
+    // still null, since startPostLoginSequence hadn't run yet) BEFORE this
+    // handler ever reached the line that sets it -- the Round 7 fix
+    // narrowed the race window but never actually closed it, which is
+    // exactly why login could still jump straight to the portal with no
+    // loading/welcome screen. Fixed properly this time: set
+    // interactiveLoginInFlight=true SYNCHRONOUSLY, right here, before
+    // fsLogin() (and therefore before Firebase's own signIn call) even
+    // starts -- so no matter how early onAuthStateChanged fires, it's
+    // already true. Cleared on every exit path below except success, where
+    // finalizeLogin (once the person actually taps "Tap to Continue") is
+    // what clears it -- see finalizeLogin's own comment.
+    interactiveLoginInFlight = true;
+    // Safety net: every real exit path already clears this (see below and
+    // finalizeLogin), but if some future change ever adds a path that
+    // doesn't, a permanently-stuck true here would silently disable the
+    // "restore an already-active session" branch for the rest of the page
+    // session. Auto-clears itself well past any legitimate login attempt's
+    // duration (loading+welcome alone is ~2.25s+); harmless no-op if the
+    // real clear already ran.
+    setTimeout(()=>{ interactiveLoginInFlight = false; }, 20000);
     const u = document.getElementById('loginUser').value;
     const p = document.getElementById('loginPass').value;
     if(loadAllPromise) await loadAllPromise; // data may still be loading in the background — wait for it before checking credentials
@@ -4224,6 +4273,7 @@ function bindLogin(){
     const lock = S.loginLockouts[uKey];
     if(lock && lock.lockedUntil && lock.lockedUntil > Date.now()){
       loginSubmitting = false;
+      interactiveLoginInFlight = false;
       const waitSec = Math.max(1, Math.ceil((lock.lockedUntil - Date.now())/1000));
       loginError = `Too many failed attempts — try again in ${waitSec}s.`;
       render();
@@ -4247,6 +4297,7 @@ function bindLogin(){
       // session handles that case entirely separately from this form).
       console.error('Firebase Auth unreachable — cannot verify a fresh sign-in offline', netErr);
       loginSubmitting = false;
+      interactiveLoginInFlight = false;
       loginError = 'No connection — please reconnect and try again.';
       render();
       return;
@@ -4261,6 +4312,10 @@ function bindLogin(){
       // "successful" result without going through bindLogin again, this
       // stops the submit button from staying permanently stuck disabled.
       loginSubmitting = false;
+      // interactiveLoginInFlight deliberately stays true here — the loading
+      // + "Tap to Continue" sequence is about to run, and finalizeLogin (not
+      // this handler) is what clears it once that sequence actually
+      // completes and hands off to the real portal.
       // Prefer the already-loaded local user record (same object identity
       // as everything else in S.users) when we have it; Firestore's own
       // copy is only a fallback for the rare case the local list hasn't
@@ -4269,10 +4324,12 @@ function bindLogin(){
       startPostLoginSequence(matched);
     } else if(result && result.error === 'too_many_attempts'){
       loginSubmitting = false;
+      interactiveLoginInFlight = false;
       loginError = 'Too many failed attempts — please wait a few minutes and try again.';
       render();
     } else {
       loginSubmitting = false;
+      interactiveLoginInFlight = false;
       startWrongLoginSequence();
     }
   });
