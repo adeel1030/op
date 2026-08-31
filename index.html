@@ -714,7 +714,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-29-firestore-preview14"; // ROUND 9 (2026-08-29): "enter dabane par message send nahi ho raha" fix -- plain Enter now SENDS in both the personal-chat reply box (threadReplyInput) and the announcement composer (newAnnouncementText), matching WhatsApp-Web/Slack/iMessage-desktop convention (Shift+Enter still inserts a newline; guarded with !e.isComposing so IME/multi-byte input isn't broken). This reverses an earlier round's deliberate "Enter never sends, mobile-keyboard style" choice, per explicit user request. Routes through the existing sendReply()/postBtn.click() paths so the empty/disabled-button guard logic isn't duplicated. (Round 8: the real fix for the login-skip/duplicate-notification/stray-welcome-at-logout race via interactiveLoginInFlight. Rounds 1-7: session-token adoption, FIFO stock allocation, Daily Work resync, System Health panel removal, modal animations, live-listener reconnect, the real bar-bar-password root cause, chat ordering/read-receipts, admin-only password reset, phone back button, the first (incomplete) login-race fix -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md for full history.)
+const APP_BUILD = "2026-08-31-firestore-preview15"; // ROUND 10 (2026-08-31), "sab ek sath shuru karo, saare bugs thik karo" full fix pass -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md's Round 10 section for the complete list. Highlights: messaging seen/read-write permissions now work for every role, not just admin (the specific bug reported this round -- see firestore.rules' new dedicated chatMessages block); the canEntry() default-fallback bug that silently permission-denied every entry-gated write for any newly-added/uncustomized role; the stock-ledger clobber race (fsSetStockField now does a scoped dot-path update, not a whole-field overwrite); FIFO-covered orders no longer stuck (orderIsFullyStocked/autoAdvanceOrders); cancelled order items no longer double-deducted on edit; concurrent expense edits no longer double-count balances (fsEditExpenseAtomic); offboarded staff Auth accounts + live sessions now actually get revoked (deleteStaffUser/forceLogoutStaffUser/resetStaffPassword); Retail Sale/Sample booked-entry lock + double-submit guard; double-submit guards on the dispatch, attendance, and post-login "Tap to Continue" buttons; a magnitude/typo cap on Bulk stock edit (matching the single-item Adjust modal); and the shared-tablet push-notification bug where a second person logging in on the same device/session stopped receiving push until a full page reload. (Round 9: Enter-to-send. Round 8: the login-skip/duplicate-notification/stray-welcome race fix. Rounds 1-7: session-token adoption, FIFO stock allocation, Daily Work resync, System Health panel removal, modal animations, live-listener reconnect, the real bar-bar-password root cause, chat ordering/read-receipts, admin-only password reset, phone back button, the first (incomplete) login-race fix -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md for full history.)
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -980,6 +980,17 @@ const S = {
   users:[], orders:[], customers:[], attendance:[], tasks:[], loginLog:[],
   rawMaterial:{}, filledStock:{}, readyStock:{}, expenses:[], activityLog:[], stockTasks:[], dominoPrints:[], chatMessages:[], retailSales:[], trackingViewLogs:[], siteVisitLogs:[], stockMovementLog:[],
   lowStock:{raw:{}, filled:{}, ready:{}}, watchStock:{raw:{}, filled:{}, ready:{}}, rolePermissions:{}, customRoles:[], catalogItems:[], transports:[], dailyRecordMarks:{}, dailyWorkDate:null, batchReferences:{}, holidays:{}, activeSessions:{}, notificationPrefs:{},
+  // RACE FIX (2026-08-29, full security audit -- stock ledger clobber): a
+  // snapshot of rawMaterial/filledStock/readyStock/lowStock/watchStock as
+  // they stood at the LAST live server update this device actually saw --
+  // refreshed every time fsBindDoc('stock','current',...) fires (see
+  // attachFirestoreListeners). fsSetStockField diffs its caller's current
+  // S[field] against this baseline to figure out exactly which item keys
+  // THIS device actually changed since it last synced, instead of blindly
+  // resaving the whole pool -- see fsSetStockField's own comment for the
+  // full story on why that used to silently clobber a concurrent change to
+  // a DIFFERENT item in the same pool.
+  _lastSyncedStock:{rawMaterial:{}, filledStock:{}, readyStock:{}, lowStock:{raw:{},filled:{},ready:{}}, watchStock:{raw:{},filled:{},ready:{}}},
   // Durable per-user expense/settlement balance -- a running total kept in
   // sync the same way rawMaterial/filledStock/readyStock are (incremented/
   // decremented on every create/edit/delete, persisted as its own key),
@@ -1324,9 +1335,23 @@ const ONESIGNAL_APP_ID = "493b21c4-fd98-4d9e-a1a9-79c9f5e87e7e";
 // One-time init + permission prompt, called right after a staff member
 // logs in. Safe no-op until ONESIGNAL_APP_ID above is filled in -- nothing
 // else in the app depends on this succeeding.
-let pushInitStarted = false;
+let pushInitStarted = false; // guards OneSignal.init() itself -- that (the SDK setup, service worker registration etc.) must only ever run ONCE per page load, never per-login
+let pushSdkReady = false; // becomes true once that one-time OneSignal.init() above has actually completed
+// BUG FIX (Round 10 audit, "ek hi shared tablet pe do log baari-baari login
+// karein to doosre insaan ko push notifications aana band ho sakta hai"):
+// this whole function used to bail out completely (`if(pushInitStarted)
+// return;`) on any login after the first one in a page session -- meant to
+// stop OneSignal.init() from running twice, but it ALSO skipped
+// ensureOneSignalLogin(username) for every later login. unsubscribePushNotifications()
+// (called on every logout) calls OneSignal.logout(), which detaches the
+// device from whoever was logged in -- so on a shared tablet, person A logs
+// in (gets tagged), logs out (detached), then person B logs in: B's
+// initPushNotifications() call hit the early return and NEVER re-tagged the
+// device as B, leaving it detached from everyone until a full page reload
+// reset pushInitStarted back to false. Fixed by splitting the one-time SDK
+// init from the per-login identity tagging: init still only ever runs once,
+// but ensureOneSignalLogin + the permission prompt now run on every login.
 async function initPushNotifications(){
-  if(pushInitStarted) return; // never start twice in one session (e.g. logout -> login again)
   if(!ONESIGNAL_APP_ID || ONESIGNAL_APP_ID.indexOf('PASTE_')===0) return; // not configured yet
   // The SDK script tag has `defer`, so it may genuinely not have finished
   // loading/self-initializing window.OneSignalDeferred yet by the time
@@ -1339,6 +1364,18 @@ async function initPushNotifications(){
   // (script blocked by an ad-blocker, offline, CDN down, etc).
   if(!window.OneSignalDeferred){
     setTimeout(initPushNotifications, 1000);
+    return;
+  }
+  if(pushInitStarted){
+    // SDK already initialized (or initializing) earlier in this page
+    // session -- do NOT run OneSignal.init() again, but THIS login still
+    // needs its own identity tag, same as the very first login gets below.
+    if(pushSdkReady && S.currentUser && S.currentUser.username){
+      window.OneSignalDeferred.push(async function(OneSignal){
+        ensureOneSignalLogin(OneSignal, S.currentUser.username);
+        try{ await OneSignal.Notifications.requestPermission(); }catch(e){}
+      });
+    }
     return;
   }
   pushInitStarted = true;
@@ -1360,6 +1397,7 @@ async function initPushNotifications(){
         serviceWorkerPath: swDir.replace(/^\//,'') + 'OneSignalSDKWorker.js',
         serviceWorkerParam: { scope: swDir },
       });
+      pushSdkReady = true; // one-time SDK init done -- from here on, a later login on this same page reuses the SDK and only needs its own ensureOneSignalLogin tag (see the pushInitStarted branch above)
       // Tags this browser/device with the logged-in staff username, so a
       // future refinement (e.g. "don't notify the person who made the
       // change") can target/exclude specific people -- current triggers
@@ -2274,19 +2312,69 @@ function fsDeleteStaticSubKey(collection, subKey){
 // scripts/export_to_firestore.js's identical handling).
 function fsSetTransport(name){ return fsDb.collection('transports').doc(name).set({name}).catch(err=>{ fsReportWriteError(err, 'transports'); throw err; }); }
 function fsDeleteTransport(name){ return fsDb.collection('transports').doc(name).delete().catch(err=>{ fsReportWriteError(err, 'delete transports'); throw err; }); }
-// stock/current — 5 STATIC_KEYS merge into one document's top-level
-// fields. Firestore's per-field `merge` only replaces the NAMED top-level
-// field wholesale (it doesn't merge inside it), so writing the full
-// (already locally-mutated) map for just the one field that changed
-// correctly handles both additions AND deletions of a sub-key within that
-// map — no separate delete primitive needed for these 5 fields.
+// RACE FIX (2026-08-29, full security audit -- stock ledger clobber):
+// walks `newVal` (a flat {itemKey:qty} map, or one level deeper for
+// lowStock/watchStock: {raw:{},filled:{},ready:{}}) against `oldVal` (the
+// matching branch of S._lastSyncedStock, i.e. this device's own
+// last-known-good server snapshot) and returns a flat object of Firestore
+// DOT-PATH field names -> new leaf values for every leaf that's actually
+// different, plus firebase.firestore.FieldValue.delete() for any leaf
+// present in oldVal but missing from newVal. Recurses into plain objects;
+// treats anything else (number, string, ...) as a leaf.
+function diffStockLeaves(pathPrefix, oldVal, newVal){
+  const out = {};
+  const oldObj = (oldVal && typeof oldVal==='object') ? oldVal : {};
+  const newObj = (newVal && typeof newVal==='object') ? newVal : {};
+  const isPlainMap = v => v && typeof v==='object' && !Array.isArray(v);
+  const keys = new Set([...Object.keys(oldObj), ...Object.keys(newObj)]);
+  keys.forEach(k=>{
+    const path = pathPrefix + '.' + k;
+    const ov = oldObj[k], nv = newObj[k];
+    if(isPlainMap(nv) || isPlainMap(ov)){
+      Object.assign(out, diffStockLeaves(path, ov, nv));
+    } else if(!(k in newObj)){
+      out[path] = firebase.firestore.FieldValue.delete();
+    } else if(ov !== nv){
+      out[path] = nv;
+    }
+  });
+  return out;
+}
+// stock/current — 5 STATIC_KEYS live as top-level fields on one document.
+//
+// BUGFIX (2026-08-29, full security audit, "stock ledger clobber"): this
+// used to `.set({[field]: value}, {merge:true})` with `value` being the
+// ENTIRE local pool map (e.g. all of S.filledStock) every single time --
+// and Firestore's per-field merge only replaces the NAMED top-level field
+// WHOLESALE, it does not merge inside it. So if this device's local
+// S.filledStock was even slightly stale (e.g. it hadn't yet received
+// another device's concurrent change to a DIFFERENT item in the same
+// pool -- routine on a multi-tablet warehouse floor), this write would
+// silently overwrite that other device's change with this device's stale
+// copy of it, the instant both saves landed close together. No error, no
+// conflict warning -- just a wrong number sitting in the ledger. Fixed by
+// diffing against S._lastSyncedStock (this device's own last-observed
+// server state for this field -- see its declaration and the
+// fsBindDoc('stock','current',...) listener that refreshes it) and writing
+// ONLY the leaf item keys THIS device actually changed, via Firestore
+// dot-path field names. A dot-path write only ever touches the exact leaf
+// it names -- any sibling key changed concurrently by someone else,
+// however recently, is left completely untouched, closing the race
+// entirely rather than narrowing its window.
 function fsSetStockField(field, value){
+  const baseline = (S._lastSyncedStock && S._lastSyncedStock[field]) || {};
+  const updates = diffStockLeaves(field, baseline, value);
   // Also stamps updatedByUsername on every stock write -- functions/index.js's
   // onStockPush reads this (per its own FIELD CONTRACT comment) to exclude
   // whoever made the change from their own low-stock push notification; it
   // was never actually being written from here before (2026-08-28 push-
   // notification pipeline audit).
-  return fsDb.collection('stock').doc('current').set({ [field]: value, updatedByUsername: S.currentUser ? S.currentUser.username : null }, { merge:true })
+  updates.updatedByUsername = S.currentUser ? S.currentUser.username : null;
+  // Nothing actually changed relative to the last-synced baseline (e.g. a
+  // save fired after a mutation that turned out to be a no-op) -- skip the
+  // network round-trip entirely rather than send a pointless write.
+  if(Object.keys(updates).length<=1) return Promise.resolve();
+  return fsDb.collection('stock').doc('current').update(updates)
     .catch(err=>{ fsReportWriteError(err, `stock.${field}`); throw err; });
 }
 // HARDENING (2026-08-28, live-production incident audit): autoAdvanceFillingPackaging/
@@ -2327,6 +2415,71 @@ async function fsApplyExpenseBalanceDelta(username, delta){
     });
     return { ok:true, balance:newBalance };
   }catch(e){
+    return { ok:false, error: (e && e.message) || 'transaction_failed' };
+  }
+}
+// BUGFIX (2026-08-29, full security audit -- "do admin ek hi expense entry
+// edit karein to balance galat ho sakta hai"): editing an existing expense/
+// settlement entry used to compute its balance delta against THIS DEVICE'S
+// OWN local copy of the entry as "before" (applyExpenseBalanceDelta(before,
+// -1) then (touched,+1)), then separately overwrite the whole expenses/{id}
+// doc via savePartitionForItem's non-merge .set(). If two admins opened and
+// edited the SAME entry within moments of each other, each admin's "before"
+// snapshot was the ORIGINAL (pre-either-edit) entry -- so the balance ended
+// up reflecting BOTH edits' deltas (double-subtracting the original amount,
+// adding both new amounts), while the expenses/{id} DOCUMENT itself only
+// ever ends up holding whichever admin's .set() call physically landed
+// last. The document and the running balance total could silently drift
+// out of sync with each other, with no error shown to either admin.
+//
+// Fixed: the edit, the "before" snapshot, and the balance delta(s) all now
+// happen inside ONE Firestore transaction that reads the expense doc's
+// CURRENT SERVER state fresh (never a possibly-stale local copy) as the
+// authoritative "before" -- so two concurrent edits now correctly
+// serialize (Firestore retries a transaction that loses a write race), and
+// whichever edit's transaction commits second sees the FIRST edit's result
+// as its own "before", producing a balance that always matches whatever
+// the document actually ends up saying. Handles the entry being
+// reassigned to a different person (byUsername changes) by adjusting both
+// the old and new person's balance docs in the same transaction.
+async function fsEditExpenseAtomic(id, newFields){
+  const expRef = fsDb.collection('expenses').doc(String(id));
+  const contributionOf = (entry)=> entry ? (entry.type==='settlement' ? -entry.amount : entry.amount) : 0;
+  try{
+    const result = await fsDb.runTransaction(async (tx)=>{
+      const expSnap = await tx.get(expRef);
+      const serverBefore = expSnap.exists ? expSnap.data() : null;
+      const beforeUsername = serverBefore ? serverBefore.byUsername : newFields.byUsername;
+      const beforeContribution = contributionOf(serverBefore);
+      const afterContribution = contributionOf(newFields);
+      const sameUsername = beforeUsername === newFields.byUsername;
+
+      // All reads before any writes -- required for a Firestore transaction.
+      const oldBalRef = fsDb.collection('expenseBalances').doc(beforeUsername);
+      const oldBalSnap = await tx.get(oldBalRef);
+      const oldBalCurrent = (oldBalSnap.exists && typeof oldBalSnap.data().balance==='number') ? oldBalSnap.data().balance : 0;
+      let newBalRef = oldBalRef, newBalCurrent = oldBalCurrent;
+      if(!sameUsername){
+        newBalRef = fsDb.collection('expenseBalances').doc(newFields.byUsername);
+        const newBalSnap = await tx.get(newBalRef);
+        newBalCurrent = (newBalSnap.exists && typeof newBalSnap.data().balance==='number') ? newBalSnap.data().balance : 0;
+      }
+
+      tx.set(expRef, newFields, { merge:true });
+      let finalBalance;
+      if(sameUsername){
+        finalBalance = oldBalCurrent + (afterContribution - beforeContribution);
+        tx.set(oldBalRef, { balance: finalBalance }, { merge:true });
+      } else {
+        tx.set(oldBalRef, { balance: oldBalCurrent - beforeContribution }, { merge:true });
+        finalBalance = newBalCurrent + afterContribution;
+        tx.set(newBalRef, { balance: finalBalance }, { merge:true });
+      }
+      return { username: newFields.byUsername, balance: finalBalance };
+    });
+    return { ok:true, username: result.username, balance: result.balance };
+  }catch(e){
+    fsReportWriteError(e, 'expenses (atomic edit)');
     return { ok:false, error: (e && e.message) || 'transaction_failed' };
   }
 }
@@ -2482,6 +2635,19 @@ function attachFirestoreListeners(){
     S.readyStock = data.readyStock || {};
     S.lowStock = data.lowStock || {raw:{},filled:{},ready:{}};
     S.watchStock = data.watchStock || {raw:{},filled:{},ready:{}};
+    // RACE FIX (2026-08-29): re-baseline _lastSyncedStock to this fresh
+    // server snapshot every time it fires -- see fsSetStockField and the
+    // S._lastSyncedStock declaration above for why. Deep-cloned (these are
+    // small, flat/one-level {itemKey:qty} maps, so JSON round-trip is
+    // cheap) so later local mutations to S.rawMaterial/etc. can never
+    // accidentally mutate this baseline through a shared object reference.
+    S._lastSyncedStock = {
+      rawMaterial: JSON.parse(JSON.stringify(S.rawMaterial)),
+      filledStock: JSON.parse(JSON.stringify(S.filledStock)),
+      readyStock: JSON.parse(JSON.stringify(S.readyStock)),
+      lowStock: JSON.parse(JSON.stringify(S.lowStock)),
+      watchStock: JSON.parse(JSON.stringify(S.watchStock)),
+    };
   });
   fsBindDoc('notificationPrefs','current', data=>{ S.notificationPrefs = data || {}; });
 
@@ -4432,7 +4598,20 @@ function renderPostLoginSequence(){
 }
 function bindPostLoginSequence(){
   const btn = document.getElementById('continueBtn');
-  if(btn) btn.addEventListener('click', ()=>finalizeLogin(S.pendingUser));
+  // BUG FIX (Round 10 audit): double-submit guard. finalizeLogin is
+  // synchronous and its own render() call replaces this welcome screen
+  // (removing this exact button) once it's done, but on a slow device --
+  // or a fast enough double-tap -- a second click can still queue and
+  // fire before that render() finishes, running the whole login-finalize
+  // sequence (session token issuance, login log entry, push init, missed-
+  // notification replay) a second time. Disabling synchronously, before
+  // finalizeLogin runs, closes that window the same way every other
+  // plain-button double-submit fix in this round does.
+  if(btn) btn.addEventListener('click', ()=>{
+    if(btn.disabled) return;
+    btn.disabled = true;
+    finalizeLogin(S.pendingUser);
+  });
 }
 
 /* ============================= APP SHELL ============================= */
@@ -4746,8 +4925,21 @@ function bindShell(){
   bindView();
 }
 
-function orderIsFullyStocked(o){
-  return o.items.every(d => (S.readyStock[d.key]||0) >= 0);
+// BUGFIX (2026-08-29, full security audit): used to check
+// `(S.readyStock[d.key]||0) >= 0` -- the GLOBAL, shared pool for that item
+// -- which cannot tell "THIS order is covered" apart from "some OTHER,
+// later order sharing the same item is the one that's short." When two+
+// processing orders claim the same item and the pool can't cover all of
+// them, the global readyStock figure goes negative for EVERY one of those
+// orders alike, even the earliest one that has full FIFO priority over the
+// shortfall -- so that earliest order could sit stuck in Processing forever
+// even though its own order tile already correctly shows "✔ Fully Stocked"
+// (renderOrderTile computes that badge via computeFifoShortages, the
+// FIFO-aware source of truth this function was never actually using).
+// Fixed to take the SAME computeFifoShortages() map renderOrderTile already
+// trusts, and check per-order-per-item shortage instead of the shared pool.
+function orderIsFullyStocked(o, fifoShortages){
+  return o.items.every(d => d.cancelled || !fifoShortages.has(`${o.id}::${d.key}`));
 }
 // Orders move Processing -> Ready automatically the moment every item on
 // them is actually covered by current stock — driven purely by the normal
@@ -4757,8 +4949,13 @@ function autoAdvanceOrders(){
   // FIXED (same bug/fix as autoAdvanceFillingPackaging above -- see its
   // comment for the full explanation): `savePartitionDay` doesn't exist.
   const touchedOrders = new Set();
+  // Computed ONCE per call (not per-order) -- computeFifoShortages already
+  // walks every order/item itself, so this keeps autoAdvanceOrders linear
+  // instead of quadratic in the order count, and guarantees every order in
+  // this pass is judged against the exact same FIFO snapshot.
+  const fifoShortages = computeFifoShortages();
   S.orders.forEach(o=>{
-    if(o.status==='processing' && orderIsFullyStocked(o)){
+    if(o.status==='processing' && orderIsFullyStocked(o, fifoShortages)){
       o.status='ready'; changed=true; touchedOrders.add(o);
     }
   });
@@ -4893,8 +5090,17 @@ function openDispatchModal(orderId){
     const lrNumber = includeLR ? document.getElementById('dispatchLRNumber').value.trim() : '';
     const statusEl = document.getElementById('dispatchLRStatus');
     const bookedBtn = document.getElementById('dispatchSubmitBtn');
+    // BUG FIX (Round 10 audit): double-submit guard. This used to only
+    // disable the button inside the lrFile branch (right before the LR
+    // upload's await), which meant dispatching WITHOUT an LR photo -- the
+    // whole rest of this function is synchronous -- had no protection at
+    // all against a rapid double-click firing finalizeDispatch twice.
+    // Disabling here, unconditionally, right after the only validation
+    // that can legitimately fail and need a retry (missing transport
+    // name), covers both paths; the click handler below also checks this
+    // before ever calling finalizeDispatch.
+    bookedBtn.disabled = true;
     if(lrFile){
-      bookedBtn.disabled = true;
       statusEl.textContent = 'Uploading LR photo…';
       try{
         const dataUrl = await resizeImageFile(lrFile, 1600, 0.8);
@@ -4925,6 +5131,7 @@ function openDispatchModal(orderId){
     showToast('Order Processed & Dispatched ✅');
   };
   document.getElementById('dispatchSubmitBtn').addEventListener('click', ()=>{
+    if(submitBtnEl.disabled) return; // BUG FIX (Round 10 audit): double-submit guard -- see finalizeDispatch's own disable comment above
     const hasLR = lrFileInputEl.files && lrFileInputEl.files[0];
     finalizeDispatch(!!hasLR);
   });
@@ -5767,22 +5974,44 @@ function openExpenseModal(existing, type, forUsername){
     const byUser = S.users.find(u=>u.username===byUsername);
     let touched;
     if(existing){
-      // Capture the entry's balance-relevant fields BEFORE this edit
-      // overwrites them, so applyExpenseBalanceDelta can reverse exactly
-      // what this entry used to contribute (to its OLD manager, at its OLD
-      // amount) before applying the new contribution below -- handles an
-      // admin re-assigning the entry to a different manager or changing
-      // its amount mid-edit without corrupting either balance.
-      const before = { byUsername: existing.byUsername, amount: existing.amount, type: existing.type };
+      // BUGFIX (2026-08-29, full security audit -- concurrent-edit balance
+      // drift): used to compute the balance delta against THIS DEVICE'S own
+      // (possibly stale) local copy via two separate
+      // applyExpenseBalanceDelta calls, then separately overwrite the
+      // expenses/{id} doc -- if another admin had edited this SAME entry
+      // moments earlier, this could double-subtract/double-add against the
+      // balance relative to what the document itself ends up holding. Now
+      // routes through fsEditExpenseAtomic, a single Firestore transaction
+      // that reads the entry's CURRENT SERVER state fresh as "before" and
+      // updates the document + balance(s) together -- see that function's
+      // own comment for the full story. The optimistic local update below
+      // still happens instantly for UI responsiveness; the transaction's
+      // authoritative result (fired async, see the .then() after this
+      // handler) reconciles S.expenseBalances if the optimistic guess was
+      // off because of exactly the race this fix closes.
+      const beforeUsername = existing.byUsername;
+      const beforeContribution = (existing.type==='settlement' ? -existing.amount : existing.amount) || 0;
       Object.assign(existing, {
         description: document.getElementById('expDesc').value.trim(),
         category: document.getElementById('expCat').value.trim(), amount,
         byUsername, byName: byUser?byUser.name:byUsername
       });
       touched = existing;
-      applyExpenseBalanceDelta(before, -1);
-      applyExpenseBalanceDelta(touched, +1);
-    } else {
+      const afterContribution = (touched.type==='settlement' ? -touched.amount : touched.amount) || 0;
+      if(beforeUsername===byUsername){
+        S.expenseBalances[byUsername] = (S.expenseBalances[byUsername]||0) + (afterContribution - beforeContribution);
+      } else {
+        S.expenseBalances[beforeUsername] = (S.expenseBalances[beforeUsername]||0) - beforeContribution;
+        S.expenseBalances[byUsername] = (S.expenseBalances[byUsername]||0) + afterContribution;
+      }
+      fsEditExpenseAtomic(touched.id, { description:touched.description, category:touched.category, amount:touched.amount, byUsername:touched.byUsername, byName:touched.byName }).then(res=>{
+        if(res && res.ok && res.username!=null && res.balance!=null){ S.expenseBalances[res.username] = res.balance; render(); }
+      });
+      if(isAdmin) S.expenseAdminSel = byUsername;
+      closeModal(); render(); showToast('Entry updated');
+      return;
+    }
+    {
       touched = {
         // BUGFIX (2026-08-21): this used to force type to 'expense' for
         // any non-admin submitter, regardless of what `type` was actually
@@ -6385,7 +6614,7 @@ function renderRetailSalesCard(){
     </div>
     ${entries.length===0?`<div class="empty">No retail sales or samples in the last 7 days.</div>`:`
     <table><thead><tr><th>Items</th><th>Type</th><th>Total</th><th>Time</th><th></th></tr></thead><tbody>
-    ${entries.map(e=>`<tr><td>${(e.items||[]).map(i=>`${esc(i.itemLabel)} <span class="mono">×${i.qty}</span>`).join('<br/>')}</td><td>${e.type==='sale'?'<span class="badge badge-approved">Sale</span>':'<span class="badge badge-pending">Sample</span>'}</td><td class="mono">${e.type==='sale'?'₹'+(e.totalAmount||0).toLocaleString('en-IN'):'—'}</td><td class="mono">${fmtDate(e.at)}</td><td>${S.currentUser.role==='admin'?`<button type="button" class="btn btn-sm btn-outline" data-edit-retail="${e.id}">Edit</button>`:''}</td></tr>`).join('')}
+    ${entries.map(e=>`<tr${e.booked?' style="opacity:0.55;"':''}><td>${(e.items||[]).map(i=>`${esc(i.itemLabel)} <span class="mono">×${i.qty}</span>`).join('<br/>')}</td><td>${e.type==='sale'?'<span class="badge badge-approved">Sale</span>':'<span class="badge badge-pending">Sample</span>'}</td><td class="mono">${e.type==='sale'?'₹'+(e.totalAmount||0).toLocaleString('en-IN'):'—'}</td><td class="mono">${fmtDate(e.at)}</td><td>${(S.currentUser.role==='admin' && !e.booked)?`<button type="button" class="btn btn-sm btn-outline" data-edit-retail="${e.id}">Edit</button>`:(e.booked?'<span class="mono" style="font-size:11px;opacity:0.7;">✅ Booked</span>':'')}</td></tr>`).join('')}
     </tbody></table>
     <p class="desc" style="margin-top:8px;">Total cash sales (7 days): <b>₹${totalAmount.toLocaleString('en-IN')}</b></p>`}
   </div>`;
@@ -6636,7 +6865,20 @@ function openOrderModal(existingOrder){
           // Cancelled items were already credited back separately (e.g. by
           // Mark Ready) — skip them here too, or they'd be double-credited.
           existingOrder.items.forEach(d=>{ if(!d.cancelled){ S.readyStock[d.key] = (S.readyStock[d.key]||0) + d.qty; logStockMovement(d.key, `${d.name} ${d.size}`, 'order', d.qty, `Order edited — ${orderDisplayLabel(existingOrder)} (released old qty)`); } });
+          // BUGFIX (2026-08-29, full security audit): this loop used to
+          // deduct stock for EVERY item in orderDraft with no cancelled
+          // check -- but a cancelled item (e.g. auto-cancelled-for-shortage
+          // by "Mark Ready Now", see markOrderReadyNow above) already had
+          // its stock credited back separately and, per the release loop
+          // just above, deliberately holds NO claim on the pool while
+          // cancelled. Editing an order that still carries that same
+          // cancelled item in its draft (any edit not specifically
+          // un-cancelling it) would silently deduct stock for it a SECOND
+          // time here, phantom-reserving stock nothing in the order
+          // actually needs. Skipped the same way the release loop already
+          // does, for the same reason.
           orderDraft.forEach(d=>{
+            if(d.cancelled) return;
             S.readyStock[d.key] = (S.readyStock[d.key]||0) - d.qty;
             if(S.readyStock[d.key] < 0) shortItems.push(`${d.name} ${d.size}`);
             logStockMovement(d.key, `${d.name} ${d.size}`, 'order', -d.qty, `Order edited — ${orderDisplayLabel(existingOrder)} (new qty)`);
@@ -7396,19 +7638,30 @@ async function performResetAllDataExceptUsers(){
   // and call apiDeleteKeys with whatever day-partitions THIS DEVICE
   // happened to have seen locally -- fragile (a dropped connection
   // mid-sequence could leave things half-wiped) and, before the backend
-  // fix, gated on nothing but the shared staff SECRET. Now it's one atomic,
-  // admin-session-gated, server-comprehensive call (performResetAllData_ in
-  // order-ops-backend.gs, which scans the ACTUAL sheet for every
-  // day-partition row rather than trusting local bookkeeping) -- the
-  // client's own local wipe below is now purely an optimistic UI update
-  // that runs AFTER the server confirms success, not the source of truth.
+  // fix, gated on nothing but the shared staff SECRET.
+  //
+  // ROUND 10 (2026-08-29, full security audit, CRITICAL): this used to call
+  // apiResetAllData(), which hits order-ops-backend.gs -- the OLD Apps
+  // Script/Sheets backend, a Task #54 leftover never finished when this app
+  // moved to Firestore. That meant confirming this dialog (after typing the
+  // admin password and an explicit "erase everything" confirmation) did
+  // NOTHING to the live Firestore data this app actually reads/writes today
+  // -- every real order/customer/expense/stock number stayed exactly as it
+  // was, while the admin was given every reason to believe it had all just
+  // been permanently erased. Now calls the new resetAllDataExceptUsers
+  // Cloud Function, which is the real, Firestore-native wipe (see its own
+  // comment in functions/index.js for exactly what it deletes and what it
+  // deliberately leaves alone). The client's own local wipe below still
+  // runs AFTER the server confirms success, purely as an optimistic UI
+  // update -- not the source of truth.
   showToast('Erasing all data…');
   let result;
   try{
-    result = await apiResetAllData();
+    result = await fsFunctions.httpsCallable('resetAllDataExceptUsers')();
+    result = result && result.data;
   }catch(e){
     console.error('resetAllData failed', e);
-    showAlert('Could not reset data: ' + e.message + '. Nothing was changed.');
+    showAlert('Could not reset data: ' + ((e && e.message) || 'unknown error') + '. Make sure the Cloud Functions are deployed (see CLOUD_FUNCTIONS_DEPLOY.md) and try again. Nothing was changed.');
     return;
   }
   S.orders = []; S.customers = []; S.attendance = []; S.tasks = []; S.loginLog = [];
@@ -7438,34 +7691,56 @@ function bindUsers(){
   if(resetBtn) resetBtn.addEventListener('click', resetAllDataExceptUsers);
   document.querySelectorAll('[data-edit-user]').forEach(b=>b.addEventListener('click', ()=>openUserModal(b.dataset.editUser)));
   document.querySelectorAll('[data-del-user]').forEach(b=>b.addEventListener('click', ()=>{
-    showConfirm('Remove this user?', ()=>{
+    // ROUND 10 (2026-08-29, full security audit, CRITICAL): this used to
+    // ONLY delete the users/{id} Firestore doc (deleteStaticArrayItem),
+    // which never touched the person's actual Firebase Auth login -- a
+    // "removed" staff member's username/password kept working forever,
+    // they just stopped appearing in the staff directory / role checks.
+    // Now calls the new deleteStaffUser Cloud Function, which removes the
+    // real Auth account (and the Firestore doc, and their activeSessions
+    // entry) together -- see that function's own comment in
+    // functions/index.js.
+    if(b.disabled) return;
+    showConfirm('Remove this user? Their login will stop working immediately.', async ()=>{
       const delUserId = b.dataset.delUser;
-      S.users = S.users.filter(u=>u.id!==delUserId);
-      deleteStaticArrayItem('users', delUserId); render(); // EXPLICIT DELETE (Task #54)
+      b.disabled = true;
+      try{
+        await fsFunctions.httpsCallable('deleteStaffUser')({ username: delUserId });
+        S.users = S.users.filter(u=>u.id!==delUserId);
+        render();
+      }catch(e){
+        showAlert('Could not remove this user: ' + ((e && e.message) || 'unknown error') + '. Make sure the Cloud Functions are deployed (see CLOUD_FUNCTIONS_DEPLOY.md) and try again.');
+        b.disabled = false;
+      }
     });
   }));
   document.querySelectorAll('[data-force-logout]').forEach(b=>b.addEventListener('click', ()=>{
     const uname = b.dataset.forceLogout;
-    showConfirm(`Sign "${uname}" out on whichever device they're currently using?`, ()=>{
+    if(b.disabled) return;
+    showConfirm(`Sign "${uname}" out on whichever device they're currently using?`, async ()=>{
       // isThisDevice=false -- this is ADMIN's device acting on someone
       // ELSE's account, so only the backend record changes; the affected
       // person's own device picks up the mismatch on its next sync (within
       // a few seconds) and logs itself out there via checkSessionStillValid.
       issueNewSessionToken(uname, false);
-      // REMOVED (2026-08-29, "bar bar password mang raha hai"): this used
-      // to also call apiInvalidateSession(uname), the old Apps Script
-      // backend's session-revocation call -- a Task #54 leftover that
-      // hadn't been removed. In THIS (Firestore) app, real write access is
-      // already governed by Firebase Auth + firestore.rules, not by that
-      // old custom sessionToken concept, so there was no longer any "real
-      // server-side session" left for it to revoke -- it only ever got a
-      // {error:'session_required'} back (since a Firestore login never
-      // gets one of that old system's tokens), which popped the same
-      // disruptive "enter your password" prompt on the ADMIN's own screen
-      // every time Force Logout was used. The activeSessions Firestore
-      // write above (issueNewSessionToken) is already the real, live
-      // enforcement -- see checkSessionStillValid.
-      showToast(`${uname} will be signed out shortly`);
+      // ROUND 10 (2026-08-29, full security audit, CRITICAL): the
+      // activeSessions bump above is only a same-device, "poll and notice"
+      // signal -- it does nothing for a device that's offline or the app
+      // is backgrounded/killed, whose already-issued Firebase ID token
+      // just keeps working unaffected until it naturally expires. Added
+      // the real, server-side kill switch: forceLogoutStaffUser
+      // (functions/index.js) revokes every refresh token issued to that
+      // account so far, which fails on its next refresh everywhere,
+      // regardless of whether that device happens to be online right now.
+      b.disabled = true;
+      try{
+        await fsFunctions.httpsCallable('forceLogoutStaffUser')({ username: uname });
+        showToast(`${uname} will be signed out shortly`);
+      }catch(e){
+        showAlert('Could not fully sign that user out: ' + ((e && e.message) || 'unknown error') + '. Make sure the Cloud Functions are deployed (see CLOUD_FUNCTIONS_DEPLOY.md) and try again.');
+      }finally{
+        b.disabled = false;
+      }
     });
   }));
 }
@@ -8780,12 +9055,31 @@ function openRetailModal(type, existingEntry){
     itemSel.value=''; document.getElementById('retailItemQty').value='0';
   });
   document.getElementById('submitRetailBtn').addEventListener('click', ()=>{
+    // BUG FIX (Round 10 audit): booked entries must lock, same as every
+    // other Daily Work entry type (see canEditDailyEntry) -- re-checked
+    // here at save time (not just at open time in editRetailEntry) so a
+    // booking that happens WHILE this modal is open (another admin books
+    // it from the Daily Work panel) can't slip a save through.
+    if(existingEntry && existingEntry.booked){
+      showAlert('This entry has already been booked and can no longer be edited.');
+      closeModal(); render(); return;
+    }
     if(existingEntry && (!withinSelfEditWindow(existingEntry) || (S.currentUser.role!=='admin' && existingEntry.byUsername!==S.currentUser.username))){
       showAlert('This entry can no longer be edited (past the 5-minute window).');
       closeModal(); render(); return;
     }
     if(!existingEntry && blockIfOutsideEntryWindow()) return; // only gates a NEW sale/sample -- editing an existing one is handled above
     if(retailDraft.length===0){ showAlert('Add at least one item.'); return; }
+    // BUG FIX (Round 10 audit): double-submit guard -- this is a plain
+    // button click, not a <form submit>, so withSubmitGuard isn't wired to
+    // it (same reason submitOrderBtn disables itself directly, see the
+    // 2026-08-21 audit finding #9 comment above). Guard placed here, but
+    // NOT yet disabled: the stock-availability and amount checks just
+    // below can still legitimately fail and need a retry within the same
+    // open modal, so the element is only disabled once we're past every
+    // check that can send the user back to fix something.
+    const submitRetailBtnEl = document.getElementById('submitRetailBtn');
+    if(submitRetailBtnEl.disabled) return;
     // When editing, this entry's OWN current quantities are already
     // deducted from readyStock — add them back in before checking
     // availability, since they'll be released and re-deducted below.
@@ -8799,6 +9093,7 @@ function openRetailModal(type, existingEntry){
     }
     const totalAmount = isSale ? (parseFloat(document.getElementById('retailTotalAmount').value)||0) : 0;
     if(isSale && totalAmount<=0){ showAlert('Enter the amount received.'); return; }
+    submitRetailBtnEl.disabled = true; // committed to submitting from here on -- every path below is synchronous and ends in closeModal(), which removes the button
     if(existingEntry) (existingEntry.items||[]).forEach(d=>{ S.readyStock[d.key] = (S.readyStock[d.key]||0) + d.qty; logStockMovement(d.key, d.itemLabel, 'retail', d.qty, 'Retail entry edited — released for re-recording'); }); // release old
     retailDraft.forEach(d=>{ S.readyStock[d.key] = (S.readyStock[d.key]||0) - d.qty; logStockMovement(d.key, `${d.name} ${d.size}`, 'retail', -d.qty, `${isSale?'Retail sale':'Sample given'}${existingEntry?' (edited)':''}`); }); // deduct new
     const entry = existingEntry || { id:uid(), type, by:S.currentUser.name, byUsername:S.currentUser.username, at:Date.now() };
@@ -8828,7 +9123,16 @@ function renderRetailDraftList(){
 function editRetailEntry(id){
   if(S.currentUser.role!=='admin') return; // Edit is admin-only — this guards against any path besides the (already admin-gated) button
   const entry = S.retailSales.find(e=>e.id===id);
-  if(entry) openRetailModal(entry.type, entry);
+  if(!entry) return;
+  // BUG FIX (Round 10 audit): booked entries must lock, same as every
+  // other Daily Work entry type (see canEditDailyEntry) -- this is the
+  // single dispatch point both the Orders-page Retail Sale card's Edit
+  // button (renderRetailSalesCard, admin-only, previously had NO booked
+  // check at all) and the Daily Work panel's Edit button (editDailyEntry,
+  // which already re-checks via canEditDailyEntry) funnel through, so
+  // checking here closes the gap for both without duplicating the rule.
+  if(entry.booked){ showAlert('This entry has already been booked and can no longer be edited.'); render(); return; }
+  openRetailModal(entry.type, entry);
 }
 function toggleRetailBooked(id){
   const e = S.retailSales.find(x=>x.id===id); if(!e) return;
@@ -8920,6 +9224,27 @@ function openBulkStockModal(kind){
     </div>
   `);
   document.getElementById('bulkStockSave').addEventListener('click', ()=>{
+    // BUG FIX (Round 10 audit): the single-item "Adjust" modal
+    // (openAdjustModal, MEDIUM FIX 2026-08-21 audit finding #22) already
+    // catches a fat-fingered extra zero via a magnitude cap -- bulk edit
+    // had no such check at all, even though it's the same kind of raw
+    // number input (type="button" Save, so browser min/max attributes on
+    // the per-row inputs are never actually enforced either). Reusing the
+    // same MAX_STOCK_ADJUST_L/PC caps here, validated across every row
+    // BEFORE any store value is touched, so one bad row can't cause a
+    // partial save.
+    const bulkAdjCap = kind==='raw' ? MAX_STOCK_ADJUST_L : MAX_STOCK_ADJUST_PC;
+    let badRow = null;
+    document.querySelectorAll('[data-bulk-qty]').forEach(inp=>{
+      if(badRow || inp.value==='') return;
+      const raw = parseFloat(inp.value)||0;
+      if(Math.abs(raw) > bulkAdjCap) badRow = { id: inp.dataset.bulkQty, raw };
+    });
+    if(badRow){
+      const it = items.find(x=>x.id===badRow.id);
+      showAlert(`${it?it.label:badRow.id}: ${badRow.raw.toLocaleString()} ${unit} is more than ${bulkAdjCap.toLocaleString()} ${unit} — please double-check for a typo (extra zero?) before saving. Nothing was saved.`);
+      return;
+    }
     let qtyChanged=false, lowChanged=false;
     document.querySelectorAll('[data-bulk-qty]').forEach(inp=>{
       if(inp.value==='') return; // left blank -> skip, no change
@@ -9325,12 +9650,19 @@ function openMarkForOthersModal(){
     </div>
   `);
   document.getElementById('confirmMarkForBtn').addEventListener('click', ()=>{
+    // BUG FIX (Round 10 audit): double-submit guard -- a plain button
+    // click (not a <form submit>), same class of bug as submitRetailBtn/
+    // dispatchSubmitBtn above. Without this, a rapid double-click pushed
+    // two separate attendance entries for the same person/day.
+    const confirmBtnEl = document.getElementById('confirmMarkForBtn');
+    if(confirmBtnEl.disabled) return;
     const username = document.getElementById('markForUserSel').value;
     const dateStr = document.getElementById('markForDateInput').value;
     const status = document.getElementById('markForStatusSel').value;
     const u = S.users.find(x=>x.username===username);
     if(!u || !dateStr){ showAlert('Pick an employee and date.'); return; }
     if(!isWorkingDay(dateStr)){ showAlert('This date is a week-off/holiday — attendance doesn\'t apply.'); return; }
+    confirmBtnEl.disabled = true; // committed from here on -- every path below is synchronous and ends in closeModal(), which removes the button
     // Midday avoids any date-boundary ambiguity, and — since the most
     // recent record per user+day wins (see attendanceStatusFor) — this
     // correctly overrides an earlier record for the same day if the admin
