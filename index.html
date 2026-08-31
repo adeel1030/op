@@ -380,6 +380,7 @@
   .badge-done{background:var(--success-bg);color:var(--success);}
   .badge-expense{background:#F3E8FF;color:#6B2FB3;}
   .badge-settlement{background:#E6F5EE;color:var(--success);}
+  .badge-opening{background:#FFF1C2;color:#8A6100;}
 
   .row-actions{display:flex;gap:6px;flex-wrap:wrap;}
 
@@ -714,7 +715,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-31-firestore-preview15"; // ROUND 10 (2026-08-31), "sab ek sath shuru karo, saare bugs thik karo" full fix pass -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md's Round 10 section for the complete list. Highlights: messaging seen/read-write permissions now work for every role, not just admin (the specific bug reported this round -- see firestore.rules' new dedicated chatMessages block); the canEntry() default-fallback bug that silently permission-denied every entry-gated write for any newly-added/uncustomized role; the stock-ledger clobber race (fsSetStockField now does a scoped dot-path update, not a whole-field overwrite); FIFO-covered orders no longer stuck (orderIsFullyStocked/autoAdvanceOrders); cancelled order items no longer double-deducted on edit; concurrent expense edits no longer double-count balances (fsEditExpenseAtomic); offboarded staff Auth accounts + live sessions now actually get revoked (deleteStaffUser/forceLogoutStaffUser/resetStaffPassword); Retail Sale/Sample booked-entry lock + double-submit guard; double-submit guards on the dispatch, attendance, and post-login "Tap to Continue" buttons; a magnitude/typo cap on Bulk stock edit (matching the single-item Adjust modal); and the shared-tablet push-notification bug where a second person logging in on the same device/session stopped receiving push until a full page reload. (Round 9: Enter-to-send. Round 8: the login-skip/duplicate-notification/stray-welcome race fix. Rounds 1-7: session-token adoption, FIFO stock allocation, Daily Work resync, System Health panel removal, modal animations, live-listener reconnect, the real bar-bar-password root cause, chat ordering/read-receipts, admin-only password reset, phone back button, the first (incomplete) login-race fix -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md for full history.)
+const APP_BUILD = "2026-08-31-firestore-preview16"; // ROUND 11 (2026-08-31), new "Opening Balance" expense checkpoint feature -- admin (for ANY manager) can now set the manager's running expense/settlement balance to a known-correct absolute figure via a dedicated 📌 Opening Balance entry (Expenses tab, admin view), instead of the balance being trusted to stay correct purely from every historical add/subtract. All OLD expense/settlement entries are untouched -- only the derived running total is corrected going forward. The new entry type stores BOTH the signed delta actually applied (so the existing balance math needs no changes at all -- see applyExpenseBalanceDelta's comment) AND the plain target figure (so every screen can always show "Balance set to ₹X", never a confusing raw delta) -- see expenseEntryAmountText/expenseEntryBadgeHtml, the one shared place all of Expenses/Daily Work/print/monthly-report/Home-activity read from, so the totaling stays consistent everywhere at once. Opening Balance entries are excluded from "total expense" sums (they're a correction, not spending), support create+delete only (no edit -- delete and re-add instead, to limit risk), and a new in-app banner (no push notification) on the admin Expenses page flags any manager still missing this month's checkpoint. ROUND 10 (2026-08-31), "sab ek sath shuru karo, saare bugs thik karo" full fix pass -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md's Round 10 section for the complete list. Highlights: messaging seen/read-write permissions now work for every role, not just admin (the specific bug reported this round -- see firestore.rules' new dedicated chatMessages block); the canEntry() default-fallback bug that silently permission-denied every entry-gated write for any newly-added/uncustomized role; the stock-ledger clobber race (fsSetStockField now does a scoped dot-path update, not a whole-field overwrite); FIFO-covered orders no longer stuck (orderIsFullyStocked/autoAdvanceOrders); cancelled order items no longer double-deducted on edit; concurrent expense edits no longer double-count balances (fsEditExpenseAtomic); offboarded staff Auth accounts + live sessions now actually get revoked (deleteStaffUser/forceLogoutStaffUser/resetStaffPassword); Retail Sale/Sample booked-entry lock + double-submit guard; double-submit guards on the dispatch, attendance, and post-login "Tap to Continue" buttons; a magnitude/typo cap on Bulk stock edit (matching the single-item Adjust modal); and the shared-tablet push-notification bug where a second person logging in on the same device/session stopped receiving push until a full page reload. (Round 9: Enter-to-send. Round 8: the login-skip/duplicate-notification/stray-welcome race fix. Rounds 1-7: session-token adoption, FIFO stock allocation, Daily Work resync, System Health panel removal, modal animations, live-listener reconnect, the real bar-bar-password root cause, chat ordering/read-receipts, admin-only password reset, phone back button, the first (incomplete) login-race fix -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md for full history.)
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -5236,7 +5237,7 @@ function renderDailyWork(){
   const fillingEntries = S.activityLog.filter(e=>e.kind==='filling' && localDateKey(e.at)===date).sort((a,b)=>a.at-b.at);
   const packagingEntries = S.activityLog.filter(e=>e.kind==='packaging' && localDateKey(e.at)===date).sort((a,b)=>a.at-b.at);
   const expenseEntries = S.expenses.filter(e=>localDateKey(e.at)===date).sort((a,b)=>a.at-b.at);
-  const totalExpense = expenseEntries.filter(e=>e.type!=='settlement').reduce((s,e)=>s+(e.amount||0),0);
+  const totalExpense = expenseEntries.filter(e=>e.type!=='settlement' && !isOpeningBalanceEntry(e)).reduce((s,e)=>s+(e.amount||0),0);
   const retailEntries = S.retailSales.filter(e=>localDateKey(e.at)===date).sort((a,b)=>a.at-b.at);
   const totalRetail = retailEntries.filter(e=>e.type==='sale').reduce((s,e)=>s+(e.totalAmount||0),0);
   const newOrderEntries = S.orders.filter(o=>localDateKey(o.createdAt)===date).sort((a,b)=>a.createdAt-b.createdAt);
@@ -5271,13 +5272,13 @@ function renderDailyWork(){
   //  - Everyone else (e.g. Packaging team): only THEIR OWN, still-unbooked
   //    entry gets Edit/Delete -- no Book/Undo. Someone else's entry, or
   //    their own once it's been booked, shows no action buttons at all.
-  const actionCell = (e, source, canDelete) => {
+  const actionCell = (e, source, canDelete, hideEdit) => {
     if(isManager) return '';
     if(isAdmin){
       return e.booked
         ? `<button type="button" class="btn btn-sm btn-outline" data-book="${source}|${e.id}">↩ Undo</button>`
         : `<div class="row-actions" style="flex-wrap:wrap;gap:4px;">
-            <button type="button" class="btn btn-sm btn-outline" data-edit-entry="${source}|${e.id}">Edit</button>
+            ${hideEdit?'':`<button type="button" class="btn btn-sm btn-outline" data-edit-entry="${source}|${e.id}">Edit</button>`}
             ${canDelete?`<button type="button" class="btn btn-sm btn-danger" data-del-entry="${source}|${e.id}">Delete</button>`:''}
             <button type="button" class="btn btn-sm btn-accent" data-book="${source}|${e.id}">✅ Book</button>
           </div>`;
@@ -5334,7 +5335,7 @@ function renderDailyWork(){
     <h2>💰 Expenses — ${expenseEntries.length} entr${expenseEntries.length===1?'y':'ies'}${totalExpense?` · ₹${totalExpense.toLocaleString('en-IN')}`:''}</h2>
     ${expenseEntries.length===0?`<div class="empty">No expenses recorded this day.</div>`:`
     <table><thead><tr><th>To</th><th>Description</th><th>Amount</th><th>Entered by</th><th>Time</th><th></th></tr></thead><tbody>
-    ${expenseEntries.map(e=>`<tr${e.booked?' style="opacity:0.55;"':''}><td><b>${esc(e.byName)}</b></td><td>${esc(e.description||e.category||'—')}</td><td class="mono">${e.type==='settlement'?'− ':''}₹${(e.amount||0).toLocaleString('en-IN')}</td><td>${esc(e.enteredByName||e.byName)}</td><td class="mono">${fmtTime(e.at)}</td><td>${actionCell(e,'expenses',true)}</td></tr>`).join('')}
+    ${expenseEntries.map(e=>`<tr${e.booked?' style="opacity:0.55;"':''}><td><b>${esc(e.byName)}</b></td><td>${esc(e.description||e.category||'—')}</td><td class="mono">${expenseEntryAmountText(e)}</td><td>${esc(e.enteredByName||e.byName)}</td><td class="mono">${fmtTime(e.at)}</td><td>${actionCell(e,'expenses',true,isOpeningBalanceEntry(e))}</td></tr>`).join('')}
     </tbody></table>`}
   </div>`;
 
@@ -5462,7 +5463,7 @@ function printDailyWork(){
   const fillingEntries = S.activityLog.filter(e=>e.kind==='filling' && localDateKey(e.at)===date).sort((a,b)=>a.at-b.at);
   const packagingEntries = S.activityLog.filter(e=>e.kind==='packaging' && localDateKey(e.at)===date).sort((a,b)=>a.at-b.at);
   const expenseEntries = S.expenses.filter(e=>localDateKey(e.at)===date).sort((a,b)=>a.at-b.at);
-  const totalExpense = expenseEntries.filter(e=>e.type!=='settlement').reduce((s,e)=>s+(e.amount||0),0);
+  const totalExpense = expenseEntries.filter(e=>e.type!=='settlement' && !isOpeningBalanceEntry(e)).reduce((s,e)=>s+(e.amount||0),0);
   const retailEntries = S.retailSales.filter(e=>localDateKey(e.at)===date).sort((a,b)=>a.at-b.at);
   const totalRetail = retailEntries.filter(e=>e.type==='sale').reduce((s,e)=>s+(e.totalAmount||0),0);
   const newOrderEntries = S.orders.filter(o=>localDateKey(o.createdAt)===date).sort((a,b)=>a.createdAt-b.createdAt);
@@ -5486,7 +5487,7 @@ function printDailyWork(){
 
   if(!restrictedToProduction){
     html += `<h2>💰 Expenses ${totalExpense?`— Total ₹${totalExpense.toLocaleString('en-IN')}`:''}</h2>` + table(['To','Description','Amount','Time'],
-      expenseEntries.map(e=>`<tr><td>${esc(e.byName)}</td><td>${esc(e.description||e.category||'—')}</td><td>${e.type==='settlement'?'− ':''}₹${(e.amount||0).toLocaleString('en-IN')}</td><td>${fmtTime(e.at)}</td></tr>`).join(''));
+      expenseEntries.map(e=>`<tr><td>${esc(e.byName)}</td><td>${esc(e.description||e.category||'—')}</td><td>${expenseEntryAmountText(e)}</td><td>${fmtTime(e.at)}</td></tr>`).join(''));
 
     html += `<h2>💵 Retail Sale &amp; Samples ${totalRetail?`— Total ₹${totalRetail.toLocaleString('en-IN')}`:''}</h2>` + table(['Items','Type','Total','Time'],
       retailEntries.map(e=>`<tr><td>${(e.items||[]).map(i=>`${esc(i.itemLabel)} ×${i.qty}`).join(', ')}</td><td>${e.type==='sale'?'Sale':'Sample'}</td><td>${e.type==='sale'?'₹'+(e.totalAmount||0).toLocaleString('en-IN'):'—'}</td><td>${fmtTime(e.at)}</td></tr>`).join(''));
@@ -5850,6 +5851,133 @@ function applyExpenseBalanceDelta(entry, sign){
   queueExpenseDelta(entry.byUsername, finalDelta);
   flushExpenseDeltaQueue();
 }
+// ---- Opening Balance (2026-08-31, "totalling me bohot zyada mistakes"
+// request): a special expenses entry, type:'opening_balance', used by admin
+// to set a manager's running balance to a known-correct absolute figure --
+// a checkpoint, not real spending. Its `amount` field is the SIGNED DELTA
+// needed to move the CURRENT balance to that target (targetBalance -
+// currentBalance), computed once at save time in openOpeningBalanceModal --
+// that's exactly why applyExpenseBalanceDelta/fsEditExpenseAtomic's
+// contributionOf need ZERO changes to support it: they already do
+// `type==='settlement' ? -amount : amount`, and opening_balance (not
+// 'settlement') already gets a plain +amount, which is the correct delta.
+// `targetBalance` is stored separately, purely for display/audit, so a
+// screen never has to show a confusing raw delta -- always the actual
+// checkpoint figure the admin typed in.
+//
+// These three helpers are the ONE place that knows how to display or
+// exclude an opening_balance entry correctly -- used by every render/print/
+// total spot below (Expenses page, Daily Work, printDailyWork, the monthly
+// report, and the Home "recent activity" feed) so all of them stay
+// consistent with each other. Per the user's explicit instruction to be
+// extra careful with the totaling math, changing this in one place changes
+// it everywhere at once instead of risking one spot getting missed.
+function isOpeningBalanceEntry(x){ return !!(x && x.type==='opening_balance'); }
+function expenseEntryAmountText(x){
+  if(isOpeningBalanceEntry(x)) return `📌 Set to ₹${(x.targetBalance||0).toLocaleString('en-IN')}`;
+  return `${x.type==='settlement'?'− ':''}₹${(x.amount||0).toLocaleString('en-IN')}`;
+}
+function expenseEntryBadgeHtml(x, opts){
+  const detailedSettlement = opts && opts.detailedSettlement;
+  const cls = isOpeningBalanceEntry(x) ? 'opening' : (x.type==='settlement'?'settlement':'expense');
+  let label;
+  if(isOpeningBalanceEntry(x)) label = '📌 Opening Balance';
+  else if(x.type==='settlement') label = detailedSettlement ? (x.enteredByUsername && x.enteredByUsername!==x.byUsername?'Settled by admin':'Self-reported settlement') : 'Settled';
+  else label = 'Expense';
+  return `<span class="badge badge-${cls}" style="margin-top:4px;display:inline-block;">${label}</span>`;
+}
+// 'YYYY-MM' key for whichever month `ts` (default now) falls in -- reuses
+// localDateKey (already the app's one source of truth for local-timezone
+// date math) rather than rolling fresh Date logic, so this can't drift out
+// of sync with how every other date-keyed feature in the app computes
+// "today". Used only to answer "has this manager's Opening Balance
+// checkpoint for the CURRENT month been set yet" for the reminder banner --
+// deliberately separate from the free-text, admin-editable monthLabel
+// (which is just for display, e.g. "August 2026", and is not parsed).
+function currentPeriodKey(){ return localDateKey(Date.now()).slice(0,7); }
+function periodKeyLabel(pk){
+  const parts = String(pk||'').split('-');
+  const y = parseInt(parts[0],10), m = parseInt(parts[1],10);
+  if(!y || !m) return pk;
+  return new Date(y, m-1, 1).toLocaleDateString(undefined,{month:'long',year:'numeric'});
+}
+// Default text pre-filled into the "this checkpoint is for" field -- matches
+// the user's own example ("1st ko... Balance as on august"): the checkpoint
+// entered at the start of a new month is naturally labelled with the month
+// that JUST ENDED.
+function prevMonthLabel(ts){
+  const d = new Date(ts||Date.now()); d.setDate(1); d.setMonth(d.getMonth()-1);
+  return d.toLocaleDateString(undefined,{month:'long',year:'numeric'});
+}
+function openOpeningBalanceModal(forUsername){
+  if(S.currentUser.role!=='admin') return; // admin-only, defense-in-depth (the only button that calls this is already admin-gated)
+  const managers = S.users.filter(u=>u.role==='manager' || S.expenses.some(x=>x.byUsername===u.username));
+  if(!managers.length){ showAlert('No managers yet.'); return; }
+  const selUsername = (forUsername && managers.some(u=>u.username===forUsername)) ? forUsername : (S.expenseAdminSel && managers.some(u=>u.username===S.expenseAdminSel) ? S.expenseAdminSel : managers[0].username);
+  const currentBalance = expenseBalanceFor(selUsername);
+  showModal(`
+    <h3>📌 Set Opening Balance</h3>
+    <p class="desc" style="margin-top:-6px;">Isse aap manager ka balance ek sahi, jaani-hui figure par set kar dete ho -- ek checkpoint. Purani expense entries waisi ki waisi rehti hain, sirf running total yahan se aage sahi hota hai.</p>
+    <form id="openingBalForm">
+      <div class="field"><label>Manager</label><select id="obManager">${managers.map(u=>`<option value="${esc(u.username)}" ${u.username===selUsername?'selected':''}>${esc(u.name)}</option>`).join('')}</select></div>
+      <div class="field"><div class="mono" id="obCurrentBalance" style="font-size:13px;color:var(--ink-soft);">Current balance on record: ₹${currentBalance.toLocaleString('en-IN')}</div></div>
+      <div class="field"><label>Ye checkpoint kis mahine ka hai</label><input id="obMonthLabel" value="${esc(prevMonthLabel())}" required /></div>
+      <div class="field"><label>Sahi balance (₹)</label><input id="obTarget" type="number" step="0.01" required placeholder="jaise 45000" /></div>
+      <div class="field"><div class="mono" id="obDeltaPreview" style="font-size:13px;color:var(--ink-soft);">Upar figure daalo to yahan pata chalega kitna badlega.</div></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save checkpoint</button>
+      </div>
+    </form>
+  `);
+  const managerSel = document.getElementById('obManager');
+  const balanceEl = document.getElementById('obCurrentBalance');
+  const targetInput = document.getElementById('obTarget');
+  const deltaEl = document.getElementById('obDeltaPreview');
+  function refreshDelta(){
+    const bal = expenseBalanceFor(managerSel.value);
+    balanceEl.textContent = `Current balance on record: ₹${bal.toLocaleString('en-IN')}`;
+    const target = parseFloat(targetInput.value);
+    if(isNaN(target)){ deltaEl.textContent = 'Upar figure daalo to yahan pata chalega kitna badlega.'; return; }
+    const delta = target - bal;
+    if(delta===0){ deltaEl.textContent = 'Koi badlaav nahi -- current balance se already match karta hai.'; return; }
+    deltaEl.textContent = `Ye ₹${Math.abs(delta).toLocaleString('en-IN')} ${delta>0?'ADD':'SUBTRACT'} karega, taaki balance ₹${target.toLocaleString('en-IN')} ho jaaye.`;
+  }
+  managerSel.addEventListener('change', refreshDelta);
+  targetInput.addEventListener('input', refreshDelta);
+  document.getElementById('openingBalForm').addEventListener('submit', withSubmitGuard((e)=>{
+    e.preventDefault();
+    const byUsername = managerSel.value;
+    if(!byUsername){ showAlert('Manager chuno.'); return; }
+    const byUser = S.users.find(u=>u.username===byUsername);
+    const monthLabel = document.getElementById('obMonthLabel').value.trim();
+    if(!monthLabel){ showAlert('Ye checkpoint kis mahine ka hai, wo likho.'); return; }
+    const targetBalance = parseFloat(targetInput.value);
+    if(isNaN(targetBalance)){ showAlert('Sahi balance ka number likho.'); return; }
+    // Read the balance FRESH right at submit time, not from the (possibly
+    // stale) preview computed on load/last keystroke -- another device
+    // could have added/edited an expense for this same manager in the
+    // meantime. expenseBalanceFor always returns the current durable
+    // number, so the delta below stays correct even in that race.
+    const currentBalanceNow = expenseBalanceFor(byUsername);
+    const amount = targetBalance - currentBalanceNow;
+    const touched = {
+      id: uid(), type: 'opening_balance',
+      targetBalance, amount,
+      periodKey: currentPeriodKey(),
+      monthLabel,
+      description: `Balance as on ${monthLabel} = ₹${targetBalance.toLocaleString('en-IN')}`,
+      byUsername, byName: byUser?byUser.name:byUsername,
+      enteredByUsername: S.currentUser.username, enteredByName: S.currentUser.name,
+      at: Date.now(), booked:false
+    };
+    S.expenses.push(touched);
+    applyExpenseBalanceDelta(touched, +1);
+    S.expenseAdminSel = byUsername;
+    savePartitionForItem('expenses', touched);
+    closeModal(); render(); showToast('Opening balance saved');
+  }));
+}
 function renderExpenses(){
   const isAdmin = S.currentUser.role==='admin';
   if(!isAdmin){
@@ -5869,8 +5997,8 @@ function renderExpenses(){
         groupByDate(mine, x=>x.at).map(s=>dateGroupHeaderHtml(s.heading)+`<table><thead><tr><th>Description</th><th>Amount</th><th>Time</th></tr></thead><tbody>
         ${s.items.map(x=>`
           <tr>
-            <td>${esc(x.description)}${x.category?`<div class="mono" style="margin-top:2px;">${esc(x.category)}</div>`:''}<span class="badge badge-${x.type==='settlement'?'settlement':'expense'}" style="margin-top:4px;display:inline-block;">${x.type==='settlement'?'Settled':'Expense'}</span></td>
-            <td class="mono">₹${x.amount.toLocaleString('en-IN')}</td>
+            <td>${esc(x.description)}${x.category?`<div class="mono" style="margin-top:2px;">${esc(x.category)}</div>`:''}${expenseEntryBadgeHtml(x)}</td>
+            <td class="mono">${expenseEntryAmountText(x)}</td>
             <td class="mono">${fmtTime(x.at)}</td>
           </tr>`).join('')}
         </tbody></table>`).join('')}
@@ -5892,13 +6020,29 @@ function renderExpenses(){
   const selUsername = S.expenseAdminSel || (managers[0] && managers[0].username) || '';
   const list = S.expenses.filter(x=>x.byUsername===selUsername).sort((a,b)=>b.at-a.at);
   const balance = selUsername ? expenseBalanceFor(selUsername) : 0;
+  // Reminder banner (in-app only, per the user's explicit choice -- no push
+  // notification, no scheduled Cloud Function): flags any manager who does
+  // not yet have an opening_balance checkpoint entry for THIS calendar
+  // month, so the admin notices before the running balance drifts again.
+  const currentPk = currentPeriodKey();
+  const missingManagers = managers.filter(u => !S.expenses.some(x=>isOpeningBalanceEntry(x) && x.byUsername===u.username && x.periodKey===currentPk));
+  const reminderBannerHtml = missingManagers.length===0 ? '' : `
+    <div class="alert-tile mild" style="margin-bottom:12px;">
+      <div class="at-label">📌 Opening Balance checkpoint pending — ${esc(periodKeyLabel(currentPk))}</div>
+      <div class="at-detail">${missingManagers.length===1?'Ye manager':'Ye managers'} ka is mahine ka balance checkpoint set nahi hua — running total ghalat ho sakta hai. Neeche se set kar do.</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        ${missingManagers.map(u=>`<button type="button" class="btn btn-sm btn-accent" data-set-opening="${esc(u.username)}">${esc(u.name)} — Set now</button>`).join('')}
+      </div>
+    </div>`;
   return `
+  ${reminderBannerHtml}
   <div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
       <div><h2>Expenses &amp; settlements</h2><p class="desc">Manager expenses &amp; settlements.</p></div>
       <div class="row-actions" style="flex-wrap:wrap;gap:6px;">
         <button class="btn btn-outline btn-sm" id="newAdminExpBtn">+ Add expense</button>
         <button class="btn btn-primary btn-sm" id="newSettleBtn">+ Add entry</button>
+        <button class="btn btn-accent btn-sm" id="newOpeningBalBtn">📌 Opening Balance</button>
       </div>
     </div>
     ${managers.length===0?`<div class="empty">No managers yet.</div>`:`
@@ -5910,10 +6054,10 @@ function renderExpenses(){
       groupByDate(list, x=>x.at).map(s=>dateGroupHeaderHtml(s.heading)+`<table><thead><tr><th>Entry</th><th>Amount</th><th>Time</th><th></th></tr></thead><tbody>
       ${s.items.map(x=>`
         <tr>
-          <td>${esc(x.description)}${x.category?`<div class="mono" style="margin-top:2px;">${esc(x.category)}</div>`:''}<span class="badge badge-${x.type==='settlement'?'settlement':'expense'}" style="margin-top:4px;display:inline-block;">${x.type==='settlement'?(x.enteredByUsername && x.enteredByUsername!==x.byUsername?'Settled by admin':'Self-reported settlement'):'Expense'}</span></td>
-          <td class="mono">₹${x.amount.toLocaleString('en-IN')}</td>
+          <td>${esc(x.description)}${x.category?`<div class="mono" style="margin-top:2px;">${esc(x.category)}</div>`:''}${expenseEntryBadgeHtml(x,{detailedSettlement:true})}</td>
+          <td class="mono">${expenseEntryAmountText(x)}</td>
           <td class="mono">${fmtTime(x.at)}</td>
-          <td class="row-actions"><button class="btn btn-sm btn-outline" data-edit-exp="${x.id}">Edit</button><button class="btn btn-sm btn-danger" data-del-exp="${x.id}">Delete</button></td>
+          <td class="row-actions">${x.type!=='opening_balance'?`<button class="btn btn-sm btn-outline" data-edit-exp="${x.id}">Edit</button>`:''}<button class="btn btn-sm btn-danger" data-del-exp="${x.id}">Delete</button></td>
         </tr>`).join('')}
       </tbody></table>`).join('')}`}
   </div>`;
@@ -5933,6 +6077,9 @@ function bindExpenses(){
   if(settleBtn) settleBtn.addEventListener('click', ()=>openExpenseModal(null,'settlement', S.expenseAdminSel));
   const adminExpBtn = document.getElementById('newAdminExpBtn');
   if(adminExpBtn) adminExpBtn.addEventListener('click', ()=>openExpenseModal(null,'expense', S.expenseAdminSel));
+  const openingBalBtn = document.getElementById('newOpeningBalBtn');
+  if(openingBalBtn) openingBalBtn.addEventListener('click', ()=>openOpeningBalanceModal(S.expenseAdminSel));
+  document.querySelectorAll('[data-set-opening]').forEach(b=>b.addEventListener('click', ()=>openOpeningBalanceModal(b.dataset.setOpening)));
   const sel = document.getElementById('expManagerSel');
   if(sel) sel.addEventListener('change', ()=>{ S.expenseAdminSel = sel.value; render(); });
   document.querySelectorAll('[data-edit-exp]').forEach(b=>b.addEventListener('click', ()=>{
@@ -5948,6 +6095,15 @@ function bindExpenses(){
   }));
 }
 function openExpenseModal(existing, type, forUsername){
+  // Opening Balance checkpoints intentionally have NO edit path (scope
+  // decision to limit risk around the balance math) -- this single guard
+  // covers every way this modal can be reached for one (the Expenses
+  // page's own Edit button, AND Daily Work's editDailyEntry dispatch),
+  // instead of needing the same check duplicated at each call site.
+  if(existing && existing.type==='opening_balance'){
+    showAlert('Opening Balance checkpoints ko edit nahi kar sakte -- balance galat na ho isliye. Isko delete karke, sahi figure ke saath naya checkpoint add karo.');
+    return;
+  }
   const isAdmin = S.currentUser.role==='admin';
   const managers = S.users.filter(u=>u.role==='manager');
   const isSettlement = type==='settlement';
@@ -6406,7 +6562,7 @@ async function exportMonthPdf(year, month0){
   if(!exps.length) emptyNote('No entries this month.');
   groupByDate(exps.slice().sort((a,b)=>b.at-a.at), x=>x.at).forEach(sec=>{
     h2(sec.heading);
-    sec.items.forEach(x=> line(`${x.type==='settlement'?'Settled':'Expense'}: ₹${x.amount} — ${x.description||''} — ${x.byName} — ${fmtTime(x.at)}`));
+    sec.items.forEach(x=> line(isOpeningBalanceEntry(x) ? `${expenseEntryAmountText(x)} — ${x.description||''} — ${x.byName} — ${fmtTime(x.at)}` : `${x.type==='settlement'?'Settled':'Expense'}: ₹${x.amount} — ${x.description||''} — ${x.byName} — ${fmtTime(x.at)}`));
   });
   y += 6;
 
@@ -7945,7 +8101,7 @@ function getMyEntries(username){
   const items = [];
   S.orders.forEach(o=>{ if(o.createdByUsername===username) items.push({label:`Order — ${o.customerName}`, detail:o.items.map(i=>`${i.name} ${i.size} ×${i.qty}`).join(', '), at:o.createdAt, tag:ORDER_STAGE_LABEL[o.status]||o.status}); });
   S.activityLog.forEach(e=>{ if(e.byUsername===username) items.push({label:activityLabel(e), detail:activityAmount(e), at:e.at, tag:e.kind, refType:'activityLog', refId:e.id}); });
-  S.expenses.forEach(x=>{ if(x.byUsername===username || x.enteredByUsername===username) items.push({label:x.description||(x.type==='settlement'?'Settlement paid':'Expense'), detail:`₹${x.amount.toLocaleString('en-IN')}`, at:x.at, tag:x.type||'expense'}); });
+  S.expenses.forEach(x=>{ if(x.byUsername===username || x.enteredByUsername===username) items.push({label:x.description||(isOpeningBalanceEntry(x)?'Opening Balance':x.type==='settlement'?'Settlement paid':'Expense'), detail:expenseEntryAmountText(x), at:x.at, tag:x.type||'expense'}); });
   S.customers.forEach(c=>{ if(c.addedByUsername===username) items.push({label:`New party — ${c.name}`, detail:c.phone||'', at:c.addedAt, tag:'party'}); });
   S.dominoPrints.forEach(x=>{ if(x.byUsername===username) items.push({label:'Domino printing', detail:`${x.impressions.toLocaleString('en-IN')} impressions`, at:x.at, tag:'domino'}); });
   S.retailSales.forEach(x=>{ if(x.byUsername===username) items.push({label:(x.items||[]).map(i=>i.itemLabel).join(', ')||(x.type==='sale'?'Retail sale':'Sample'), detail:x.type==='sale'?`₹${(x.totalAmount||0).toLocaleString('en-IN')}`:'Sample', at:x.at, tag:x.type, refType:'retailSales', refId:x.id}); });
