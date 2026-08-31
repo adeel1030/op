@@ -715,7 +715,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-31-firestore-preview16"; // ROUND 11 (2026-08-31), new "Opening Balance" expense checkpoint feature -- admin (for ANY manager) can now set the manager's running expense/settlement balance to a known-correct absolute figure via a dedicated 📌 Opening Balance entry (Expenses tab, admin view), instead of the balance being trusted to stay correct purely from every historical add/subtract. All OLD expense/settlement entries are untouched -- only the derived running total is corrected going forward. The new entry type stores BOTH the signed delta actually applied (so the existing balance math needs no changes at all -- see applyExpenseBalanceDelta's comment) AND the plain target figure (so every screen can always show "Balance set to ₹X", never a confusing raw delta) -- see expenseEntryAmountText/expenseEntryBadgeHtml, the one shared place all of Expenses/Daily Work/print/monthly-report/Home-activity read from, so the totaling stays consistent everywhere at once. Opening Balance entries are excluded from "total expense" sums (they're a correction, not spending), support create+delete only (no edit -- delete and re-add instead, to limit risk), and a new in-app banner (no push notification) on the admin Expenses page flags any manager still missing this month's checkpoint. ROUND 10 (2026-08-31), "sab ek sath shuru karo, saare bugs thik karo" full fix pass -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md's Round 10 section for the complete list. Highlights: messaging seen/read-write permissions now work for every role, not just admin (the specific bug reported this round -- see firestore.rules' new dedicated chatMessages block); the canEntry() default-fallback bug that silently permission-denied every entry-gated write for any newly-added/uncustomized role; the stock-ledger clobber race (fsSetStockField now does a scoped dot-path update, not a whole-field overwrite); FIFO-covered orders no longer stuck (orderIsFullyStocked/autoAdvanceOrders); cancelled order items no longer double-deducted on edit; concurrent expense edits no longer double-count balances (fsEditExpenseAtomic); offboarded staff Auth accounts + live sessions now actually get revoked (deleteStaffUser/forceLogoutStaffUser/resetStaffPassword); Retail Sale/Sample booked-entry lock + double-submit guard; double-submit guards on the dispatch, attendance, and post-login "Tap to Continue" buttons; a magnitude/typo cap on Bulk stock edit (matching the single-item Adjust modal); and the shared-tablet push-notification bug where a second person logging in on the same device/session stopped receiving push until a full page reload. (Round 9: Enter-to-send. Round 8: the login-skip/duplicate-notification/stray-welcome race fix. Rounds 1-7: session-token adoption, FIFO stock allocation, Daily Work resync, System Health panel removal, modal animations, live-listener reconnect, the real bar-bar-password root cause, chat ordering/read-receipts, admin-only password reset, phone back button, the first (incomplete) login-race fix -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md for full history.)
+const APP_BUILD = "2026-08-31-firestore-preview18"; // ROUND 12 (2026-08-31), 3 explicit user requests: (1) LR photo "Upload Failed" every single time -- root cause was that apiUploadLR/apiDeleteLR sent this app's OWN unrelated single-device-login token (S.authToken) as `sessionToken`, which order-ops-backend.gs's requireSession_ could never recognize (it only knows tokens from that script's own OLD Sheets-based login action, which this app never calls anymore) -- every upload/delete rejected with session_required, no matter what. FIXED WITHOUT changing storage backend (explicit user request: keep the same Google Drive space, not Firebase Storage) -- apiUploadLR/apiDeleteLR now also send a real, live Firebase Auth ID token, and order-ops-backend.gs verifies THAT instead (verifyFirebaseIdToken_, via Google's Identity Toolkit REST API) -- see the Round 12 deploy guide, this needs a fresh Apps Script deployment (order-ops-backend.gs changed for the first time this whole engagement -- surgically, only the uploadLR/deleteLR auth check, nothing else). (2) A photo over 2MB is now actually guaranteed compressed under that cap (resizeImageFileMaxBytes, byte-size-checked via dataUrlByteLength, not just pixel-dimension-capped like before) before every LR upload, independent of storage backend. (3) Orders entered directly in OMS ("+ New order" / chat "Quick order") are now created ALREADY ACCEPTED (status:'processing', stock reserved immediately via the new shared reserveStockForAcceptedOrder helper) instead of sitting in the pending/"New" queue needing a separate Accept click -- only orders from the public customer-facing order form (buildOrderDocFromPayload, untouched, still status:'pending') still need that Approval step. ROUND 11 (2026-08-31), new "Opening Balance" expense checkpoint feature -- admin (for ANY manager) can now set the manager's running expense/settlement balance to a known-correct absolute figure via a dedicated 📌 Opening Balance entry (Expenses tab, admin view), instead of the balance being trusted to stay correct purely from every historical add/subtract. All OLD expense/settlement entries are untouched -- only the derived running total is corrected going forward. The new entry type stores BOTH the signed delta actually applied (so the existing balance math needs no changes at all -- see applyExpenseBalanceDelta's comment) AND the plain target figure (so every screen can always show "Balance set to ₹X", never a confusing raw delta) -- see expenseEntryAmountText/expenseEntryBadgeHtml, the one shared place all of Expenses/Daily Work/print/monthly-report/Home-activity read from, so the totaling stays consistent everywhere at once. Opening Balance entries are excluded from "total expense" sums (they're a correction, not spending), support create+delete only (no edit -- delete and re-add instead, to limit risk), and a new in-app banner (no push notification) on the admin Expenses page flags any manager still missing this month's checkpoint. ROUND 10 (2026-08-31), "sab ek sath shuru karo, saare bugs thik karo" full fix pass -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md's Round 10 section for the complete list. Highlights: messaging seen/read-write permissions now work for every role, not just admin (the specific bug reported this round -- see firestore.rules' new dedicated chatMessages block); the canEntry() default-fallback bug that silently permission-denied every entry-gated write for any newly-added/uncustomized role; the stock-ledger clobber race (fsSetStockField now does a scoped dot-path update, not a whole-field overwrite); FIFO-covered orders no longer stuck (orderIsFullyStocked/autoAdvanceOrders); cancelled order items no longer double-deducted on edit; concurrent expense edits no longer double-count balances (fsEditExpenseAtomic); offboarded staff Auth accounts + live sessions now actually get revoked (deleteStaffUser/forceLogoutStaffUser/resetStaffPassword); Retail Sale/Sample booked-entry lock + double-submit guard; double-submit guards on the dispatch, attendance, and post-login "Tap to Continue" buttons; a magnitude/typo cap on Bulk stock edit (matching the single-item Adjust modal); and the shared-tablet push-notification bug where a second person logging in on the same device/session stopped receiving push until a full page reload. (Round 9: Enter-to-send. Round 8: the login-skip/duplicate-notification/stray-welcome race fix. Rounds 1-7: session-token adoption, FIFO stock allocation, Daily Work resync, System Health panel removal, modal animations, live-listener reconnect, the real bar-bar-password root cause, chat ordering/read-receipts, admin-only password reset, phone back button, the first (incomplete) login-race fix -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md for full history.)
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -2082,27 +2082,77 @@ async function flushExpenseDeltaQueue(){
     finally{ delete expenseDeltaInFlight[username]; }
   }
 }
+// Round 12 (2026-08-31): the ROOT CAUSE of "LR upload me problem arhi h,
+// bar bar Upload Failed" was that this call sent S.authToken (this app's
+// OWN, unrelated single-device-login token, stored in Firestore's
+// activeSessions -- see persistAuthToken/restoreAuthToken) as
+// `sessionToken`, but order-ops-backend.gs's requireSession_ only ever
+// recognizes tokens minted by ITS OWN old Sheets-based `login` action --
+// which order-ops-firestore.html never calls at all anymore (it signs in
+// via Firebase Auth directly). So authSessions[username] was simply never
+// populated for any Firestore-app user, and EVERY upload/delete rejected
+// with session_required, no matter what. Per the user's explicit request
+// to keep using the same Google Drive storage (not switch to Firebase
+// Storage), the fix instead sends a REAL, live Firebase Auth ID token
+// (idToken) alongside the old sessionToken field -- order-ops-backend.gs
+// now verifies THAT instead, via Google's own Identity Toolkit REST API
+// (see verifyFirebaseIdToken_ there), which is at least as strong a check
+// as the old authStore lookup and actually reflects how this app really
+// authenticates now.
 async function apiUploadLR(base64Data, mimeType, filename){
+  const idToken = await fsAuth.currentUser.getIdToken();
   // Photo uploads are a much larger payload than any other call here, and
   // legitimately take longer on a slow mobile connection — a longer timeout
   // avoids aborting a real (just slow) upload while it's still in flight.
   const res = await fetchWithTimeout(API_URL, {
     method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
-    body: JSON.stringify({ secret:SECRET, action:'uploadLR', base64Data, mimeType, filename, actingUsername: S.currentUser && S.currentUser.username, sessionToken: S.authToken })
+    body: JSON.stringify({ secret:SECRET, action:'uploadLR', base64Data, mimeType, filename, actingUsername: S.currentUser && S.currentUser.username, sessionToken: S.authToken, idToken })
   }, 60000);
   const json = await res.json();
   if(json && json.error) handleAuthError(json.error);
   return json;
 }
 async function apiDeleteLR(fileId){
+  const idToken = await fsAuth.currentUser.getIdToken();
   const res = await fetchWithTimeout(API_URL, {
     method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
-    body: JSON.stringify({ secret:SECRET, action:'deleteLR', fileId, actingUsername: S.currentUser && S.currentUser.username, sessionToken: S.authToken })
+    body: JSON.stringify({ secret:SECRET, action:'deleteLR', fileId, actingUsername: S.currentUser && S.currentUser.username, sessionToken: S.authToken, idToken })
   });
   const json = await res.json();
   if(json && json.error) handleAuthError(json.error);
   return json;
 }
+// Progressively shrinks BOTH pixel dimensions and JPEG quality until the
+// actual encoded byte size is under maxBytes -- unlike resizeImageFile
+// (which only caps pixel dimensions and can still produce a file well over
+// a few MB for a dense/high-detail photo), this is what actually
+// guarantees "photo size zyada bada ho to 2MB me convert kar de" (explicit
+// user request, Round 12) regardless of how big the original photo was.
+async function resizeImageFileMaxBytes(file, maxDim, maxBytes){
+  const qualitySteps = [0.82, 0.7, 0.6, 0.5, 0.4, 0.3];
+  let dim = maxDim;
+  for(let pass=0; pass<4; pass++){
+    for(const q of qualitySteps){
+      const dataUrl = await resizeImageFile(file, dim, q);
+      if(dataUrlByteLength(dataUrl) <= maxBytes) return dataUrl;
+    }
+    dim = Math.round(dim * 0.75); // still over the cap even at the lowest quality tried -- shrink the dimensions too and walk the quality ladder again
+  }
+  // Absolute last resort: return whatever the smallest attempt produced
+  // rather than throwing -- a photo that's still a little over the cap is
+  // far better than "Upload Failed" again, which is the whole bug this
+  // round exists to fix.
+  return await resizeImageFile(file, dim, 0.3);
+}
+// Base64 -> raw byte count: every 4 base64 characters encode 3 real bytes,
+// minus 1-2 for '=' padding at the end. Used to check an in-memory dataURL
+// against the 2MB cap without ever needing to actually upload it first.
+function dataUrlByteLength(dataUrl){
+  const base64 = (dataUrl.split(',')[1] || '');
+  const padding = base64.endsWith('==') ? 2 : (base64.endsWith('=') ? 1 : 0);
+  return Math.floor(base64.length * 3/4) - padding;
+}
+const LR_PHOTO_MAX_BYTES = 2 * 1024 * 1024; // explicit user request (Round 12): "photo size agr zyada bada ho to 2mb me convert kar de"
 /* =====================================================================
    FIRESTORE (Phase 1 rewrite, Task #54) -- data layer + auth
    =====================================================================
@@ -2117,9 +2167,13 @@ async function apiDeleteLR(fileId){
 
    EXPLICITLY OUT OF SCOPE for this pass (tracked in
    ORDER_OPS_FIRESTORE_REWRITE_STATUS.md, not silently dropped):
-   - uploadLR/deleteLR (Google Drive file storage) still call the old
-     Apps Script backend — Firestore doesn't do file storage, and mapping
-     LR photo uploads onto Firebase Storage is its own piece of work.
+   - uploadLR/deleteLR still call the old Apps Script backend (Google
+     Drive file storage) -- Firestore doesn't do file storage, and the
+     user explicitly asked (Round 12, 2026-08-31) to keep using the same
+     Drive-based storage rather than migrate to Firebase Storage. What WAS
+     broken (every upload/delete failing with session_required) is fixed
+     -- see apiUploadLR's own comment and order-ops-backend.gs's
+     verifyFirebaseIdToken_ -- not the choice of storage backend itself.
    - Retention cleanup (cleanupOldChatDays/cleanupOldLogDays/etc.) is NOT
      ported here. Deleting expired rows client-side, from every admin's
      browser, was always a slightly awkward fit for Firestore's security
@@ -2858,9 +2912,11 @@ async function apiResetAllData(){
 // actually hitting this on every login/every Force Logout are now properly
 // rewired to Firestore/Cloud Functions instead (see
 // checkForMissedNotifsOnLogin and the Force Logout button handler) -- the
-// couple of remaining OLD-endpoint calls left in this file (LR photo
-// upload/delete -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md, still not
-// migrated) now just fail quietly and cleanly through their own existing
+// two remaining OLD-endpoint calls left in this file (apiUploadLR/
+// apiDeleteLR -- LR photo upload/delete, still Google Drive by explicit
+// user request, see apiUploadLR's own Round 12 comment for how their
+// actual session_required bug got fixed without switching storage
+// backends) now just fail quietly and cleanly through their own existing
 // "upload failed, try again" messaging instead of ALSO throwing this
 // pointless prompt in the person's face.
 function handleAuthError(errMsg){
@@ -2898,10 +2954,13 @@ function openUploadLRModal(orderId){
     if(file){
       statusEl.textContent = 'Uploading…';
       try{
-        // Kept large enough to stay legible (this is a document, not a
-        // thumbnail) — Drive's storage isn't the tight ~50,000-char-per-cell
-        // squeeze that Sheets-stored data (like profile photos) is under.
-        const dataUrl = await resizeImageFile(file, 1600, 0.8);
+        // Round 12: still Google Drive (via the old Apps Script backend),
+        // per the explicit user request to keep using the same storage --
+        // but now sends a real Firebase ID token so it actually succeeds
+        // (see apiUploadLR's own comment), and hard-caps to 2MB
+        // (resizeImageFileMaxBytes) instead of just capping pixel
+        // dimensions like before.
+        const dataUrl = await resizeImageFileMaxBytes(file, 1600, LR_PHOTO_MAX_BYTES);
         const base64Data = dataUrl.split(',')[1];
         const result = await apiUploadLR(base64Data, 'image/jpeg', `LR-${o.id}.jpg`);
         if(result && result.ok){
@@ -5104,7 +5163,10 @@ function openDispatchModal(orderId){
     if(lrFile){
       statusEl.textContent = 'Uploading LR photo…';
       try{
-        const dataUrl = await resizeImageFile(lrFile, 1600, 0.8);
+        // Round 12: still Google Drive (see apiUploadLR's own comment for
+        // how the real session_required bug got fixed) + hard-capped to
+        // 2MB (resizeImageFileMaxBytes).
+        const dataUrl = await resizeImageFileMaxBytes(lrFile, 1600, LR_PHOTO_MAX_BYTES);
         const base64Data = dataUrl.split(',')[1];
         const result = await apiUploadLR(base64Data, 'image/jpeg', `LR-${o.id}.jpg`);
         if(result && result.ok){
@@ -5138,6 +5200,28 @@ function openDispatchModal(orderId){
   });
 }
 
+// Reserves stock for an order being accepted -- deducts readyStock for
+// every item, logs the movement, and flips stockDeducted. Shared between
+// setOrderStatus's own explicit-Accept-button path AND, as of Round 12
+// (2026-08-31, "Jo Order OMS me se add ho rhe h vo direct hi Accepted me
+// ajaye" -- explicit user request), order CREATION itself for orders
+// entered directly in OMS (openOrderModal/chat "Quick order") -- those now
+// skip the pending/"New" stage entirely and reserve stock immediately at
+// creation time, exactly as if an admin had clicked Accept the instant it
+// was saved. Extracted into one function specifically so both call sites
+// can never drift apart on the stock math -- copy-pasting this a second
+// time was the one thing to avoid here.
+function reserveStockForAcceptedOrder(o){
+  const shortItems = [];
+  o.items.forEach(d=>{
+    S.readyStock[d.key] = (S.readyStock[d.key]||0) - d.qty;
+    if(S.readyStock[d.key] < 0) shortItems.push(`${d.name} ${d.size}`);
+    logStockMovement(d.key, `${d.name} ${d.size}`, 'order', -d.qty, `Order accepted — ${orderDisplayLabel(o)}`);
+  });
+  o.stockDeducted = true;
+  safeSet('app:readyStock', S.readyStock);
+  return shortItems;
+}
 function setOrderStatus(id, status){
   if((status==='processing' || status==='rejected') && S.currentUser.role!=='admin') return; // Accept/Reject are admin-only
   const o = S.orders.find(x=>x.id===id); if(!o) return;
@@ -5145,13 +5229,7 @@ function setOrderStatus(id, status){
   if(status==='processing' && !o.stockDeducted){
     // Stock is only reserved once the owner actually accepts the order —
     // until then it was just a live preview, nothing was touched.
-    o.items.forEach(d=>{
-      S.readyStock[d.key] = (S.readyStock[d.key]||0) - d.qty;
-      if(S.readyStock[d.key] < 0) shortItems.push(`${d.name} ${d.size}`);
-      logStockMovement(d.key, `${d.name} ${d.size}`, 'order', -d.qty, `Order accepted — ${orderDisplayLabel(o)}`);
-    });
-    o.stockDeducted = true;
-    safeSet('app:readyStock', S.readyStock);
+    shortItems = reserveStockForAcceptedOrder(o);
   }
   if(status==='rejected' && o.stockDeducted){
     o.items.forEach(d=>{
@@ -7052,19 +7130,32 @@ function openOrderModal(existingOrder){
         closeModal(); render();
         showToast(shortItems.length? `Order updated — ⚠ short on ${shortItems.join(', ')}` : 'Order updated');
       } else {
-        // New orders are just a request until the owner accepts them —
-        // stock is only reserved at accept time (see setOrderStatus).
+        // ROUND 12 (2026-08-31, explicit user request -- "Jo Order OMS me
+        // se add ho rhe h vo direct hi Accepted me ajaye or Jo Order form
+        // se arhe h Approval sirf uska ho"): an order entered directly here
+        // in OMS is created ALREADY ACCEPTED (status:'processing', stock
+        // reserved immediately via reserveStockForAcceptedOrder) instead of
+        // sitting in the pending/"New" queue waiting for a separate Accept
+        // click -- whoever is typing it into OMS right now IS the
+        // acceptance. Only orders arriving from the public customer-facing
+        // order form (functions/lib/adminPublic.js's buildOrderDocFromPayload,
+        // source:'website') still start at status:'pending' and need that
+        // separate admin Approve/Reject step, since those are unvetted
+        // incoming requests, not something staff typed in themselves.
         const nowTs = Date.now();
         const order = {
           id: uid(), orderNumber: generateOrderNumber(nowTs), customerId: custId, customerName: custName, customerCity: custCity, customerPhone: custPhone, customerAddress: custAddress, customerGstin: custGstin,
           items: orderDraft.slice(),
-          status:'pending', fillingStatus:'pending', packagingStatus:'pending', stockDeducted:false, processedAt:null,
+          status:'processing', fillingStatus:'pending', packagingStatus:'pending', stockDeducted:false, processedAt:null,
           createdBy: S.currentUser.name, createdByUsername: S.currentUser.username, createdByRole: S.currentUser.role, createdAt: nowTs
         };
+        const shortItemsNew = reserveStockForAcceptedOrder(order);
         S.orders.push(order);
         savePartitionForItem('orders', order);
+        autoAdvanceOrders(); // may instantly become 'ready' if stock already covers it -- mirrors setOrderStatus's own 'processing' branch
+        syncStockTasksFromAlerts(); // accepting reserves stock and can create shortages -- always resync after, mirrors setOrderStatus
         closeModal(); render();
-        showToast('Order submitted — waiting on owner to accept');
+        showToast(shortItemsNew.length ? `Order accepted — ⚠ short on ${shortItemsNew.join(', ')}` : 'Order accepted — fully stocked');
       }
     };
     if(!existingCust){
@@ -7278,17 +7369,23 @@ function openChatOrderModal(){
     let custAddress = existingCust ? (existingCust.address||'') : '';
     let custGstin = existingCust ? (existingCust.gstin||'') : '';
     const finish = ()=>{
+      // ROUND 12 (2026-08-31): same "OMS-entered orders are created already
+      // Accepted" change as openOrderModal's create path above -- see that
+      // comment for the full reasoning.
       const nowTs = Date.now();
       const order = {
         id: uid(), orderNumber: generateOrderNumber(nowTs), customerId: custId, customerName: custName, customerCity: custCity, customerPhone: custPhone, customerAddress: custAddress, customerGstin: custGstin,
         items: parsed.items.slice(),
-        status:'pending', fillingStatus:'pending', packagingStatus:'pending', stockDeducted:false, processedAt:null,
+        status:'processing', fillingStatus:'pending', packagingStatus:'pending', stockDeducted:false, processedAt:null,
         createdBy: S.currentUser.name, createdByUsername: S.currentUser.username, createdByRole: S.currentUser.role, createdAt: nowTs
       };
+      const shortItemsNew = reserveStockForAcceptedOrder(order);
       S.orders.push(order);
       savePartitionForItem('orders', order);
+      autoAdvanceOrders();
+      syncStockTasksFromAlerts();
       closeModal(); render();
-      showToast('Order submitted — waiting on owner to accept');
+      showToast(shortItemsNew.length ? `Order accepted — ⚠ short on ${shortItemsNew.join(', ')}` : 'Order accepted — fully stocked');
     };
     if(!existingCust){
       showConfirm(`"${typedName}" is a new party — save it to the customer directory for next time?`, ()=>{
