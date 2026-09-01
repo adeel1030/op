@@ -724,7 +724,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-31-firestore-preview19"; // ROUND 13 (2026-08-31), 2 explicit user requests: (1) "Manager wala Checkpoint khud hi ban jaye, 30 Days ke Expenses rakho, usse pehle ke, usse pehle ke apne aap hi previous balance ke naam se save karte raho" -- the Expenses page now only ever shows the last 30 days (computeVisibleExpenses); everything before that is summarized live into an automatic "📌 Previous Balance" line (previousBalanceRowHtml) needing zero manual action -- safe because S.expenseBalances is a durable running total, never re-derived from history (see expenseBalanceFor's comment). The old monthly reminder banner (nagging admin to manually set a checkpoint) is gone; the manual "📌 Opening Balance" button itself stays, for genuine corrections. Entries older than 90 days are now deleted automatically server-side (functions/index.js's new cleanupOldExpenses scheduled function) -- the Firestore fetch window narrowed from 365 to 90 days to match. (2) "Order finalization me LR ya Stock photo 2 options rakho ... Ye Photo Automatically deleted hojaye after 30 days" -- LR photo upload (openUploadLRModal + the dispatch flow) now offers a Stock Photo option too (for loose-goods pickups needing a verification photo), and BOTH new uploads go through Firebase Storage (fsUploadOrderPhoto/fsDeleteOrderPhoto) instead of Google Drive -- an explicit, informed reversal of Round 12's Drive-only choice, made specifically because Storage can auto-delete a photo 30 days after upload via a plain bucket lifecycle rule (see storage.rules + lifecycle.json), no scheduled code needed. Legacy (pre-Round-13) Drive-based photos are unaffected and still deletable via apiDeleteLR. Also this round: the Sheet backup scheme (order-ops-backend.gs's dailyBackup) changed from one file per WEEK (refreshed in place daily, so never more than one real snapshot per week) kept for 8 weeks, to one real, distinct snapshot per DAY kept for 7 days (BACKUP_RETENTION_DAYS) -- explicit user request ("7 din ka backup rakho bas, usse pehle ka backup auto delete ho jana chahiye"). ROUND 12 (2026-08-31), 3 explicit user requests: (1) LR photo "Upload Failed" every single time -- root cause was that apiUploadLR/apiDeleteLR sent this app's OWN unrelated single-device-login token (S.authToken) as `sessionToken`, which order-ops-backend.gs's requireSession_ could never recognize (it only knows tokens from that script's own OLD Sheets-based login action, which this app never calls anymore) -- every upload/delete rejected with session_required, no matter what. FIXED WITHOUT changing storage backend (explicit user request: keep the same Google Drive space, not Firebase Storage) -- apiUploadLR/apiDeleteLR now also send a real, live Firebase Auth ID token, and order-ops-backend.gs verifies THAT instead (verifyFirebaseIdToken_, via Google's Identity Toolkit REST API) -- see the Round 12 deploy guide, this needs a fresh Apps Script deployment (order-ops-backend.gs changed for the first time this whole engagement -- surgically, only the uploadLR/deleteLR auth check, nothing else). (2) A photo over 2MB is now actually guaranteed compressed under that cap (resizeImageFileMaxBytes, byte-size-checked via dataUrlByteLength, not just pixel-dimension-capped like before) before every LR upload, independent of storage backend. (3) Orders entered directly in OMS ("+ New order" / chat "Quick order") are now created ALREADY ACCEPTED (status:'processing', stock reserved immediately via the new shared reserveStockForAcceptedOrder helper) instead of sitting in the pending/"New" queue needing a separate Accept click -- only orders from the public customer-facing order form (buildOrderDocFromPayload, untouched, still status:'pending') still need that Approval step. ROUND 11 (2026-08-31), new "Opening Balance" expense checkpoint feature -- admin (for ANY manager) can now set the manager's running expense/settlement balance to a known-correct absolute figure via a dedicated 📌 Opening Balance entry (Expenses tab, admin view), instead of the balance being trusted to stay correct purely from every historical add/subtract. All OLD expense/settlement entries are untouched -- only the derived running total is corrected going forward. The new entry type stores BOTH the signed delta actually applied (so the existing balance math needs no changes at all -- see applyExpenseBalanceDelta's comment) AND the plain target figure (so every screen can always show "Balance set to ₹X", never a confusing raw delta) -- see expenseEntryAmountText/expenseEntryBadgeHtml, the one shared place all of Expenses/Daily Work/print/monthly-report/Home-activity read from, so the totaling stays consistent everywhere at once. Opening Balance entries are excluded from "total expense" sums (they're a correction, not spending), support create+delete only (no edit -- delete and re-add instead, to limit risk), and a new in-app banner (no push notification) on the admin Expenses page flags any manager still missing this month's checkpoint. ROUND 10 (2026-08-31), "sab ek sath shuru karo, saare bugs thik karo" full fix pass -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md's Round 10 section for the complete list. Highlights: messaging seen/read-write permissions now work for every role, not just admin (the specific bug reported this round -- see firestore.rules' new dedicated chatMessages block); the canEntry() default-fallback bug that silently permission-denied every entry-gated write for any newly-added/uncustomized role; the stock-ledger clobber race (fsSetStockField now does a scoped dot-path update, not a whole-field overwrite); FIFO-covered orders no longer stuck (orderIsFullyStocked/autoAdvanceOrders); cancelled order items no longer double-deducted on edit; concurrent expense edits no longer double-count balances (fsEditExpenseAtomic); offboarded staff Auth accounts + live sessions now actually get revoked (deleteStaffUser/forceLogoutStaffUser/resetStaffPassword); Retail Sale/Sample booked-entry lock + double-submit guard; double-submit guards on the dispatch, attendance, and post-login "Tap to Continue" buttons; a magnitude/typo cap on Bulk stock edit (matching the single-item Adjust modal); and the shared-tablet push-notification bug where a second person logging in on the same device/session stopped receiving push until a full page reload. (Round 9: Enter-to-send. Round 8: the login-skip/duplicate-notification/stray-welcome race fix. Rounds 1-7: session-token adoption, FIFO stock allocation, Daily Work resync, System Health panel removal, modal animations, live-listener reconnect, the real bar-bar-password root cause, chat ordering/read-receipts, admin-only password reset, phone back button, the first (incomplete) login-race fix -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md for full history.)
+const APP_BUILD = "2026-09-01-firestore-preview20"; // ROUND 13.1 (2026-09-01), 2 explicit user questions: (1) "stock photo me to LR No ki zrurt nhi h na" -- a Stock Photo (loose-goods pickup) has no real Lorry Receipt document behind it, so the LR Number field is now hidden (and never saved) whenever Stock Photo is the selected type, in both the standalone Upload Photo modal and the inline dispatch-flow upload -- see wirePhotoTypeToggle's new onChange callback, and the "LR Photo (optional)" file-input label in the dispatch modal was also generalized to "Photo (optional)" since it can now be either kind. (2) "ye chiz wha b to update hogi na jaha order track hota hai" -- the customer-facing tracking page (order-form-firestore.html) was NOT actually type-aware before this: it always said "LR" (View/Download LR, LR Number, alt="LR photo") no matter which type staff picked -- now it reads order.photoType and shows "Stock Photo" wording for a stock photo. ROUND 13 (2026-08-31), 2 explicit user requests: (1) "Manager wala Checkpoint khud hi ban jaye, 30 Days ke Expenses rakho, usse pehle ke, usse pehle ke apne aap hi previous balance ke naam se save karte raho" -- the Expenses page now only ever shows the last 30 days (computeVisibleExpenses); everything before that is summarized live into an automatic "📌 Previous Balance" line (previousBalanceRowHtml) needing zero manual action -- safe because S.expenseBalances is a durable running total, never re-derived from history (see expenseBalanceFor's comment). The old monthly reminder banner (nagging admin to manually set a checkpoint) is gone; the manual "📌 Opening Balance" button itself stays, for genuine corrections. Entries older than 90 days are now deleted automatically server-side (functions/index.js's new cleanupOldExpenses scheduled function) -- the Firestore fetch window narrowed from 365 to 90 days to match. (2) "Order finalization me LR ya Stock photo 2 options rakho ... Ye Photo Automatically deleted hojaye after 30 days" -- LR photo upload (openUploadLRModal + the dispatch flow) now offers a Stock Photo option too (for loose-goods pickups needing a verification photo), and BOTH new uploads go through Firebase Storage (fsUploadOrderPhoto/fsDeleteOrderPhoto) instead of Google Drive -- an explicit, informed reversal of Round 12's Drive-only choice, made specifically because Storage can auto-delete a photo 30 days after upload via a plain bucket lifecycle rule (see storage.rules + lifecycle.json), no scheduled code needed. Legacy (pre-Round-13) Drive-based photos are unaffected and still deletable via apiDeleteLR. Also this round: the Sheet backup scheme (order-ops-backend.gs's dailyBackup) changed from one file per WEEK (refreshed in place daily, so never more than one real snapshot per week) kept for 8 weeks, to one real, distinct snapshot per DAY kept for 7 days (BACKUP_RETENTION_DAYS) -- explicit user request ("7 din ka backup rakho bas, usse pehle ka backup auto delete ho jana chahiye"). ROUND 12 (2026-08-31), 3 explicit user requests: (1) LR photo "Upload Failed" every single time -- root cause was that apiUploadLR/apiDeleteLR sent this app's OWN unrelated single-device-login token (S.authToken) as `sessionToken`, which order-ops-backend.gs's requireSession_ could never recognize (it only knows tokens from that script's own OLD Sheets-based login action, which this app never calls anymore) -- every upload/delete rejected with session_required, no matter what. FIXED WITHOUT changing storage backend (explicit user request: keep the same Google Drive space, not Firebase Storage) -- apiUploadLR/apiDeleteLR now also send a real, live Firebase Auth ID token, and order-ops-backend.gs verifies THAT instead (verifyFirebaseIdToken_, via Google's Identity Toolkit REST API) -- see the Round 12 deploy guide, this needs a fresh Apps Script deployment (order-ops-backend.gs changed for the first time this whole engagement -- surgically, only the uploadLR/deleteLR auth check, nothing else). (2) A photo over 2MB is now actually guaranteed compressed under that cap (resizeImageFileMaxBytes, byte-size-checked via dataUrlByteLength, not just pixel-dimension-capped like before) before every LR upload, independent of storage backend. (3) Orders entered directly in OMS ("+ New order" / chat "Quick order") are now created ALREADY ACCEPTED (status:'processing', stock reserved immediately via the new shared reserveStockForAcceptedOrder helper) instead of sitting in the pending/"New" queue needing a separate Accept click -- only orders from the public customer-facing order form (buildOrderDocFromPayload, untouched, still status:'pending') still need that Approval step. ROUND 11 (2026-08-31), new "Opening Balance" expense checkpoint feature -- admin (for ANY manager) can now set the manager's running expense/settlement balance to a known-correct absolute figure via a dedicated 📌 Opening Balance entry (Expenses tab, admin view), instead of the balance being trusted to stay correct purely from every historical add/subtract. All OLD expense/settlement entries are untouched -- only the derived running total is corrected going forward. The new entry type stores BOTH the signed delta actually applied (so the existing balance math needs no changes at all -- see applyExpenseBalanceDelta's comment) AND the plain target figure (so every screen can always show "Balance set to ₹X", never a confusing raw delta) -- see expenseEntryAmountText/expenseEntryBadgeHtml, the one shared place all of Expenses/Daily Work/print/monthly-report/Home-activity read from, so the totaling stays consistent everywhere at once. Opening Balance entries are excluded from "total expense" sums (they're a correction, not spending), support create+delete only (no edit -- delete and re-add instead, to limit risk), and a new in-app banner (no push notification) on the admin Expenses page flags any manager still missing this month's checkpoint. ROUND 10 (2026-08-31), "sab ek sath shuru karo, saare bugs thik karo" full fix pass -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md's Round 10 section for the complete list. Highlights: messaging seen/read-write permissions now work for every role, not just admin (the specific bug reported this round -- see firestore.rules' new dedicated chatMessages block); the canEntry() default-fallback bug that silently permission-denied every entry-gated write for any newly-added/uncustomized role; the stock-ledger clobber race (fsSetStockField now does a scoped dot-path update, not a whole-field overwrite); FIFO-covered orders no longer stuck (orderIsFullyStocked/autoAdvanceOrders); cancelled order items no longer double-deducted on edit; concurrent expense edits no longer double-count balances (fsEditExpenseAtomic); offboarded staff Auth accounts + live sessions now actually get revoked (deleteStaffUser/forceLogoutStaffUser/resetStaffPassword); Retail Sale/Sample booked-entry lock + double-submit guard; double-submit guards on the dispatch, attendance, and post-login "Tap to Continue" buttons; a magnitude/typo cap on Bulk stock edit (matching the single-item Adjust modal); and the shared-tablet push-notification bug where a second person logging in on the same device/session stopped receiving push until a full page reload. (Round 9: Enter-to-send. Round 8: the login-skip/duplicate-notification/stray-welcome race fix. Rounds 1-7: session-token adoption, FIFO stock allocation, Daily Work resync, System Health panel removal, modal animations, live-listener reconnect, the real bar-bar-password root cause, chat ordering/read-receipts, admin-only password reset, phone back button, the first (incomplete) login-race fix -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md for full history.)
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -3009,16 +3009,26 @@ function photoTypeToggleHtml(selected){
     <button type="button" class="btn btn-sm ${selected==='stock'?'btn-primary':'btn-outline'}" id="photoTypeStockBtn" data-ptype="stock">📦 Stock Photo</button>
   </div></div>`;
 }
-function wirePhotoTypeToggle(getSelected, setSelected){
+// onChange (added Round 13.1, user question "stock photo me LR No ki
+// zarurat nahi h na" -- a Stock Photo is a loose-goods verification photo,
+// there is no real Lorry Receipt document behind it, so an "LR Number"
+// field next to it doesn't make sense) -- optional callback fired with the
+// newly-selected type on every toggle click AND once immediately on wiring
+// (so a modal that opens already showing 'stock', e.g. editing an existing
+// stock photo, starts with the right fields hidden without needing a click
+// first).
+function wirePhotoTypeToggle(getSelected, setSelected, onChange){
   const lrBtn = document.getElementById('photoTypeLRBtn');
   const stockBtn = document.getElementById('photoTypeStockBtn');
   if(!lrBtn || !stockBtn) return;
   const refresh = ()=>{
     lrBtn.className = 'btn btn-sm ' + (getSelected()==='lr' ? 'btn-primary' : 'btn-outline');
     stockBtn.className = 'btn btn-sm ' + (getSelected()==='stock' ? 'btn-primary' : 'btn-outline');
+    if(onChange) onChange(getSelected());
   };
   lrBtn.addEventListener('click', ()=>{ setSelected('lr'); refresh(); });
   stockBtn.addEventListener('click', ()=>{ setSelected('stock'); refresh(); });
+  refresh();
 }
 function openUploadLRModal(orderId){
   const o = S.orders.find(x=>x.id===orderId); if(!o) return;
@@ -3028,21 +3038,28 @@ function openUploadLRModal(orderId){
     <p class="desc" style="margin-top:-6px;">${esc(orderDisplayLabel(o))} — photo kept for 30 days, then auto-removed.</p>
     ${photoTypeToggleHtml(photoType)}
     <div class="field"><label>Photo (optional)</label><input id="lrFileInput" type="file" accept="image/*" capture="environment" /></div>
-    <div class="field"><label>LR Number (optional)</label><input id="lrNumberInput" value="${esc(o.lrNumber||'')}" placeholder="e.g. LR-4821" /></div>
+    <div class="field" id="lrNumberField"><label>LR Number (optional)</label><input id="lrNumberInput" value="${esc(o.lrNumber||'')}" placeholder="e.g. LR-4821" /></div>
     <div id="lrUploadStatus" style="font-size:12.5px;color:var(--ink-soft);margin-top:6px;"></div>
     <div class="modal-actions">
       <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
       <button type="button" class="btn btn-primary" id="confirmUploadLRBtn">Save</button>
     </div>
   `);
-  wirePhotoTypeToggle(()=>photoType, (v)=>{ photoType = v; });
+  const lrNumberField = document.getElementById('lrNumberField');
+  // A Stock Photo (loose-goods pickup) has no real Lorry Receipt document
+  // behind it, so an "LR Number" field next to it doesn't make sense --
+  // hide it whenever Stock Photo is the selected type (user question,
+  // Round 13.1: "stock photo me to LR No ki zrurt nhi h na").
+  wirePhotoTypeToggle(()=>photoType, (v)=>{ photoType = v; }, (v)=>{ if(lrNumberField) lrNumberField.hidden = (v==='stock'); });
   const fileInput = document.getElementById('lrFileInput');
   const uploadBtn = document.getElementById('confirmUploadLRBtn');
   const statusEl = document.getElementById('lrUploadStatus');
   uploadBtn.addEventListener('click', async ()=>{
     const file = fileInput.files[0];
-    const lrNumber = document.getElementById('lrNumberInput').value.trim();
-    if(!file && !lrNumber){ showAlert('Add a photo, an LR number, or both.'); return; }
+    // Stock Photo: LR Number never applies, regardless of whatever the
+    // (now-hidden) input still holds -- never save a stale/leftover value.
+    const lrNumber = photoType==='stock' ? '' : document.getElementById('lrNumberInput').value.trim();
+    if(!file && !lrNumber){ showAlert(photoType==='stock' ? 'Add a photo.' : 'Add a photo, an LR number, or both.'); return; }
     uploadBtn.disabled = true;
     if(file){
       statusEl.textContent = 'Uploading…';
@@ -5219,8 +5236,8 @@ function openDispatchModal(orderId){
     </div>
     <div class="field"><label>Total No. of Cases</label><input id="dispatchCases" type="number" min="0" placeholder="e.g. 12" /></div>
     ${photoTypeToggleHtml('lr')}
-    <div class="field"><label>LR Photo (optional)</label><input id="dispatchLRFile" type="file" accept="image/*" capture="environment" /></div>
-    <div class="field"><label>LR Number (optional)</label><input id="dispatchLRNumber" placeholder="e.g. LR-4821" /></div>
+    <div class="field"><label>Photo (optional)</label><input id="dispatchLRFile" type="file" accept="image/*" capture="environment" /></div>
+    <div class="field" id="dispatchLRNumberField"><label>LR Number (optional)</label><input id="dispatchLRNumber" placeholder="e.g. LR-4821" /></div>
     <div id="dispatchLRStatus" style="font-size:12px;color:var(--ink-soft);margin:-6px 0 4px;"></div>
     <div class="modal-actions" style="flex-wrap:wrap;">
       <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
@@ -5228,14 +5245,23 @@ function openDispatchModal(orderId){
     </div>
   `);
   let dispatchPhotoType = 'lr';
-  wirePhotoTypeToggle(()=>dispatchPhotoType, (v)=>{ dispatchPhotoType = v; });
+  const dispatchLRNumberField = document.getElementById('dispatchLRNumberField');
   const lrFileInputEl = document.getElementById('dispatchLRFile');
   const submitBtnEl = document.getElementById('dispatchSubmitBtn');
   const refreshDispatchSubmitBtn = ()=>{
     const hasLR = lrFileInputEl.files && lrFileInputEl.files[0];
-    submitBtnEl.textContent = hasLR ? 'Submit with LR' : 'Submit Without LR';
+    const typeLabel = dispatchPhotoType==='stock' ? 'Stock Photo' : 'LR';
+    submitBtnEl.textContent = hasLR ? `Submit with ${typeLabel}` : `Submit Without ${typeLabel}`;
     submitBtnEl.style.background = hasLR ? 'var(--success)' : 'var(--warning)';
   };
+  // Stock Photo (loose-goods pickup) has no real Lorry Receipt document
+  // behind it -- hide the LR Number field for it (Round 13.1, user
+  // question "stock photo me to LR No ki zrurt nhi h na"), and keep the
+  // submit button's own LR/Stock wording in sync with the chosen type too.
+  wirePhotoTypeToggle(()=>dispatchPhotoType, (v)=>{ dispatchPhotoType = v; }, (v)=>{
+    if(dispatchLRNumberField) dispatchLRNumberField.hidden = (v==='stock');
+    refreshDispatchSubmitBtn();
+  });
   lrFileInputEl.addEventListener('change', refreshDispatchSubmitBtn);
   const finalizeDispatch = async (includeLR)=>{
     const transportName = document.getElementById('dispatchTransport').value.trim();
@@ -5255,7 +5281,9 @@ function openDispatchModal(orderId){
     if(!o){ showAlert('This order no longer exists — it may have been deleted or already dispatched elsewhere.'); closeModal(); render(); return; }
     const casesVal = document.getElementById('dispatchCases').value.trim();
     const lrFile = includeLR ? document.getElementById('dispatchLRFile').files[0] : null;
-    const lrNumber = includeLR ? document.getElementById('dispatchLRNumber').value.trim() : '';
+    // Stock Photo: LR Number never applies -- ignore whatever the (now-
+    // hidden) input still holds, same as the standalone Upload Photo modal.
+    const lrNumber = (includeLR && dispatchPhotoType!=='stock') ? document.getElementById('dispatchLRNumber').value.trim() : '';
     const statusEl = document.getElementById('dispatchLRStatus');
     const bookedBtn = document.getElementById('dispatchSubmitBtn');
     // BUG FIX (Round 10 audit): double-submit guard. This used to only
@@ -5292,7 +5320,7 @@ function openDispatchModal(orderId){
         await new Promise(r=>setTimeout(r, 900));
       }
     }
-    if(lrNumber) o.lrNumber = lrNumber;
+    if(lrNumber) o.lrNumber = lrNumber; else if(dispatchPhotoType==='stock') delete o.lrNumber;
     rememberTransport(transportName);
     o.transportName = transportName;
     o.totalCases = casesVal ? parseInt(casesVal) : null;
