@@ -34,6 +34,16 @@
     --info:#2E5FA3;
     --info-bg:#E6EEFA;
     --border:#DCE8DF;
+    /* Round 14 (user request): "tiles jitne b hn sabhi jagah unko thoda 3d
+       look dedo or halka sa piche shadow dedo" -- a shared, subtle "raised
+       tile" treatment applied consistently to every tile/card class below
+       (.card, .stat, .stat-card-v2, .order-tile, .alert-tile) instead of
+       each having its own one-off shadow. The inset highlight along the
+       top edge is what reads as "3D" (light catching the top of a
+       slightly-raised surface); the soft, generously-blurred shadow below
+       is the "halka sa peeche shadow" (light shadow behind it) -- kept
+       gentle on purpose, this is a business app, not meant to look glossy. */
+    --tile-shadow: 0 1px 0 rgba(255,255,255,0.8) inset, 0 -1px 0 rgba(14,36,71,0.05) inset, 0 2px 5px -2px rgba(14,36,71,0.10), 0 12px 24px -16px rgba(14,36,71,0.30);
     --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     --frame-w:412px;
@@ -110,7 +120,7 @@
   .overview-col .l{font-size:11.5px;color:var(--ink-soft);text-align:center;line-height:1.25;}
 
   .stat-grid-v2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;}
-  .stat-card-v2{border:none;border-radius:16px;padding:14px;cursor:pointer;box-shadow:0 3px 10px -6px rgba(14,36,71,0.18);transition:transform .08s ease;}
+  .stat-card-v2{border:none;border-radius:16px;padding:14px;cursor:pointer;box-shadow:var(--tile-shadow);transition:transform .08s ease, box-shadow .15s ease;}
   .stat-card-v2:active{transform:scale(0.96);}
   .stat-card-v2:nth-child(4n+1){background:linear-gradient(150deg, #F1FBF5, #C9EBD9);}
   .stat-card-v2:nth-child(4n+2){background:linear-gradient(150deg, #E6E2A8, #B9C77E);}
@@ -129,7 +139,7 @@
   .qa-head span{font-size:11px;color:var(--ink-soft);}
   .qa-grid{display:flex;flex-wrap:nowrap;justify-content:space-evenly;align-items:flex-start;gap:8px;}
   .qa-grid+.qa-grid{margin-top:10px;}
-  .qa-tile{flex:0 1 auto;min-width:60px;max-width:78px;background:rgba(255,255,255,0.55);border:1px solid rgba(255,255,255,0.7);border-radius:14px;padding:10px 4px;text-align:center;cursor:pointer;transition:transform .08s ease;}
+  .qa-tile{flex:0 1 auto;min-width:60px;max-width:78px;background:rgba(255,255,255,0.55);border:1px solid rgba(255,255,255,0.7);border-radius:14px;padding:10px 4px;text-align:center;cursor:pointer;transition:transform .08s ease;box-shadow:0 4px 10px -6px rgba(0,0,0,0.30);}
   .qa-tile:active{transform:scale(0.94);}
   .qa-tile .icon-badge{margin:0 auto 6px;background:rgba(255,255,255,0.85);width:38px;height:38px;font-size:18px;}
   .qa-tile .title{font-size:12px;font-weight:800;color:var(--ink);}
@@ -320,12 +330,12 @@
   .content{flex:1;padding:14px 14px calc(18px + var(--navbar-h) + var(--sab));width:100%;overflow-y:auto;-webkit-overflow-scrolling:touch;scroll-behavior:smooth;}
   .card, .order-tile, .alert-tile, .stat{transition:box-shadow .15s ease, transform .1s ease;}
 
-  .card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:12px;box-shadow:0 1px 3px rgba(14,36,71,0.04), 0 6px 16px -12px rgba(14,36,71,0.15);}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:12px;box-shadow:var(--tile-shadow);}
   .card h2{font-size:16px;margin:0 0 4px;letter-spacing:-0.01em;color:var(--ink);}
   .card .desc{font-size:13px;color:var(--ink-soft);margin:0 0 12px;line-height:1.45;}
 
   .grid-stats{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:12px;}
-  .stat{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:13px 14px;}
+  .stat{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:13px 14px;box-shadow:var(--tile-shadow);}
   .stat .n{font-family:var(--font-mono);font-size:23px;font-weight:800;color:var(--primary-dark);}
   .stat .l{font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.03em;margin-top:3px;line-height:1.3;}
 
@@ -346,7 +356,7 @@
   .search-wrap::before{content:"🔎";position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:12px;opacity:0.55;}
 
   /* ---------- Order tiles ---------- */
-  .order-tile{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:13px 14px;margin-bottom:10px;box-shadow:0 1px 2px rgba(14,36,71,0.03);}
+  .order-tile{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:13px 14px;margin-bottom:10px;box-shadow:var(--tile-shadow);}
   .order-tile.tile-ready{background:#E6F5EE;border-color:#B8E3CC;}
   .order-tile.tile-processing{background:#FEF6DC;border-color:#F0DDA0;}
   .order-tile.tile-packed{background:#F1EBFB;border-color:#D7C7F2;}
@@ -361,7 +371,7 @@
   /* ---------- Alert tiles ---------- */
   .alert-tile-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
   .alert-tile-grid.stacked{grid-template-columns:1fr;}
-  .alert-tile{border-radius:13px;padding:11px 12px;border:1.5px solid #E8938B;background:#FCE2DF;}
+  .alert-tile{border-radius:13px;padding:11px 12px;border:1.5px solid #E8938B;background:#FCE2DF;box-shadow:var(--tile-shadow);}
   .alert-tile.mild{border-color:#E8B84B;background:#FCEBC3;}
   .alert-tile.recommended{border-color:#8FB4E8;background:#E4EEFB;}
   .alert-tile .at-label{font-weight:800;font-size:13px;margin-bottom:2px;color:var(--ink);}
@@ -724,7 +734,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-09-01-firestore-preview20"; // ROUND 13.1 (2026-09-01), 2 explicit user questions: (1) "stock photo me to LR No ki zrurt nhi h na" -- a Stock Photo (loose-goods pickup) has no real Lorry Receipt document behind it, so the LR Number field is now hidden (and never saved) whenever Stock Photo is the selected type, in both the standalone Upload Photo modal and the inline dispatch-flow upload -- see wirePhotoTypeToggle's new onChange callback, and the "LR Photo (optional)" file-input label in the dispatch modal was also generalized to "Photo (optional)" since it can now be either kind. (2) "ye chiz wha b to update hogi na jaha order track hota hai" -- the customer-facing tracking page (order-form-firestore.html) was NOT actually type-aware before this: it always said "LR" (View/Download LR, LR Number, alt="LR photo") no matter which type staff picked -- now it reads order.photoType and shows "Stock Photo" wording for a stock photo. ROUND 13 (2026-08-31), 2 explicit user requests: (1) "Manager wala Checkpoint khud hi ban jaye, 30 Days ke Expenses rakho, usse pehle ke, usse pehle ke apne aap hi previous balance ke naam se save karte raho" -- the Expenses page now only ever shows the last 30 days (computeVisibleExpenses); everything before that is summarized live into an automatic "📌 Previous Balance" line (previousBalanceRowHtml) needing zero manual action -- safe because S.expenseBalances is a durable running total, never re-derived from history (see expenseBalanceFor's comment). The old monthly reminder banner (nagging admin to manually set a checkpoint) is gone; the manual "📌 Opening Balance" button itself stays, for genuine corrections. Entries older than 90 days are now deleted automatically server-side (functions/index.js's new cleanupOldExpenses scheduled function) -- the Firestore fetch window narrowed from 365 to 90 days to match. (2) "Order finalization me LR ya Stock photo 2 options rakho ... Ye Photo Automatically deleted hojaye after 30 days" -- LR photo upload (openUploadLRModal + the dispatch flow) now offers a Stock Photo option too (for loose-goods pickups needing a verification photo), and BOTH new uploads go through Firebase Storage (fsUploadOrderPhoto/fsDeleteOrderPhoto) instead of Google Drive -- an explicit, informed reversal of Round 12's Drive-only choice, made specifically because Storage can auto-delete a photo 30 days after upload via a plain bucket lifecycle rule (see storage.rules + lifecycle.json), no scheduled code needed. Legacy (pre-Round-13) Drive-based photos are unaffected and still deletable via apiDeleteLR. Also this round: the Sheet backup scheme (order-ops-backend.gs's dailyBackup) changed from one file per WEEK (refreshed in place daily, so never more than one real snapshot per week) kept for 8 weeks, to one real, distinct snapshot per DAY kept for 7 days (BACKUP_RETENTION_DAYS) -- explicit user request ("7 din ka backup rakho bas, usse pehle ka backup auto delete ho jana chahiye"). ROUND 12 (2026-08-31), 3 explicit user requests: (1) LR photo "Upload Failed" every single time -- root cause was that apiUploadLR/apiDeleteLR sent this app's OWN unrelated single-device-login token (S.authToken) as `sessionToken`, which order-ops-backend.gs's requireSession_ could never recognize (it only knows tokens from that script's own OLD Sheets-based login action, which this app never calls anymore) -- every upload/delete rejected with session_required, no matter what. FIXED WITHOUT changing storage backend (explicit user request: keep the same Google Drive space, not Firebase Storage) -- apiUploadLR/apiDeleteLR now also send a real, live Firebase Auth ID token, and order-ops-backend.gs verifies THAT instead (verifyFirebaseIdToken_, via Google's Identity Toolkit REST API) -- see the Round 12 deploy guide, this needs a fresh Apps Script deployment (order-ops-backend.gs changed for the first time this whole engagement -- surgically, only the uploadLR/deleteLR auth check, nothing else). (2) A photo over 2MB is now actually guaranteed compressed under that cap (resizeImageFileMaxBytes, byte-size-checked via dataUrlByteLength, not just pixel-dimension-capped like before) before every LR upload, independent of storage backend. (3) Orders entered directly in OMS ("+ New order" / chat "Quick order") are now created ALREADY ACCEPTED (status:'processing', stock reserved immediately via the new shared reserveStockForAcceptedOrder helper) instead of sitting in the pending/"New" queue needing a separate Accept click -- only orders from the public customer-facing order form (buildOrderDocFromPayload, untouched, still status:'pending') still need that Approval step. ROUND 11 (2026-08-31), new "Opening Balance" expense checkpoint feature -- admin (for ANY manager) can now set the manager's running expense/settlement balance to a known-correct absolute figure via a dedicated 📌 Opening Balance entry (Expenses tab, admin view), instead of the balance being trusted to stay correct purely from every historical add/subtract. All OLD expense/settlement entries are untouched -- only the derived running total is corrected going forward. The new entry type stores BOTH the signed delta actually applied (so the existing balance math needs no changes at all -- see applyExpenseBalanceDelta's comment) AND the plain target figure (so every screen can always show "Balance set to ₹X", never a confusing raw delta) -- see expenseEntryAmountText/expenseEntryBadgeHtml, the one shared place all of Expenses/Daily Work/print/monthly-report/Home-activity read from, so the totaling stays consistent everywhere at once. Opening Balance entries are excluded from "total expense" sums (they're a correction, not spending), support create+delete only (no edit -- delete and re-add instead, to limit risk), and a new in-app banner (no push notification) on the admin Expenses page flags any manager still missing this month's checkpoint. ROUND 10 (2026-08-31), "sab ek sath shuru karo, saare bugs thik karo" full fix pass -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md's Round 10 section for the complete list. Highlights: messaging seen/read-write permissions now work for every role, not just admin (the specific bug reported this round -- see firestore.rules' new dedicated chatMessages block); the canEntry() default-fallback bug that silently permission-denied every entry-gated write for any newly-added/uncustomized role; the stock-ledger clobber race (fsSetStockField now does a scoped dot-path update, not a whole-field overwrite); FIFO-covered orders no longer stuck (orderIsFullyStocked/autoAdvanceOrders); cancelled order items no longer double-deducted on edit; concurrent expense edits no longer double-count balances (fsEditExpenseAtomic); offboarded staff Auth accounts + live sessions now actually get revoked (deleteStaffUser/forceLogoutStaffUser/resetStaffPassword); Retail Sale/Sample booked-entry lock + double-submit guard; double-submit guards on the dispatch, attendance, and post-login "Tap to Continue" buttons; a magnitude/typo cap on Bulk stock edit (matching the single-item Adjust modal); and the shared-tablet push-notification bug where a second person logging in on the same device/session stopped receiving push until a full page reload. (Round 9: Enter-to-send. Round 8: the login-skip/duplicate-notification/stray-welcome race fix. Rounds 1-7: session-token adoption, FIFO stock allocation, Daily Work resync, System Health panel removal, modal animations, live-listener reconnect, the real bar-bar-password root cause, chat ordering/read-receipts, admin-only password reset, phone back button, the first (incomplete) login-race fix -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md for full history.)
+const APP_BUILD = "2026-09-01-firestore-preview22"; // ROUND 14 (2026-09-01), user-dictated backlog implemented together, ALL 6 ITEMS NOW COMPLETE: (1) no duplicate users -- Username is now readonly when editing an EXISTING user (the doc id/Auth uid/custom claim all stay pinned to the original username forever, so allowing it to be edited only broke that person's login while opening a duplicate-username loophole; NEW user creation was already fully protected -- client check + createStaffUser's server-side dupSnap query + Firebase Auth's own uid-uniqueness constraint). (2) Attendance self-marking now only works inside an admin-configurable window (preset 10am-12pm, non-admin only) -- new "⏰ Marking window" button in the Attendance section. (3) Admin's attendance view (renderAttendanceMap) now shows a Time column alongside Location for self-marked entries. (4) BUG FIX: the "Data Log" tab existed in name only since before this rewrite even started (nav label/icon/Permission-Manager toggle all declared it, but neither renderView() nor bindView() had a 'log' case) -- implemented for the first time as a read-only 7-day activity+login audit trail. (5) Every tile/card class (.card/.stat/.order-tile/.alert-tile/.stat-card-v2/.qa-tile) now shares one consistent subtle 3D-look + soft-shadow treatment (--tile-shadow custom property) instead of each carrying its own one-off shadow. (6) FINISHED THIS BUILD: the general Daily Work entry window (preset 10:30am-8pm, admin-editable via "⏰ Entry window" in Daily Work) is now actually enforced -- withinEntryWindow() (already wired into every non-admin new-entry submit: Purchase, Filling, Packaging, Expenses, Retail Sale/Samples -- this scope pre-dates this round and was left unchanged, it's exactly what "Daily Work" already aggregates) previously had its own HARDCODED 10:30-20:00 literal, entirely disconnected from the new admin setting -- it now reads getAttendanceSettings().entryStart/entryEnd so changing the admin control actually takes effect; the alert/button text is dynamic too, not a stale hardcoded time string. Also caught and fixed during this round's own testing: a genuine fmtHHMM naming collision (a pre-existing Domino Printing duration formatter and this round's new time-of-day display helper briefly shared the same function name, which would have silently broken the attendance-window message with "NaN:NaN") -- renamed the new one to fmtHHMMOfDay. ROUND 13.1 (2026-09-01), 2 explicit user questions: (1) "stock photo me to LR No ki zrurt nhi h na" -- a Stock Photo (loose-goods pickup) has no real Lorry Receipt document behind it, so the LR Number field is now hidden (and never saved) whenever Stock Photo is the selected type, in both the standalone Upload Photo modal and the inline dispatch-flow upload -- see wirePhotoTypeToggle's new onChange callback, and the "LR Photo (optional)" file-input label in the dispatch modal was also generalized to "Photo (optional)" since it can now be either kind. (2) "ye chiz wha b to update hogi na jaha order track hota hai" -- the customer-facing tracking page (order-form-firestore.html) was NOT actually type-aware before this: it always said "LR" (View/Download LR, LR Number, alt="LR photo") no matter which type staff picked -- now it reads order.photoType and shows "Stock Photo" wording for a stock photo. ROUND 13 (2026-08-31), 2 explicit user requests: (1) "Manager wala Checkpoint khud hi ban jaye, 30 Days ke Expenses rakho, usse pehle ke, usse pehle ke apne aap hi previous balance ke naam se save karte raho" -- the Expenses page now only ever shows the last 30 days (computeVisibleExpenses); everything before that is summarized live into an automatic "📌 Previous Balance" line (previousBalanceRowHtml) needing zero manual action -- safe because S.expenseBalances is a durable running total, never re-derived from history (see expenseBalanceFor's comment). The old monthly reminder banner (nagging admin to manually set a checkpoint) is gone; the manual "📌 Opening Balance" button itself stays, for genuine corrections. Entries older than 90 days are now deleted automatically server-side (functions/index.js's new cleanupOldExpenses scheduled function) -- the Firestore fetch window narrowed from 365 to 90 days to match. (2) "Order finalization me LR ya Stock photo 2 options rakho ... Ye Photo Automatically deleted hojaye after 30 days" -- LR photo upload (openUploadLRModal + the dispatch flow) now offers a Stock Photo option too (for loose-goods pickups needing a verification photo), and BOTH new uploads go through Firebase Storage (fsUploadOrderPhoto/fsDeleteOrderPhoto) instead of Google Drive -- an explicit, informed reversal of Round 12's Drive-only choice, made specifically because Storage can auto-delete a photo 30 days after upload via a plain bucket lifecycle rule (see storage.rules + lifecycle.json), no scheduled code needed. Legacy (pre-Round-13) Drive-based photos are unaffected and still deletable via apiDeleteLR. Also this round: the Sheet backup scheme (order-ops-backend.gs's dailyBackup) changed from one file per WEEK (refreshed in place daily, so never more than one real snapshot per week) kept for 8 weeks, to one real, distinct snapshot per DAY kept for 7 days (BACKUP_RETENTION_DAYS) -- explicit user request ("7 din ka backup rakho bas, usse pehle ka backup auto delete ho jana chahiye"). ROUND 12 (2026-08-31), 3 explicit user requests: (1) LR photo "Upload Failed" every single time -- root cause was that apiUploadLR/apiDeleteLR sent this app's OWN unrelated single-device-login token (S.authToken) as `sessionToken`, which order-ops-backend.gs's requireSession_ could never recognize (it only knows tokens from that script's own OLD Sheets-based login action, which this app never calls anymore) -- every upload/delete rejected with session_required, no matter what. FIXED WITHOUT changing storage backend (explicit user request: keep the same Google Drive space, not Firebase Storage) -- apiUploadLR/apiDeleteLR now also send a real, live Firebase Auth ID token, and order-ops-backend.gs verifies THAT instead (verifyFirebaseIdToken_, via Google's Identity Toolkit REST API) -- see the Round 12 deploy guide, this needs a fresh Apps Script deployment (order-ops-backend.gs changed for the first time this whole engagement -- surgically, only the uploadLR/deleteLR auth check, nothing else). (2) A photo over 2MB is now actually guaranteed compressed under that cap (resizeImageFileMaxBytes, byte-size-checked via dataUrlByteLength, not just pixel-dimension-capped like before) before every LR upload, independent of storage backend. (3) Orders entered directly in OMS ("+ New order" / chat "Quick order") are now created ALREADY ACCEPTED (status:'processing', stock reserved immediately via the new shared reserveStockForAcceptedOrder helper) instead of sitting in the pending/"New" queue needing a separate Accept click -- only orders from the public customer-facing order form (buildOrderDocFromPayload, untouched, still status:'pending') still need that Approval step. ROUND 11 (2026-08-31), new "Opening Balance" expense checkpoint feature -- admin (for ANY manager) can now set the manager's running expense/settlement balance to a known-correct absolute figure via a dedicated 📌 Opening Balance entry (Expenses tab, admin view), instead of the balance being trusted to stay correct purely from every historical add/subtract. All OLD expense/settlement entries are untouched -- only the derived running total is corrected going forward. The new entry type stores BOTH the signed delta actually applied (so the existing balance math needs no changes at all -- see applyExpenseBalanceDelta's comment) AND the plain target figure (so every screen can always show "Balance set to ₹X", never a confusing raw delta) -- see expenseEntryAmountText/expenseEntryBadgeHtml, the one shared place all of Expenses/Daily Work/print/monthly-report/Home-activity read from, so the totaling stays consistent everywhere at once. Opening Balance entries are excluded from "total expense" sums (they're a correction, not spending), support create+delete only (no edit -- delete and re-add instead, to limit risk), and a new in-app banner (no push notification) on the admin Expenses page flags any manager still missing this month's checkpoint. ROUND 10 (2026-08-31), "sab ek sath shuru karo, saare bugs thik karo" full fix pass -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md's Round 10 section for the complete list. Highlights: messaging seen/read-write permissions now work for every role, not just admin (the specific bug reported this round -- see firestore.rules' new dedicated chatMessages block); the canEntry() default-fallback bug that silently permission-denied every entry-gated write for any newly-added/uncustomized role; the stock-ledger clobber race (fsSetStockField now does a scoped dot-path update, not a whole-field overwrite); FIFO-covered orders no longer stuck (orderIsFullyStocked/autoAdvanceOrders); cancelled order items no longer double-deducted on edit; concurrent expense edits no longer double-count balances (fsEditExpenseAtomic); offboarded staff Auth accounts + live sessions now actually get revoked (deleteStaffUser/forceLogoutStaffUser/resetStaffPassword); Retail Sale/Sample booked-entry lock + double-submit guard; double-submit guards on the dispatch, attendance, and post-login "Tap to Continue" buttons; a magnitude/typo cap on Bulk stock edit (matching the single-item Adjust modal); and the shared-tablet push-notification bug where a second person logging in on the same device/session stopped receiving push until a full page reload. (Round 9: Enter-to-send. Round 8: the login-skip/duplicate-notification/stray-welcome race fix. Rounds 1-7: session-token adoption, FIFO stock allocation, Daily Work resync, System Health panel removal, modal animations, live-listener reconnect, the real bar-bar-password root cause, chat ordering/read-receipts, admin-only password reset, phone back button, the first (incomplete) login-race fix -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md for full history.)
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -989,7 +999,7 @@ const S = {
   loadFailed:false,
   users:[], orders:[], customers:[], attendance:[], tasks:[], loginLog:[],
   rawMaterial:{}, filledStock:{}, readyStock:{}, expenses:[], activityLog:[], stockTasks:[], dominoPrints:[], chatMessages:[], retailSales:[], trackingViewLogs:[], siteVisitLogs:[], stockMovementLog:[],
-  lowStock:{raw:{}, filled:{}, ready:{}}, watchStock:{raw:{}, filled:{}, ready:{}}, rolePermissions:{}, customRoles:[], catalogItems:[], transports:[], dailyRecordMarks:{}, dailyWorkDate:null, batchReferences:{}, holidays:{}, activeSessions:{}, notificationPrefs:{},
+  lowStock:{raw:{}, filled:{}, ready:{}}, watchStock:{raw:{}, filled:{}, ready:{}}, rolePermissions:{}, customRoles:[], catalogItems:[], transports:[], dailyRecordMarks:{}, dailyWorkDate:null, batchReferences:{}, holidays:{}, activeSessions:{}, notificationPrefs:{}, attendanceSettings:{},
   // RACE FIX (2026-08-29, full security audit -- stock ledger clobber): a
   // snapshot of rawMaterial/filledStock/readyStock/lowStock/watchStock as
   // they stood at the LAST live server update this device actually saw --
@@ -1150,11 +1160,14 @@ function canDoEntry(role, key){
   return !!(DEFAULT_ENTRY_PERMS[role] && DEFAULT_ENTRY_PERMS[role][key]);
 }
 // Non-admin staff may only record a NEW entry (purchase / filling /
-// packaging / expense / retail sale) on a working day, between 10:30 AM
-// and 8:00 PM -- outside that window, or on a Sunday/admin-marked holiday
-// (isWorkingDay, defined further down near Attendance), the shop floor
-// shouldn't be logging new work at all. Admins are exempt (they may need
-// to backfill/correct data anytime, e.g. entering a purchase recorded on
+// packaging / expense / retail sale) on a working day, inside the
+// admin-configurable Daily Work entry window (attendanceSettings.entryStart
+// / entryEnd -- see getAttendanceSettings, defaults 10:30 AM-8:00 PM,
+// editable via the "⏰ Entry window" button in Daily Work, ROUND 14 item 6)
+// -- outside that window, or on a Sunday/admin-marked holiday (isWorkingDay,
+// defined further down near Attendance), the shop floor shouldn't be
+// logging new work at all. Admins are exempt (they may need to
+// backfill/correct data anytime, e.g. entering a purchase recorded on
 // paper the previous night). This only gates CREATING something new --
 // editing/deleting an already-recorded entry is governed separately by
 // canEditDailyEntry (own entry, not yet booked).
@@ -1162,12 +1175,13 @@ function withinEntryWindow(){
   if(S.currentUser.role==='admin') return true;
   const now = new Date();
   if(!isWorkingDay(localDateKey(now.getTime()))) return false;
-  const mins = now.getHours()*60 + now.getMinutes();
-  return mins >= (10*60+30) && mins <= (20*60);
+  const settings = getAttendanceSettings();
+  return isWithinTimeWindow(settings.entryStart, settings.entryEnd, now);
 }
 function blockIfOutsideEntryWindow(){
   if(withinEntryWindow()) return false;
-  showAlert('Entries can only be recorded on working days, between 10:30 AM and 8:00 PM.');
+  const settings = getAttendanceSettings();
+  showAlert(`Entries can only be recorded on working days, between ${fmtHHMMOfDay(settings.entryStart)} and ${fmtHHMMOfDay(settings.entryEnd)}.`);
   return true;
 }
 
@@ -1265,6 +1279,40 @@ function fmtDateOnly(ts){ return new Date(ts).toLocaleDateString(undefined,{mont
 // hour12:true makes every clock-time in the app consistently 12-hour AM/PM
 // regardless of whose phone it's on.
 function fmtTime(ts){ return new Date(ts).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit',hour12:true}); }
+// Round 14 (user request) -- admin-configurable time windows: one for
+// self-marking attendance (non-admin only, set from the Attendance
+// section), one for general Daily Work entries (set from the Daily Work
+// section) -- two independent windows sharing one settings doc
+// (S.attendanceSettings). getAttendanceSettings() always returns a
+// complete object, filling in the requested preset defaults for whichever
+// half admin hasn't customized yet.
+const ATTENDANCE_SETTINGS_DEFAULTS = { selfMarkStart:'10:00', selfMarkEnd:'12:00', entryStart:'10:30', entryEnd:'20:00' };
+function getAttendanceSettings(){
+  return Object.assign({}, ATTENDANCE_SETTINGS_DEFAULTS, S.attendanceSettings||{});
+}
+function parseHHMMToMinutes(hhmm){
+  const parts = String(hhmm||'0:0').split(':');
+  const h = parseInt(parts[0],10)||0, m = parseInt(parts[1],10)||0;
+  return h*60+m;
+}
+// NOTE: named fmtHHMMOfDay (not fmtHHMM) -- a DIFFERENT fmtHHMM already
+// exists further down (Domino Printing section) that formats a raw MINUTE
+// COUNT as a duration ("3:45"), not a "HH:MM" time-of-day string as
+// "10:30 AM". Two same-named top-level function declarations would silently
+// collide (the later one in the file wins for every call site, hoisting
+// notwithstanding) -- caught and avoided during Round 14 testing.
+function fmtHHMMOfDay(hhmm){
+  const mins = parseHHMMToMinutes(hhmm);
+  const d = new Date(); d.setHours(Math.floor(mins/60), mins%60, 0, 0);
+  return fmtTime(d.getTime());
+}
+// Same-day window only -- both presets (10am-12pm, 10:30am-8pm) start and
+// end within one calendar day, so no overnight-wraparound handling is needed.
+function isWithinTimeWindow(startHHMM, endHHMM, date){
+  const d = date || new Date();
+  const nowMin = d.getHours()*60 + d.getMinutes();
+  return nowMin >= parseHHMMToMinutes(startHHMM) && nowMin <= parseHHMMToMinutes(endHHMM);
+}
 function dateHeading(ts){
   const d = new Date(ts); const today = new Date(); const yest = new Date(Date.now()-86400000);
   const sameDay = (a,b)=> a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
@@ -1819,6 +1867,9 @@ function safeSet(oldKey, value){
   }
   if(key==='notificationPrefs'){
     return fsDb.collection('notificationPrefs').doc('current').set(value||{});
+  }
+  if(key==='attendanceSettings'){
+    return fsDb.collection('attendanceSettings').doc('current').set(value||{});
   }
   if(FS_FANOUT_OBJECT_KEYS.indexOf(key)!==-1){
     const obj = value||{};
@@ -2766,6 +2817,13 @@ function attachFirestoreListeners(){
     };
   });
   fsBindDoc('notificationPrefs','current', data=>{ S.notificationPrefs = data || {}; });
+  // Round 14 (user request): admin-configurable time windows -- one for
+  // self-marking attendance (Attendance section), one for general Daily
+  // Work entries (Daily Work section). Both live in the same singleton
+  // doc (getAttendanceSettings() below fills in the preset defaults for
+  // whichever half hasn't been customized yet), same fsBindDoc pattern as
+  // notificationPrefs just above.
+  fsBindDoc('attendanceSettings','current', data=>{ S.attendanceSettings = data || {}; });
 
   fsBindStaticCollection('rolePermissions', obj=>{ S.rolePermissions = obj; applyRolePermissionsToROLES(); });
   fsBindStaticCollection('holidays', obj=>{ S.holidays = obj; });
@@ -3849,7 +3907,7 @@ const BACKUP_DATA_KEYS = [
   'chatMessages','retailSales','trackingViewLogs','siteVisitLogs','stockMovementLog',
   'rawMaterial','filledStock','readyStock','lowStock','watchStock',
   'users','customers','tasks','stockTasks','catalogItems','customRoles','transports',
-  'rolePermissions','dailyRecordMarks','batchReferences','holidays','expenseBalances','notificationPrefs',
+  'rolePermissions','dailyRecordMarks','batchReferences','holidays','expenseBalances','notificationPrefs','attendanceSettings',
 ];
 async function downloadBackupNow(){
   showToast('Preparing backup…');
@@ -5415,6 +5473,7 @@ function renderView(){
     case 'expenses': return renderExpenses();
     case 'domino': return renderDomino();
     case 'dailywork': return renderDailyWork();
+    case 'log': return renderLog();
     default: return '';
   }
 }
@@ -5434,6 +5493,7 @@ function bindView(){
     case 'expenses': return bindExpenses();
     case 'domino': return bindDomino();
     case 'dailywork': return bindDailyWork();
+    case 'log': return bindLog();
   }
 }
 
@@ -5606,6 +5666,7 @@ function renderDailyWork(){
       </div>
     </div>` : ''}
     <button type="button" class="btn btn-outline" id="dwPrintBtn" style="width:100%;margin-bottom:6px;">🖨️ Print this day</button>
+    ${isAdmin ? `<button type="button" class="btn btn-outline" id="dwEntryWindowBtn" style="width:100%;margin-bottom:6px;">⏰ Entry window (${fmtHHMMOfDay(getAttendanceSettings().entryStart)}–${fmtHHMMOfDay(getAttendanceSettings().entryEnd)})</button>` : ''}
     ${totalCount>0 ? `<div style="background:${bookedCount===totalCount?'var(--success-bg)':'var(--bg)'};border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin:10px 0;font-size:12.5px;font-weight:700;">${bookedCount===totalCount?'✅':'📋'} ${bookedCount} of ${totalCount} entries booked</div>` : ''}
     ${(isAdmin && totalCount>0 && bookedCount<totalCount) ? `<button type="button" class="btn btn-outline" id="dwBookAllBtn" style="width:100%;">✅ Book all remaining (${totalCount-bookedCount})</button>` : ''}
   </div>
@@ -5717,9 +5778,18 @@ function printDailyWork(){
   printArea.innerHTML = html;
   window.print();
 }
+function openEntryWindowModal(){
+  openTimeWindowModal(
+    '⏰ Daily Work entry window',
+    'Non-admin staff can only add entries inside this window, on a working day. Admin is never restricted by this.',
+    'entryStart', 'entryEnd', 'Entry window'
+  );
+}
 function bindDailyWork(){
   const printBtn = document.getElementById('dwPrintBtn');
   if(printBtn) printBtn.addEventListener('click', printDailyWork);
+  const entryWindowBtn = document.getElementById('dwEntryWindowBtn');
+  if(entryWindowBtn) entryWindowBtn.addEventListener('click', openEntryWindowModal);
   const dateSel = document.getElementById('dwDateSel');
   if(dateSel) dateSel.addEventListener('change', ()=>{ S.dailyWorkDate = dateSel.value; render(); });
   document.querySelectorAll('[data-goto-dw-date]').forEach(b=>b.addEventListener('click', ()=>{
@@ -8221,7 +8291,8 @@ function openUserModal(id){
         <div class="mono" style="margin-top:6px;">Auto-compressed to a small avatar for saving.</div>
       </div>
       <div class="field"><label>Full name</label><input id="uName" value="${existing?esc(existing.name):''}" required /></div>
-      <div class="field"><label>Username</label><input id="uUser" value="${existing?esc(existing.username):''}" required /></div>
+      <div class="field"><label>Username</label><input id="uUser" value="${existing?esc(existing.username):''}" required ${existing?'readonly':''} />
+        ${existing?`<div class="mono" style="margin-top:4px;">Username can\'t be changed once created — it\'s permanently tied to this person\'s login (Firebase Auth account + doc id), so editing it here would only change the displayed name without actually renaming the login, silently breaking their sign-in. Delete and re-add if a genuine rename is needed.</div>`:''}</div>
       ${existing
         ? `<div class="field"><label>Password</label><div class="mono" style="margin-top:4px;">A fresh temporary password will be generated and shown to you if you use the "Reset password" button below — hand it to them privately. Only an admin can reset a password; staff can't change their own.</div>
              <button type="button" class="btn btn-outline btn-sm" id="uResetPasswordBtn" style="margin-top:6px;">Reset password</button></div>`
@@ -9785,6 +9856,14 @@ function renderCheckin(){
   const mine = S.attendance.filter(a=>a.username===S.currentUser.username).sort((a,b)=>b.timestamp-a.timestamp);
   const isFileProtocol = location.protocol === 'file:';
   const insecure = typeof window.isSecureContext !== 'undefined' && !window.isSecureContext;
+  // Round 14 (user request): self-marking is only allowed inside an
+  // admin-configurable window (preset 10am-12pm), on a working day. Admin
+  // itself is never subject to this -- and structurally can't even reach
+  // this tab today (ROLES.admin has no 'checkin' entry), but the role
+  // check stays here too as a defensive backstop in case a future
+  // Permission Manager customization ever grants it the tab.
+  const attSettings = getAttendanceSettings();
+  const outsideMarkWindow = S.currentUser.role!=='admin' && !isWithinTimeWindow(attSettings.selfMarkStart, attSettings.selfMarkEnd);
   return `
   ${isFileProtocol ? `<div class="alert-banner" style="margin-bottom:12px;"><b>⚠ Location can never work this way</b>This file was opened directly from your phone's storage (a <b>file://</b> link). Browsers permanently block GPS access for files opened like this — no setting or fix inside the app can change that. It has to be opened as a normal website link (<b>https://…</b>) instead. Ask whoever set this up to host it online (e.g. free hosting like GitHub Pages/Netlify) and open that link instead of the downloaded file.</div>`
     : insecure ? `<div class="alert-banner" style="margin-bottom:12px;"><b>⚠ Location won't work here</b>This page needs to be opened over <b>https://</b> for GPS to work. Ask whoever hosts this app to switch it to HTTPS.</div>` : ''}
@@ -9796,6 +9875,9 @@ function renderCheckin(){
     ` : already ? `
       <div style="font-size:20px;font-weight:800;color:var(--success);margin-bottom:4px;">✅ Marked present today</div>
       <p class="desc" style="margin:6px 0 0;">You can mark attendance again tomorrow.</p>
+    ` : outsideMarkWindow ? `
+      <div style="font-size:18px;font-weight:800;color:var(--ink-soft);margin-bottom:4px;">⏰ Outside marking window</div>
+      <p class="desc" style="margin:6px 0 0;">Attendance can only be self-marked between ${fmtHHMMOfDay(attSettings.selfMarkStart)} and ${fmtHHMMOfDay(attSettings.selfMarkEnd)}. Ask an admin to mark it for you if you missed this window.</p>
     ` : `
       ${S.currentUser.role==='sales' ? `<div class="field" style="text-align:left;margin-bottom:12px;"><label>Field Location — where are you going for marketing today?</label><input id="fieldLocationInput" placeholder="e.g. Karol Bagh market, Chandni Chowk" required /></div>` : ''}
       <button class="btn btn-primary" id="checkBtn" style="padding:14px 30px;font-size:15px;width:auto;" ${isFileProtocol?'disabled':''}>📍 Mark present</button>
@@ -9832,7 +9914,7 @@ function recordPresent(lat, lng, note, fieldLocation){
 }
 function bindCheckin(){
   const btn = document.getElementById('checkBtn');
-  if(!btn) return; // already marked present today — nothing to bind
+  if(!btn) return; // already marked present today, holiday/Sunday, or outside the self-marking window (Round 14) -- nothing to bind in any of those cases
   const attemptGetPosition = (opts)=> new Promise((resolve,reject)=>{
     navigator.geolocation.getCurrentPosition(resolve, reject, opts);
   });
@@ -9905,6 +9987,49 @@ function bindCheckin(){
   });
 }
 
+/* ============================= DATA LOG ============================= */
+// BUG FIX (Round 14, user report "logs show nhi ho rhe" -- logs aren't
+// showing): the "Data Log" module has existed in name only since before
+// this Firestore rewrite even started -- MODULE_ORDER/MODULE_LABEL/
+// MODULE_ICON all declare it, and it's a real toggle in the Permission
+// Manager's checklist (CHECKLIST_MODULES, key:'log'), so an admin CAN
+// grant a role access to it -- but neither renderView() nor bindView()
+// ever had a 'log' case, so opening it just rendered a blank page (this
+// exact gap was inherited unchanged from the old pre-Firestore
+// order-ops.html; not something this rewrite introduced). Implemented
+// here for the first time: a read-only audit trail over the two entities
+// that actually carry the 7-day retention the user asked about --
+// S.activityLog (purchase/filling/packaging) and S.loginLog -- both
+// already live-bound to a rolling 7-day Firestore query (see
+// fsBindCollection('activityLog', ...where('at','>=', now-7*DAY_MS)...)
+// and the matching loginLog binding), so nothing extra needs filtering
+// here; whatever's in memory already IS the last 7 days.
+function renderLog(){
+  const activitySections = groupByDate([...S.activityLog].sort((a,b)=>b.at-a.at), e=>e.at);
+  const loginSections = groupByDate([...S.loginLog].sort((a,b)=>b.at-a.at), l=>l.at);
+  return `
+  <div class="card">
+    <h2>🗂️ Activity Log</h2>
+    <p class="desc">Purchase, filling &amp; packaging entries — last 7 days (older entries are deleted automatically).</p>
+    ${activitySections.length===0 ? `<div class="empty">No activity recorded in the last 7 days.</div>` :
+      activitySections.map(sec=>dateGroupHeaderHtml(sec.heading)+`<table><thead><tr><th>Activity</th><th>Qty</th><th>By</th><th>Time</th></tr></thead><tbody>
+      ${sec.items.map(e=>`<tr><td>${esc(activityLabel(e))}</td><td class="mono">${esc(activityAmount(e))}</td><td>${esc(e.by||'—')}</td><td class="mono">${fmtTime(e.at)}</td></tr>`).join('')}
+      </tbody></table>`).join('')}
+  </div>
+  <div class="card">
+    <h2>🔑 Login Log</h2>
+    <p class="desc">Who logged in and when — last 7 days (older entries are deleted automatically).</p>
+    ${loginSections.length===0 ? `<div class="empty">No logins recorded in the last 7 days.</div>` :
+      loginSections.map(sec=>dateGroupHeaderHtml(sec.heading)+`<table><thead><tr><th>Name</th><th>Role</th><th>Time</th></tr></thead><tbody>
+      ${sec.items.map(l=>`<tr><td>${esc(l.name)}</td><td class="mono">${esc(ROLES[l.role]?ROLES[l.role].label:l.role)}</td><td class="mono">${fmtTime(l.at)}</td></tr>`).join('')}
+      </tbody></table>`).join('')}
+  </div>`;
+}
+// Read-only view -- nothing to wire up, but bindView()'s switch still
+// needs a case for it (an unhandled case there was silent, not an error,
+// which is exactly how this bug went unnoticed for so long).
+function bindLog(){}
+
 /* ============================= ATTENDANCE MAP (admin) ============================= */
 function dateKeyToTs(dateKey){
   const [y,m,d] = dateKey.split('-').map(Number);
@@ -9952,6 +10077,7 @@ function renderAttendanceMap(){
         <button type="button" class="btn btn-outline btn-sm" id="markForOthersBtn">📍 Mark for someone</button>
         <button type="button" class="btn btn-outline btn-sm" id="markHolidayBtn">🏖️ Mark holiday</button>
         <button type="button" class="btn btn-outline btn-sm" id="monthlySummaryBtn">📊 Monthly summary</button>
+        <button type="button" class="btn btn-outline btn-sm" id="markingWindowBtn">⏰ Marking window (${fmtHHMMOfDay(getAttendanceSettings().selfMarkStart)}–${fmtHHMMOfDay(getAttendanceSettings().selfMarkEnd)})</button>
       </div>
     </div>
     ${presence.length===0?`<div class="empty">No attendance marked yet.</div>`:
@@ -9959,11 +10085,20 @@ function renderAttendanceMap(){
         if(p.isSunday || p.holidayLabel){
           return dateGroupHeaderHtml(dateHeading(p.dateTs)) + `<div class="empty">🏖️ ${p.holidayLabel?`Holiday — ${esc(p.holidayLabel)}`:'Week Off (Sunday)'}</div>`;
         }
-        return dateGroupHeaderHtml(dateHeading(p.dateTs))+`<table><thead><tr><th>Employee</th><th>Status</th><th>Location</th></tr></thead><tbody>
+        return dateGroupHeaderHtml(dateHeading(p.dateTs))+`<table><thead><tr><th>Employee</th><th>Status</th><th>Time</th><th>Location</th></tr></thead><tbody>
         ${p.entries.map(e=>{
-          let statusCell, locCell;
+          let statusCell, locCell, timeCell;
           if(e.status==='present'){
             statusCell = `<span class="badge badge-approved">Present</span>${e.record.markedByAdmin?' <span class="mono" style="font-size:11px;">(by admin)</span>':''}`;
+            // Round 14 (user request): "admin ko Self marked attendance me
+            // location k sath time of marking b dikhni chahiye" -- only a
+            // genuine self-mark has a real "moment they tapped the button"
+            // worth showing; an admin-entered record's timestamp is just
+            // whatever the admin picked (see openMarkForOthersModal), not
+            // a real marking moment, so it stays '—' here -- same
+            // convention renderCheckin's own "Your attendance history"
+            // table already uses for the employee's own self-view.
+            timeCell = e.record.markedByAdmin ? `<span class="mono">—</span>` : `<span class="mono">${fmtTime(e.record.timestamp)}</span>`;
             // SECURITY FIX (2026-08-21 audit, finding #7) -- see safeGeoCoord's comment.
             const geoLatE = safeGeoCoord(e.record.lat), geoLngE = safeGeoCoord(e.record.lng);
             const hasLoc = geoLatE!=null && geoLngE!=null;
@@ -9972,12 +10107,14 @@ function renderAttendanceMap(){
             locCell = gpsLine + flLine;
           } else if(e.status==='absent'){
             statusCell = `<span class="badge badge-rejected">Absent</span>`;
+            timeCell = `<span class="mono">—</span>`;
             locCell = `<span class="mono">Marked by Admin</span>`;
           } else {
             statusCell = `<span class="mono">—</span>`;
+            timeCell = `<span class="mono">—</span>`;
             locCell = `<span class="mono">—</span>`;
           }
-          return `<tr><td>${esc(e.name)}</td><td>${statusCell}</td><td>${locCell}</td></tr>`;
+          return `<tr><td>${esc(e.name)}</td><td>${statusCell}</td><td>${timeCell}</td><td>${locCell}</td></tr>`;
         }).join('')}
         </tbody></table>`;
       }).join('')}
@@ -10039,6 +10176,8 @@ function bindAttendanceMap(){
   if(holidayBtn) holidayBtn.addEventListener('click', openMarkHolidayModal);
   const summaryBtn = document.getElementById('monthlySummaryBtn');
   if(summaryBtn) summaryBtn.addEventListener('click', openMonthlySummaryModal);
+  const windowBtn = document.getElementById('markingWindowBtn');
+  if(windowBtn) windowBtn.addEventListener('click', openMarkingWindowModal);
   document.querySelectorAll('[data-clear-lockout]').forEach(b=>b.addEventListener('click', async ()=>{
     // WIRED (2026-08-28): was a hard gap -- loginLockouts is server-only in
     // firestore.rules (allow write: if false, for every client, always),
@@ -10127,6 +10266,41 @@ function openMarkHolidayModal(){
     fsSetStaticSubKey('holidays', dateStr, holidayEntry); // FIXED (Task #54) -- was safeSet('app:holidays', S.holidays), which re-writes every date from local state
     closeModal(); render(); showToast('Holiday marked');
   });
+}
+// Round 14 -- shared modal for editing either half of S.attendanceSettings:
+// selfMark* (this Attendance section) or entry* (the Daily Work section,
+// see openEntryWindowModal near renderDailyWork) -- same underlying
+// singleton doc, two independent admin-facing edit surfaces, per the
+// user's explicit request to keep them in their own sections rather than
+// one combined settings screen.
+function openTimeWindowModal(title, desc, startKey, endKey, toastLabel){
+  const settings = getAttendanceSettings();
+  showModal(`
+    <h3>${title}</h3>
+    <p class="desc" style="margin-top:-6px;">${desc}</p>
+    <div class="field"><label>Start time</label><input type="time" id="twStartInput" value="${esc(settings[startKey])}" /></div>
+    <div class="field"><label>End time</label><input type="time" id="twEndInput" value="${esc(settings[endKey])}" /></div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
+      <button type="button" class="btn btn-primary" id="confirmTwBtn">Save</button>
+    </div>
+  `);
+  document.getElementById('confirmTwBtn').addEventListener('click', ()=>{
+    const start = document.getElementById('twStartInput').value;
+    const end = document.getElementById('twEndInput').value;
+    if(!start || !end){ showAlert('Pick both a start and end time.'); return; }
+    if(parseHHMMToMinutes(start) >= parseHHMMToMinutes(end)){ showAlert('Start time must be before end time.'); return; }
+    S.attendanceSettings = Object.assign({}, getAttendanceSettings(), { [startKey]: start, [endKey]: end });
+    safeSet('app:attendanceSettings', S.attendanceSettings);
+    closeModal(); render(); showToast(`${toastLabel} updated`);
+  });
+}
+function openMarkingWindowModal(){
+  openTimeWindowModal(
+    '⏰ Attendance self-marking window',
+    'Non-admin staff can only self-mark their own attendance inside this window, on a working day. Admin is never restricted by this.',
+    'selfMarkStart', 'selfMarkEnd', 'Marking window'
+  );
 }
 function openMonthlySummaryModal(){
   const now = new Date();
