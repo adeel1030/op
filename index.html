@@ -408,6 +408,23 @@
   .alert-tile .at-label{font-weight:800;font-size:13px;margin-bottom:2px;color:var(--ink);}
   .alert-tile .at-detail{font-size:11.5px;color:var(--ink-soft);margin-bottom:8px;}
 
+  /* Round 15 follow-up (2026-09-...): "stock wale me low ka bada tile
+     usme har item ke chote chote tiles, aese hi short ka bada tile uske
+     andr chote chote har item ke tiles" -- alertBanner()'s new nested-tile
+     output (see that function's own comment). .alert-banner-tile is the
+     BIG outer group tile (same tile-card language as .alert-tile: rounded,
+     box-shadow:var(--tile-shadow), tinted background) and .alert-item-tile
+     is the SMALL inner tile per item, sitting inside it on a lighter
+     translucent card so it reads as nested, not just another row. */
+  .alert-banner-tile{border-radius:18px;padding:14px;margin-bottom:12px;box-shadow:var(--tile-shadow);border:1.5px solid #E8938B;background:var(--tile-highlight), #FCE2DF;}
+  .alert-banner-tile.warn-mild{border-color:#E8B84B;background:var(--tile-highlight), #FCEBC3;}
+  .alert-banner-tile .abt-head{font-weight:800;font-size:13.5px;margin-bottom:10px;}
+  .alert-banner-items{display:grid;grid-template-columns:1fr;gap:8px;}
+  .alert-item-tile{background:rgba(255,255,255,0.72);border:1px solid rgba(255,255,255,0.85);border-radius:13px;padding:9px 11px;box-shadow:0 1px 2px rgba(14,36,71,0.06);}
+  .alert-item-tile .ait-label{font-weight:800;font-size:13.5px;margin-bottom:2px;color:var(--ink);}
+  .alert-item-tile .ait-detail{font-size:12px;}
+  .alert-item-tile .ait-team{font-size:11px;opacity:0.75;margin-top:2px;}
+
 
   .badge{display:inline-block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.03em;padding:3px 8px;border-radius:20px;transition:background-color .3s ease, color .3s ease;}
   .badge-pending{background:var(--warning-bg);color:var(--warning);}
@@ -508,6 +525,20 @@
     animation:appAlertPop .18s cubic-bezier(.2,.8,.3,1);
   }
   @keyframes appAlertPop{ from{transform:scale(0.9);opacity:0;} to{transform:scale(1);opacity:1;} }
+  /* Round 15 follow-up (2026-09-...): green success dialog for a genuine
+     new Daily Work entry save (see showSuccessDialog()/celebrateEntrySaved()).
+     pointer-events:none on the overlay -- unlike showAlert's app-alert-
+     overlay, this needs no acknowledgement and must never block a tap on
+     whatever's underneath while it's auto-dismissing. */
+  .success-dialog-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:550;padding:20px;pointer-events:none;}
+  .success-dialog-box{
+    background:linear-gradient(160deg, var(--primary) 0%, var(--primary-dark) 100%);color:#fff;
+    border-radius:18px;padding:24px 28px;max-width:280px;width:100%;text-align:center;
+    box-shadow:0 20px 50px -12px rgba(18,74,46,0.5);animation:successDialogPop .3s cubic-bezier(.3,1.5,.5,1);
+  }
+  @keyframes successDialogPop{from{transform:scale(0.85);opacity:0;}to{transform:scale(1);opacity:1;}}
+  .success-dialog-check{font-size:34px;margin-bottom:8px;animation:successPop .35s cubic-bezier(.3,1.5,.5,1) .05s backwards;}
+  .success-dialog-msg{font-size:14.5px;font-weight:800;}
   .app-alert-icon{font-size:32px;margin-bottom:10px;}
   .app-alert-message{font-size:14px;color:var(--ink);line-height:1.5;margin-bottom:18px;white-space:pre-line;}
   .app-alert-ok-btn{
@@ -527,6 +558,35 @@
   @keyframes overlayFadeOut{from{opacity:1;}to{opacity:0;}}
   .modal-overlay.closing .modal{animation:sheetDown .18s cubic-bezier(.4,0,1,1) forwards;}
   @keyframes sheetDown{from{transform:translateY(0) scale(1);opacity:1;}to{transform:translateY(16px) scale(0.97);opacity:0;}}
+  /* Round 15 follow-up (2026-09-...): "koi bhi entry hum daale to Us page
+     ko ik paper airplane ki trah bana do or fly krwa do, uske baad green
+     color ka dialoge ajaye" -- closeModal('flyaway') (used ONLY by
+     celebrateEntrySaved(), for the 5 genuine new-Daily-Work-entry saves --
+     see that function's own comment) plays this instead of the normal
+     sheetDown shrink. .flyaway overrides .closing's own default rule
+     above via source order + equal specificity (both are two classes on
+     the same element -- CSS resolves a tie by whichever rule comes LAST in
+     the stylesheet, so this must stay after the plain .closing rule).
+     The modal card itself tumbles/shrinks/fades up and to the right; a
+     decorative ✈️ (appended by closeModal(), see .paper-plane-fx below)
+     flies the same general direction on its own layer so the effect reads
+     unambiguously as "paper airplane", not just "the box shrank". */
+  .modal-overlay.closing.flyaway .modal{animation:paperPlaneFly .5s cubic-bezier(.4,0,.2,1) forwards;}
+  @keyframes paperPlaneFly{
+    0%{transform:translate(0,0) rotate(0deg) scale(1);opacity:1;}
+    35%{transform:translate(8%,-5%) rotate(-7deg) scale(0.9);opacity:1;}
+    100%{transform:translate(120%,-85%) rotate(26deg) scale(0.22);opacity:0;}
+  }
+  .paper-plane-fx{
+    position:absolute;left:50%;top:40%;font-size:34px;z-index:600;pointer-events:none;
+    animation:paperPlaneFly2 .55s cubic-bezier(.4,0,.2,1) forwards;
+    filter:drop-shadow(0 4px 8px rgba(0,0,0,0.25));
+  }
+  @keyframes paperPlaneFly2{
+    0%{transform:translate(-50%,-50%) rotate(-15deg) scale(0.6);opacity:0;}
+    15%{opacity:1;transform:translate(-50%,-50%) rotate(-15deg) scale(1);}
+    100%{transform:translate(210%,-250%) rotate(18deg) scale(1.1);opacity:0;}
+  }
   .success-pop{display:inline-block;animation:successPop .3s cubic-bezier(.3,1.5,.5,1);}
   @keyframes successPop{0%{transform:scale(0.4);opacity:0;}60%{transform:scale(1.15);}100%{transform:scale(1);opacity:1;}}
   .sheet-handle{width:36px;height:4px;border-radius:3px;background:var(--border);margin:4px auto 14px;}
@@ -566,21 +626,21 @@
      layout thrash) and stays under 650ms end-to-end, and the whole set is
      disabled under prefers-reduced-motion. */
   @media (prefers-reduced-motion: reduce){
-    .order-tile-grid .order-tile, .alert-tile-grid .alert-tile, .stat-grid-v2 .stat-card-v2, .more-grid .more-item{animation:none!important;}
+    .order-tile-grid .order-tile, .alert-tile-grid .alert-tile, .stat-grid-v2 .stat-card-v2, .more-grid .more-item, .alert-banner-items .alert-item-tile{animation:none!important;}
     .badge.status-flash{animation:none!important;}
   }
   @keyframes staggerIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
-  .order-tile-grid .order-tile, .alert-tile-grid .alert-tile, .stat-grid-v2 .stat-card-v2, .more-grid .more-item{
+  .order-tile-grid .order-tile, .alert-tile-grid .alert-tile, .stat-grid-v2 .stat-card-v2, .more-grid .more-item, .alert-banner-items .alert-item-tile{
     animation:staggerIn .32s cubic-bezier(.2,.8,.3,1) backwards;
   }
-  .order-tile-grid .order-tile:nth-child(1), .alert-tile-grid .alert-tile:nth-child(1), .stat-grid-v2 .stat-card-v2:nth-child(1), .more-grid .more-item:nth-child(1){animation-delay:0ms;}
-  .order-tile-grid .order-tile:nth-child(2), .alert-tile-grid .alert-tile:nth-child(2), .stat-grid-v2 .stat-card-v2:nth-child(2), .more-grid .more-item:nth-child(2){animation-delay:35ms;}
-  .order-tile-grid .order-tile:nth-child(3), .alert-tile-grid .alert-tile:nth-child(3), .stat-grid-v2 .stat-card-v2:nth-child(3), .more-grid .more-item:nth-child(3){animation-delay:70ms;}
-  .order-tile-grid .order-tile:nth-child(4), .alert-tile-grid .alert-tile:nth-child(4), .stat-grid-v2 .stat-card-v2:nth-child(4), .more-grid .more-item:nth-child(4){animation-delay:105ms;}
-  .order-tile-grid .order-tile:nth-child(5), .alert-tile-grid .alert-tile:nth-child(5), .stat-grid-v2 .stat-card-v2:nth-child(5), .more-grid .more-item:nth-child(5){animation-delay:140ms;}
-  .order-tile-grid .order-tile:nth-child(6), .alert-tile-grid .alert-tile:nth-child(6), .stat-grid-v2 .stat-card-v2:nth-child(6), .more-grid .more-item:nth-child(6){animation-delay:175ms;}
-  .order-tile-grid .order-tile:nth-child(7), .alert-tile-grid .alert-tile:nth-child(7), .stat-grid-v2 .stat-card-v2:nth-child(7), .more-grid .more-item:nth-child(7){animation-delay:210ms;}
-  .order-tile-grid .order-tile:nth-child(n+8), .alert-tile-grid .alert-tile:nth-child(n+8), .stat-grid-v2 .stat-card-v2:nth-child(n+8), .more-grid .more-item:nth-child(n+8){animation-delay:240ms;}
+  .order-tile-grid .order-tile:nth-child(1), .alert-tile-grid .alert-tile:nth-child(1), .stat-grid-v2 .stat-card-v2:nth-child(1), .more-grid .more-item:nth-child(1), .alert-banner-items .alert-item-tile:nth-child(1){animation-delay:0ms;}
+  .order-tile-grid .order-tile:nth-child(2), .alert-tile-grid .alert-tile:nth-child(2), .stat-grid-v2 .stat-card-v2:nth-child(2), .more-grid .more-item:nth-child(2), .alert-banner-items .alert-item-tile:nth-child(2){animation-delay:35ms;}
+  .order-tile-grid .order-tile:nth-child(3), .alert-tile-grid .alert-tile:nth-child(3), .stat-grid-v2 .stat-card-v2:nth-child(3), .more-grid .more-item:nth-child(3), .alert-banner-items .alert-item-tile:nth-child(3){animation-delay:70ms;}
+  .order-tile-grid .order-tile:nth-child(4), .alert-tile-grid .alert-tile:nth-child(4), .stat-grid-v2 .stat-card-v2:nth-child(4), .more-grid .more-item:nth-child(4), .alert-banner-items .alert-item-tile:nth-child(4){animation-delay:105ms;}
+  .order-tile-grid .order-tile:nth-child(5), .alert-tile-grid .alert-tile:nth-child(5), .stat-grid-v2 .stat-card-v2:nth-child(5), .more-grid .more-item:nth-child(5), .alert-banner-items .alert-item-tile:nth-child(5){animation-delay:140ms;}
+  .order-tile-grid .order-tile:nth-child(6), .alert-tile-grid .alert-tile:nth-child(6), .stat-grid-v2 .stat-card-v2:nth-child(6), .more-grid .more-item:nth-child(6), .alert-banner-items .alert-item-tile:nth-child(6){animation-delay:175ms;}
+  .order-tile-grid .order-tile:nth-child(7), .alert-tile-grid .alert-tile:nth-child(7), .stat-grid-v2 .stat-card-v2:nth-child(7), .more-grid .more-item:nth-child(7), .alert-banner-items .alert-item-tile:nth-child(7){animation-delay:210ms;}
+  .order-tile-grid .order-tile:nth-child(n+8), .alert-tile-grid .alert-tile:nth-child(n+8), .stat-grid-v2 .stat-card-v2:nth-child(n+8), .more-grid .more-item:nth-child(n+8), .alert-banner-items .alert-item-tile:nth-child(n+8){animation-delay:240ms;}
   @keyframes statusFlash{0%{box-shadow:0 0 0 0 currentColor;}70%{box-shadow:0 0 0 7px transparent;}100%{box-shadow:0 0 0 0 transparent;}}
   .badge.status-flash{animation:statusFlash .6s ease-out;}
 
@@ -818,7 +878,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-09-02-firestore-preview26"; // ROUND 15 (2026-09-02): "Suggest More & More Animations i want to make this so beautiful" -- two clarifying questions asked and answered before starting: approach = "Subtle & professional" (tap feedback everywhere, list stagger-in, number count-up, status color-morph -- fast even on old tablets -- NOT "Rich & lively": directional tab-slide, ripple, bell shake, checkmark burst, idle empty-state bobbing, none of which were added), scope = "Poore app mein ek saath" (whole app in one pass, not staged by screen). Audited the file's existing animation infra first (loginCardIn/postloginSpin/skelShimmer/welcomeFadeIn/syncPulse/bellBadgePulse/navPop/contentFadeIn/overlayFadeIn+Out/toastSlideUp/appAlertPop/sheetUp+Down/successPop/modalGrowIn+Out, plus existing :active tap-feedback on .btn/.stat/.qa-tile/.navitem/.thread-row/.contact-row) and layered four things on top without touching any of it: (1) tap-feedback gaps closed -- .order-tile[data-select-team]/[data-select-notif-kind] (Team-select and Notification-kind tiles, the only two places a whole order-tile itself is directly clickable) and .more-item (the "More" sheet grid) now scale down on press, matching the existing pattern elsewhere; deliberately scoped rather than a blanket .order-tile:active so a plain non-clickable order tile never shrinks on an incidental touch and falsely implies it's tappable. (2) List stagger-in -- pure CSS, targets .order-tile-grid/.alert-tile-grid/.stat-grid-v2/.more-grid directly so zero render-function changes were needed; each tile fades+slides up with a short nth-child delay staircase capped at 8 items (240ms max) so a long order list finishes appearing quickly. (3) Number count-up -- animateStatNumbers() (new function, just above render()) animates .stat/.stat-card-v2 numbers from their previous value to the new one over 450ms (ease-out cubic) via requestAnimationFrame, but ONLY when the value actually changed since that same tile's last render (cached by a stable data-stat/data-more-tab/label key, not by DOM node, since render() recreates every node) -- a tile seen for the first time (screen just opened) snaps straight to its value, no count-up-from-zero; correctly handles a leading minus sign (e.g. a negative expense balance, "₹-500") so a sign flip between renders doesn't misdraw. (4) Status flash -- flashChangedBadges() (new function, next to animateStatNumbers) adds a brief currentColor glow pulse (.status-flash, 0.6s) to an order's status badge the moment that SAME order's status actually differs from its own last-seen status (order identity via new data-order-id on .order-tile, added to renderOrderTile) -- implemented as a glow/pulse rather than a literal old-color-to-new-color interpolation, since render()'s root.innerHTML=newHtml fully replaces the DOM on every change, so there's no persisting "old" badge node left to smoothly recolor across (the .badge rule's pre-existing background-color/color transition stays in place for the rare case something mutates a live badge in place, unaffected). All four pieces use only transform/opacity/box-shadow (GPU-cheap, no layout thrash), stay under 650ms end-to-end, and are disabled under prefers-reduced-motion via one shared media query. UI FOLLOW-UP (2026-09-02): "Quick Actions ke icon ke sizes Increase kro. inke Tile Size bhi thik kro perfect Square. or perfect fill bhi." -- .qa-tile used to be flex:0 1 auto with a fixed 60-78px min/max-width range, which capped every tile at a small size even when a row (especially the 8-wide desktop row) had plenty of spare width -- and its icon-badge was a fixed 38px/18px-font, looking lost inside the tile. Now .qa-tile is flex:1 1 0 (equal-share growth, min-width:0) with aspect-ratio:1/1, so every tile in a row genuinely fills its equal share of the available width as a true square (capped at 104px so it doesn't grow absurdly huge on a very wide window) instead of leaving unused space as dead gaps; content is centered via flexbox column layout. The icon-badge itself is up from 38px/18px-font to 52px/26px-font, and the tile's own inner layout was simplified (padding/gap tightened) so the bigger icon+label combo actually fills the square instead of floating in a sea of margin. Verified visually with rendered screenshots at both mobile (4+4 split) and desktop (single 8-wide row) widths before delivering. BUGFIX (2026-09-02, live user report): "packing, filling, managers koi bhi message seen nhi kr pa rhe h, not saved likha aa raha h bar bar, na hi msg bhej pa rhe h" -- messaging (Messages / chatMessages) was broken for every NON-ADMIN role. Root cause: markAllAnnouncementsRead (the function actually wired up everywhere -- on open, on tab-switch, on every single live refresh while the default Announcements tab is open) still did a FULL non-merge Firestore .set() of the whole message doc just to flip one person's readBy entry. firestore.rules only allows a non-admin to touch the readBy field alone (a scoped diff/hasOnly check) -- a full-object write is fragile against that rule, so it kept failing with permission-denied for every non-admin, popping a fresh "Save failed" toast on every refresh (the reported "bar bar not saved") and never actually persisting the read state (the reported "seen nahi ho pa raha"). A CORRECTLY-written sibling function (markAnnouncementRead, using a scoped merge + arrayUnion, exactly matching the rule) already existed in the file but was dead code -- never actually called from anywhere. Admin's own writes always bypass this rule entirely via isAdmin(), which is exactly why this was invisible unless tested as a non-admin role. Fixed by routing markAllAnnouncementsRead through the already-correct markAnnouncementRead for each unread announcement instead of duplicating (and diverging from) that logic. Personal-chat "seen" (markThreadRead) was already using the correct scoped-merge pattern and needed no change; sending messages (create) was not gated by this rule at all and should already have worked, but the constant toast/error storm on the default tab likely made the whole feature feel broken. ROUND 14 FOLLOW-UP (2026-09-02): "tiles ko dome shaped 3d dikhna chahiye" -- the first pass's subtle flat-shadow tile treatment wasn't convex enough, made it clearly domed instead. --tile-highlight is now a 2-layer gradient (a glossy top-center highlight arc + an overall top-light/bottom-slightly-darker vertical shade) layered under EVERY tile background -- .card/.stat/.order-tile (incl. its 3 status-color variants)/.alert-tile (incl. mild/recommended)/.stat-card-v2 (incl. all 4 rotating colors)/.qa-tile (its own matching version, since it sits on a dark banner) -- so each tile's surface itself reads as a curved, lit dome, not just a flat card with a shadow under it. --tile-shadow was also strengthened: a brighter inset rim along the top (the dome's crest catching light), a stronger inset shadow hugging the bottom-inside edge (where the curve rolls away from the light), plus firmer outer contact + ambient shadows for real lift. Every tile class also got a few more px of border-radius -- rounder corners read as more dome-like than sharp ones. ROUND 14 (2026-09-01), user-dictated backlog implemented together, ALL 6 ITEMS COMPLETE: (1) no duplicate users -- Username is now readonly when editing an EXISTING user (the doc id/Auth uid/custom claim all stay pinned to the original username forever, so allowing it to be edited only broke that person's login while opening a duplicate-username loophole; NEW user creation was already fully protected -- client check + createStaffUser's server-side dupSnap query + Firebase Auth's own uid-uniqueness constraint). (2) Attendance self-marking now only works inside an admin-configurable window (preset 10am-12pm, non-admin only) -- new "⏰ Marking window" button in the Attendance section. (3) Admin's attendance view (renderAttendanceMap) now shows a Time column alongside Location for self-marked entries. (4) BUG FIX: the "Data Log" tab existed in name only since before this rewrite even started (nav label/icon/Permission-Manager toggle all declared it, but neither renderView() nor bindView() had a 'log' case) -- implemented for the first time as a read-only 7-day activity+login audit trail. (5) Every tile/card class (.card/.stat/.order-tile/.alert-tile/.stat-card-v2/.qa-tile) now shares one consistent subtle 3D-look + soft-shadow treatment (--tile-shadow custom property) instead of each carrying its own one-off shadow. (6) FINISHED THIS BUILD: the general Daily Work entry window (preset 10:30am-8pm, admin-editable via "⏰ Entry window" in Daily Work) is now actually enforced -- withinEntryWindow() (already wired into every non-admin new-entry submit: Purchase, Filling, Packaging, Expenses, Retail Sale/Samples -- this scope pre-dates this round and was left unchanged, it's exactly what "Daily Work" already aggregates) previously had its own HARDCODED 10:30-20:00 literal, entirely disconnected from the new admin setting -- it now reads getAttendanceSettings().entryStart/entryEnd so changing the admin control actually takes effect; the alert/button text is dynamic too, not a stale hardcoded time string. Also caught and fixed during this round's own testing: a genuine fmtHHMM naming collision (a pre-existing Domino Printing duration formatter and this round's new time-of-day display helper briefly shared the same function name, which would have silently broken the attendance-window message with "NaN:NaN") -- renamed the new one to fmtHHMMOfDay. ROUND 13.1 (2026-09-01), 2 explicit user questions: (1) "stock photo me to LR No ki zrurt nhi h na" -- a Stock Photo (loose-goods pickup) has no real Lorry Receipt document behind it, so the LR Number field is now hidden (and never saved) whenever Stock Photo is the selected type, in both the standalone Upload Photo modal and the inline dispatch-flow upload -- see wirePhotoTypeToggle's new onChange callback, and the "LR Photo (optional)" file-input label in the dispatch modal was also generalized to "Photo (optional)" since it can now be either kind. (2) "ye chiz wha b to update hogi na jaha order track hota hai" -- the customer-facing tracking page (order-form-firestore.html) was NOT actually type-aware before this: it always said "LR" (View/Download LR, LR Number, alt="LR photo") no matter which type staff picked -- now it reads order.photoType and shows "Stock Photo" wording for a stock photo. ROUND 13 (2026-08-31), 2 explicit user requests: (1) "Manager wala Checkpoint khud hi ban jaye, 30 Days ke Expenses rakho, usse pehle ke, usse pehle ke apne aap hi previous balance ke naam se save karte raho" -- the Expenses page now only ever shows the last 30 days (computeVisibleExpenses); everything before that is summarized live into an automatic "📌 Previous Balance" line (previousBalanceRowHtml) needing zero manual action -- safe because S.expenseBalances is a durable running total, never re-derived from history (see expenseBalanceFor's comment). The old monthly reminder banner (nagging admin to manually set a checkpoint) is gone; the manual "📌 Opening Balance" button itself stays, for genuine corrections. Entries older than 90 days are now deleted automatically server-side (functions/index.js's new cleanupOldExpenses scheduled function) -- the Firestore fetch window narrowed from 365 to 90 days to match. (2) "Order finalization me LR ya Stock photo 2 options rakho ... Ye Photo Automatically deleted hojaye after 30 days" -- LR photo upload (openUploadLRModal + the dispatch flow) now offers a Stock Photo option too (for loose-goods pickups needing a verification photo), and BOTH new uploads go through Firebase Storage (fsUploadOrderPhoto/fsDeleteOrderPhoto) instead of Google Drive -- an explicit, informed reversal of Round 12's Drive-only choice, made specifically because Storage can auto-delete a photo 30 days after upload via a plain bucket lifecycle rule (see storage.rules + lifecycle.json), no scheduled code needed. Legacy (pre-Round-13) Drive-based photos are unaffected and still deletable via apiDeleteLR. Also this round: the Sheet backup scheme (order-ops-backend.gs's dailyBackup) changed from one file per WEEK (refreshed in place daily, so never more than one real snapshot per week) kept for 8 weeks, to one real, distinct snapshot per DAY kept for 7 days (BACKUP_RETENTION_DAYS) -- explicit user request ("7 din ka backup rakho bas, usse pehle ka backup auto delete ho jana chahiye"). ROUND 12 (2026-08-31), 3 explicit user requests: (1) LR photo "Upload Failed" every single time -- root cause was that apiUploadLR/apiDeleteLR sent this app's OWN unrelated single-device-login token (S.authToken) as `sessionToken`, which order-ops-backend.gs's requireSession_ could never recognize (it only knows tokens from that script's own OLD Sheets-based login action, which this app never calls anymore) -- every upload/delete rejected with session_required, no matter what. FIXED WITHOUT changing storage backend (explicit user request: keep the same Google Drive space, not Firebase Storage) -- apiUploadLR/apiDeleteLR now also send a real, live Firebase Auth ID token, and order-ops-backend.gs verifies THAT instead (verifyFirebaseIdToken_, via Google's Identity Toolkit REST API) -- see the Round 12 deploy guide, this needs a fresh Apps Script deployment (order-ops-backend.gs changed for the first time this whole engagement -- surgically, only the uploadLR/deleteLR auth check, nothing else). (2) A photo over 2MB is now actually guaranteed compressed under that cap (resizeImageFileMaxBytes, byte-size-checked via dataUrlByteLength, not just pixel-dimension-capped like before) before every LR upload, independent of storage backend. (3) Orders entered directly in OMS ("+ New order" / chat "Quick order") are now created ALREADY ACCEPTED (status:'processing', stock reserved immediately via the new shared reserveStockForAcceptedOrder helper) instead of sitting in the pending/"New" queue needing a separate Accept click -- only orders from the public customer-facing order form (buildOrderDocFromPayload, untouched, still status:'pending') still need that Approval step. ROUND 11 (2026-08-31), new "Opening Balance" expense checkpoint feature -- admin (for ANY manager) can now set the manager's running expense/settlement balance to a known-correct absolute figure via a dedicated 📌 Opening Balance entry (Expenses tab, admin view), instead of the balance being trusted to stay correct purely from every historical add/subtract. All OLD expense/settlement entries are untouched -- only the derived running total is corrected going forward. The new entry type stores BOTH the signed delta actually applied (so the existing balance math needs no changes at all -- see applyExpenseBalanceDelta's comment) AND the plain target figure (so every screen can always show "Balance set to ₹X", never a confusing raw delta) -- see expenseEntryAmountText/expenseEntryBadgeHtml, the one shared place all of Expenses/Daily Work/print/monthly-report/Home-activity read from, so the totaling stays consistent everywhere at once. Opening Balance entries are excluded from "total expense" sums (they're a correction, not spending), support create+delete only (no edit -- delete and re-add instead, to limit risk), and a new in-app banner (no push notification) on the admin Expenses page flags any manager still missing this month's checkpoint. ROUND 10 (2026-08-31), "sab ek sath shuru karo, saare bugs thik karo" full fix pass -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md's Round 10 section for the complete list. Highlights: messaging seen/read-write permissions now work for every role, not just admin (the specific bug reported this round -- see firestore.rules' new dedicated chatMessages block); the canEntry() default-fallback bug that silently permission-denied every entry-gated write for any newly-added/uncustomized role; the stock-ledger clobber race (fsSetStockField now does a scoped dot-path update, not a whole-field overwrite); FIFO-covered orders no longer stuck (orderIsFullyStocked/autoAdvanceOrders); cancelled order items no longer double-deducted on edit; concurrent expense edits no longer double-count balances (fsEditExpenseAtomic); offboarded staff Auth accounts + live sessions now actually get revoked (deleteStaffUser/forceLogoutStaffUser/resetStaffPassword); Retail Sale/Sample booked-entry lock + double-submit guard; double-submit guards on the dispatch, attendance, and post-login "Tap to Continue" buttons; a magnitude/typo cap on Bulk stock edit (matching the single-item Adjust modal); and the shared-tablet push-notification bug where a second person logging in on the same device/session stopped receiving push until a full page reload. (Round 9: Enter-to-send. Round 8: the login-skip/duplicate-notification/stray-welcome race fix. Rounds 1-7: session-token adoption, FIFO stock allocation, Daily Work resync, System Health panel removal, modal animations, live-listener reconnect, the real bar-bar-password root cause, chat ordering/read-receipts, admin-only password reset, phone back button, the first (incomplete) login-race fix -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md for full history.)
+const APP_BUILD = "2026-09-02-firestore-preview27"; // ROUND 15 FOLLOW-UP (2026-09-02), 4 explicit user requests built together after a plan was shared and confirmed ("ok krdo"): (1) "Jis tile pr bhi hum click kre, vo wala tile flip ho kr bada ho jaye or window khol de jo khulna hai" -- a genuine container-transform ("FLIP") open: the pointerdown listener now also records the tapped TILE's real on-screen rect (not just the tap point) whenever the tap lands on .order-tile/.stat-card-v2/.alert-tile/.qa-tile/.more-item/.overview-col (__lastTapRect). showModal() -- the single choke point ~50+ call sites already share -- uses that rect (when fresh, same 800ms freshness window as the existing tap-origin ox/oy) to open the modal GROWING OUT of that exact tile instead of sliding up from the bottom: suppresses the default sheetUp keyframe, measures the modal's true resting rect, then animates translate+scale+a slight rotateX tilt (the "flip" feel) from the tile's rect to identity via a real CSS transition, cleaning up all the inline styles on transitionend. Falls back to the existing sheetUp slide-up when there's no fresh tile rect (a modal opened by code, not a tap). (2) "quick access wli chize hain unpr click kre to wahi se ik window shoot honi chahiye or khulni chahiye (agar quick action ke kisi page par hum hain or back dabate hn to wapas homepage par ana chahiye)" -- the "shoot open" half is already covered by (1), since .qa-tile is in the tile-selector list and every quick action opens a modal via showModal(). The back-to-Home half: bindQuickActionIcons sets a new __modalOpenedViaQuickAction flag right before opening a quick action's modal; showModal() stamps that onto the new overlay's dataset (inherited across a same-instant showModal() REPLACE within the same flow, e.g. Messages' thread-list-to-thread navigation, and reset after being consumed so a later unrelated modal never inherits a stale flag); the phone-back popstate handler reads that stamp and, once the modal finishes its normal close, switches S.view to 'home' -- regardless of which tab the quick action was opened from (Quick Actions appear on both Home and the Tasks tab). (3) "koi bhi entry hum daale to Us page ko ik paper airplane ki trah bana do or fly krwa do, uske baad green color ka dialoge ajaye (ye entry successfully save ho chuki hai)" -- new closeModal('flyaway') mode plays a paperPlaneFly exit (the modal card tumbles/shrinks/fades up-and-right) plus a decorative ✈️ element flying the same trajectory on its own layer, instead of the default shrink-down; a new celebrateEntrySaved(msg) helper pairs that with a new centered green success dialog (showSuccessDialog(), auto-dismissing after ~1.7s, distinct from the plain dark showToast() pill) timed to appear just as the plane finishes flying off. Scoped to exactly the 5 places that call it -- Purchase/Filling/Packaging/new-Expense-or-Settlement/new-Retail-Sale-or-Sample, i.e. the same flows already gated by blockIfOutsideEntryWindow() (Round 14), matching "Daily Work entries" precisely -- every edit/delete/undo/other save in the app is UNCHANGED, still the plain closeModal()+showToast(). (4) "stock wale me low ka bada tile usme har item ke chote chote tiles, aese hi short ka bada tile uske andr chote chote har item ke tiles" -- alertBanner() (used on the Raw/Filled/Ready stock pages and the Home "Alerts for you" card, for every role) rewritten from a plain divider-separated list into nested tiles: one BIG .alert-banner-tile per severity group (red "N item(s) short" / amber "N item(s) running low", matching the app's existing tile-card language -- box-shadow:var(--tile-shadow) etc, same family as .alert-tile) containing a SMALL .alert-item-tile per item, which also picks up the existing Round 15 stagger-in entrance automatically (added to that shared selector list). Verified this whole round with: extended test_order_ops_firestore_client.js (static checks on every CSS/JS piece plus functional tests -- showSuccessDialog's own timer via a mocked render/setTimeout, and alertBanner's real extracted output against a sample mixed short+low list, both counts and content); a real interactive Playwright harness (not just a static style-injected preview like earlier rounds) built from the actual extracted showModal/closeModal/celebrateEntrySaved/showSuccessDialog/alertBanner source plus the real pointerdown listener, clicking a real tile and screenshotting the FLIP-open growing from it, triggering celebrateEntrySaved() and screenshotting the ✈️ mid-flight plus the green dialog, and rendering alertBanner()'s real output to confirm the nested-tile look -- before delivering. ROUND 15 (2026-09-02): "Suggest More & More Animations i want to make this so beautiful" -- two clarifying questions asked and answered before starting: approach = "Subtle & professional" (tap feedback everywhere, list stagger-in, number count-up, status color-morph -- fast even on old tablets -- NOT "Rich & lively": directional tab-slide, ripple, bell shake, checkmark burst, idle empty-state bobbing, none of which were added), scope = "Poore app mein ek saath" (whole app in one pass, not staged by screen). Audited the file's existing animation infra first (loginCardIn/postloginSpin/skelShimmer/welcomeFadeIn/syncPulse/bellBadgePulse/navPop/contentFadeIn/overlayFadeIn+Out/toastSlideUp/appAlertPop/sheetUp+Down/successPop/modalGrowIn+Out, plus existing :active tap-feedback on .btn/.stat/.qa-tile/.navitem/.thread-row/.contact-row) and layered four things on top without touching any of it: (1) tap-feedback gaps closed -- .order-tile[data-select-team]/[data-select-notif-kind] (Team-select and Notification-kind tiles, the only two places a whole order-tile itself is directly clickable) and .more-item (the "More" sheet grid) now scale down on press, matching the existing pattern elsewhere; deliberately scoped rather than a blanket .order-tile:active so a plain non-clickable order tile never shrinks on an incidental touch and falsely implies it's tappable. (2) List stagger-in -- pure CSS, targets .order-tile-grid/.alert-tile-grid/.stat-grid-v2/.more-grid directly so zero render-function changes were needed; each tile fades+slides up with a short nth-child delay staircase capped at 8 items (240ms max) so a long order list finishes appearing quickly. (3) Number count-up -- animateStatNumbers() (new function, just above render()) animates .stat/.stat-card-v2 numbers from their previous value to the new one over 450ms (ease-out cubic) via requestAnimationFrame, but ONLY when the value actually changed since that same tile's last render (cached by a stable data-stat/data-more-tab/label key, not by DOM node, since render() recreates every node) -- a tile seen for the first time (screen just opened) snaps straight to its value, no count-up-from-zero; correctly handles a leading minus sign (e.g. a negative expense balance, "₹-500") so a sign flip between renders doesn't misdraw. (4) Status flash -- flashChangedBadges() (new function, next to animateStatNumbers) adds a brief currentColor glow pulse (.status-flash, 0.6s) to an order's status badge the moment that SAME order's status actually differs from its own last-seen status (order identity via new data-order-id on .order-tile, added to renderOrderTile) -- implemented as a glow/pulse rather than a literal old-color-to-new-color interpolation, since render()'s root.innerHTML=newHtml fully replaces the DOM on every change, so there's no persisting "old" badge node left to smoothly recolor across (the .badge rule's pre-existing background-color/color transition stays in place for the rare case something mutates a live badge in place, unaffected). All four pieces use only transform/opacity/box-shadow (GPU-cheap, no layout thrash), stay under 650ms end-to-end, and are disabled under prefers-reduced-motion via one shared media query. UI FOLLOW-UP (2026-09-02): "Quick Actions ke icon ke sizes Increase kro. inke Tile Size bhi thik kro perfect Square. or perfect fill bhi." -- .qa-tile used to be flex:0 1 auto with a fixed 60-78px min/max-width range, which capped every tile at a small size even when a row (especially the 8-wide desktop row) had plenty of spare width -- and its icon-badge was a fixed 38px/18px-font, looking lost inside the tile. Now .qa-tile is flex:1 1 0 (equal-share growth, min-width:0) with aspect-ratio:1/1, so every tile in a row genuinely fills its equal share of the available width as a true square (capped at 104px so it doesn't grow absurdly huge on a very wide window) instead of leaving unused space as dead gaps; content is centered via flexbox column layout. The icon-badge itself is up from 38px/18px-font to 52px/26px-font, and the tile's own inner layout was simplified (padding/gap tightened) so the bigger icon+label combo actually fills the square instead of floating in a sea of margin. Verified visually with rendered screenshots at both mobile (4+4 split) and desktop (single 8-wide row) widths before delivering. BUGFIX (2026-09-02, live user report): "packing, filling, managers koi bhi message seen nhi kr pa rhe h, not saved likha aa raha h bar bar, na hi msg bhej pa rhe h" -- messaging (Messages / chatMessages) was broken for every NON-ADMIN role. Root cause: markAllAnnouncementsRead (the function actually wired up everywhere -- on open, on tab-switch, on every single live refresh while the default Announcements tab is open) still did a FULL non-merge Firestore .set() of the whole message doc just to flip one person's readBy entry. firestore.rules only allows a non-admin to touch the readBy field alone (a scoped diff/hasOnly check) -- a full-object write is fragile against that rule, so it kept failing with permission-denied for every non-admin, popping a fresh "Save failed" toast on every refresh (the reported "bar bar not saved") and never actually persisting the read state (the reported "seen nahi ho pa raha"). A CORRECTLY-written sibling function (markAnnouncementRead, using a scoped merge + arrayUnion, exactly matching the rule) already existed in the file but was dead code -- never actually called from anywhere. Admin's own writes always bypass this rule entirely via isAdmin(), which is exactly why this was invisible unless tested as a non-admin role. Fixed by routing markAllAnnouncementsRead through the already-correct markAnnouncementRead for each unread announcement instead of duplicating (and diverging from) that logic. Personal-chat "seen" (markThreadRead) was already using the correct scoped-merge pattern and needed no change; sending messages (create) was not gated by this rule at all and should already have worked, but the constant toast/error storm on the default tab likely made the whole feature feel broken. ROUND 14 FOLLOW-UP (2026-09-02): "tiles ko dome shaped 3d dikhna chahiye" -- the first pass's subtle flat-shadow tile treatment wasn't convex enough, made it clearly domed instead. --tile-highlight is now a 2-layer gradient (a glossy top-center highlight arc + an overall top-light/bottom-slightly-darker vertical shade) layered under EVERY tile background -- .card/.stat/.order-tile (incl. its 3 status-color variants)/.alert-tile (incl. mild/recommended)/.stat-card-v2 (incl. all 4 rotating colors)/.qa-tile (its own matching version, since it sits on a dark banner) -- so each tile's surface itself reads as a curved, lit dome, not just a flat card with a shadow under it. --tile-shadow was also strengthened: a brighter inset rim along the top (the dome's crest catching light), a stronger inset shadow hugging the bottom-inside edge (where the curve rolls away from the light), plus firmer outer contact + ambient shadows for real lift. Every tile class also got a few more px of border-radius -- rounder corners read as more dome-like than sharp ones. ROUND 14 (2026-09-01), user-dictated backlog implemented together, ALL 6 ITEMS COMPLETE: (1) no duplicate users -- Username is now readonly when editing an EXISTING user (the doc id/Auth uid/custom claim all stay pinned to the original username forever, so allowing it to be edited only broke that person's login while opening a duplicate-username loophole; NEW user creation was already fully protected -- client check + createStaffUser's server-side dupSnap query + Firebase Auth's own uid-uniqueness constraint). (2) Attendance self-marking now only works inside an admin-configurable window (preset 10am-12pm, non-admin only) -- new "⏰ Marking window" button in the Attendance section. (3) Admin's attendance view (renderAttendanceMap) now shows a Time column alongside Location for self-marked entries. (4) BUG FIX: the "Data Log" tab existed in name only since before this rewrite even started (nav label/icon/Permission-Manager toggle all declared it, but neither renderView() nor bindView() had a 'log' case) -- implemented for the first time as a read-only 7-day activity+login audit trail. (5) Every tile/card class (.card/.stat/.order-tile/.alert-tile/.stat-card-v2/.qa-tile) now shares one consistent subtle 3D-look + soft-shadow treatment (--tile-shadow custom property) instead of each carrying its own one-off shadow. (6) FINISHED THIS BUILD: the general Daily Work entry window (preset 10:30am-8pm, admin-editable via "⏰ Entry window" in Daily Work) is now actually enforced -- withinEntryWindow() (already wired into every non-admin new-entry submit: Purchase, Filling, Packaging, Expenses, Retail Sale/Samples -- this scope pre-dates this round and was left unchanged, it's exactly what "Daily Work" already aggregates) previously had its own HARDCODED 10:30-20:00 literal, entirely disconnected from the new admin setting -- it now reads getAttendanceSettings().entryStart/entryEnd so changing the admin control actually takes effect; the alert/button text is dynamic too, not a stale hardcoded time string. Also caught and fixed during this round's own testing: a genuine fmtHHMM naming collision (a pre-existing Domino Printing duration formatter and this round's new time-of-day display helper briefly shared the same function name, which would have silently broken the attendance-window message with "NaN:NaN") -- renamed the new one to fmtHHMMOfDay. ROUND 13.1 (2026-09-01), 2 explicit user questions: (1) "stock photo me to LR No ki zrurt nhi h na" -- a Stock Photo (loose-goods pickup) has no real Lorry Receipt document behind it, so the LR Number field is now hidden (and never saved) whenever Stock Photo is the selected type, in both the standalone Upload Photo modal and the inline dispatch-flow upload -- see wirePhotoTypeToggle's new onChange callback, and the "LR Photo (optional)" file-input label in the dispatch modal was also generalized to "Photo (optional)" since it can now be either kind. (2) "ye chiz wha b to update hogi na jaha order track hota hai" -- the customer-facing tracking page (order-form-firestore.html) was NOT actually type-aware before this: it always said "LR" (View/Download LR, LR Number, alt="LR photo") no matter which type staff picked -- now it reads order.photoType and shows "Stock Photo" wording for a stock photo. ROUND 13 (2026-08-31), 2 explicit user requests: (1) "Manager wala Checkpoint khud hi ban jaye, 30 Days ke Expenses rakho, usse pehle ke, usse pehle ke apne aap hi previous balance ke naam se save karte raho" -- the Expenses page now only ever shows the last 30 days (computeVisibleExpenses); everything before that is summarized live into an automatic "📌 Previous Balance" line (previousBalanceRowHtml) needing zero manual action -- safe because S.expenseBalances is a durable running total, never re-derived from history (see expenseBalanceFor's comment). The old monthly reminder banner (nagging admin to manually set a checkpoint) is gone; the manual "📌 Opening Balance" button itself stays, for genuine corrections. Entries older than 90 days are now deleted automatically server-side (functions/index.js's new cleanupOldExpenses scheduled function) -- the Firestore fetch window narrowed from 365 to 90 days to match. (2) "Order finalization me LR ya Stock photo 2 options rakho ... Ye Photo Automatically deleted hojaye after 30 days" -- LR photo upload (openUploadLRModal + the dispatch flow) now offers a Stock Photo option too (for loose-goods pickups needing a verification photo), and BOTH new uploads go through Firebase Storage (fsUploadOrderPhoto/fsDeleteOrderPhoto) instead of Google Drive -- an explicit, informed reversal of Round 12's Drive-only choice, made specifically because Storage can auto-delete a photo 30 days after upload via a plain bucket lifecycle rule (see storage.rules + lifecycle.json), no scheduled code needed. Legacy (pre-Round-13) Drive-based photos are unaffected and still deletable via apiDeleteLR. Also this round: the Sheet backup scheme (order-ops-backend.gs's dailyBackup) changed from one file per WEEK (refreshed in place daily, so never more than one real snapshot per week) kept for 8 weeks, to one real, distinct snapshot per DAY kept for 7 days (BACKUP_RETENTION_DAYS) -- explicit user request ("7 din ka backup rakho bas, usse pehle ka backup auto delete ho jana chahiye"). ROUND 12 (2026-08-31), 3 explicit user requests: (1) LR photo "Upload Failed" every single time -- root cause was that apiUploadLR/apiDeleteLR sent this app's OWN unrelated single-device-login token (S.authToken) as `sessionToken`, which order-ops-backend.gs's requireSession_ could never recognize (it only knows tokens from that script's own OLD Sheets-based login action, which this app never calls anymore) -- every upload/delete rejected with session_required, no matter what. FIXED WITHOUT changing storage backend (explicit user request: keep the same Google Drive space, not Firebase Storage) -- apiUploadLR/apiDeleteLR now also send a real, live Firebase Auth ID token, and order-ops-backend.gs verifies THAT instead (verifyFirebaseIdToken_, via Google's Identity Toolkit REST API) -- see the Round 12 deploy guide, this needs a fresh Apps Script deployment (order-ops-backend.gs changed for the first time this whole engagement -- surgically, only the uploadLR/deleteLR auth check, nothing else). (2) A photo over 2MB is now actually guaranteed compressed under that cap (resizeImageFileMaxBytes, byte-size-checked via dataUrlByteLength, not just pixel-dimension-capped like before) before every LR upload, independent of storage backend. (3) Orders entered directly in OMS ("+ New order" / chat "Quick order") are now created ALREADY ACCEPTED (status:'processing', stock reserved immediately via the new shared reserveStockForAcceptedOrder helper) instead of sitting in the pending/"New" queue needing a separate Accept click -- only orders from the public customer-facing order form (buildOrderDocFromPayload, untouched, still status:'pending') still need that Approval step. ROUND 11 (2026-08-31), new "Opening Balance" expense checkpoint feature -- admin (for ANY manager) can now set the manager's running expense/settlement balance to a known-correct absolute figure via a dedicated 📌 Opening Balance entry (Expenses tab, admin view), instead of the balance being trusted to stay correct purely from every historical add/subtract. All OLD expense/settlement entries are untouched -- only the derived running total is corrected going forward. The new entry type stores BOTH the signed delta actually applied (so the existing balance math needs no changes at all -- see applyExpenseBalanceDelta's comment) AND the plain target figure (so every screen can always show "Balance set to ₹X", never a confusing raw delta) -- see expenseEntryAmountText/expenseEntryBadgeHtml, the one shared place all of Expenses/Daily Work/print/monthly-report/Home-activity read from, so the totaling stays consistent everywhere at once. Opening Balance entries are excluded from "total expense" sums (they're a correction, not spending), support create+delete only (no edit -- delete and re-add instead, to limit risk), and a new in-app banner (no push notification) on the admin Expenses page flags any manager still missing this month's checkpoint. ROUND 10 (2026-08-31), "sab ek sath shuru karo, saare bugs thik karo" full fix pass -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md's Round 10 section for the complete list. Highlights: messaging seen/read-write permissions now work for every role, not just admin (the specific bug reported this round -- see firestore.rules' new dedicated chatMessages block); the canEntry() default-fallback bug that silently permission-denied every entry-gated write for any newly-added/uncustomized role; the stock-ledger clobber race (fsSetStockField now does a scoped dot-path update, not a whole-field overwrite); FIFO-covered orders no longer stuck (orderIsFullyStocked/autoAdvanceOrders); cancelled order items no longer double-deducted on edit; concurrent expense edits no longer double-count balances (fsEditExpenseAtomic); offboarded staff Auth accounts + live sessions now actually get revoked (deleteStaffUser/forceLogoutStaffUser/resetStaffPassword); Retail Sale/Sample booked-entry lock + double-submit guard; double-submit guards on the dispatch, attendance, and post-login "Tap to Continue" buttons; a magnitude/typo cap on Bulk stock edit (matching the single-item Adjust modal); and the shared-tablet push-notification bug where a second person logging in on the same device/session stopped receiving push until a full page reload. (Round 9: Enter-to-send. Round 8: the login-skip/duplicate-notification/stray-welcome race fix. Rounds 1-7: session-token adoption, FIFO stock allocation, Daily Work resync, System Health panel removal, modal animations, live-listener reconnect, the real bar-bar-password root cause, chat ordering/read-receipts, admin-only password reset, phone back button, the first (incomplete) login-race fix -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md for full history.)
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -3674,6 +3734,33 @@ function showToast(msg, isErr){
   toastTimer = setTimeout(()=>{ S.toast=null; render(); }, 2800);
 }
 
+// Round 15 follow-up (2026-09-...): "uske baad green color ka dialoge
+// ajaye (ye entry successfully save ho chuki hai)" -- a centered green
+// success dialog, distinct from the plain dark showToast() pill above.
+// Used ONLY via celebrateEntrySaved() (just below) for the 5 genuine new-
+// Daily-Work-entry saves; nothing else in the app calls this directly, so
+// every other save keeps its existing plain showToast() unchanged.
+let successDialogTimer = null;
+function showSuccessDialog(msg){
+  S.successDialog = { msg };
+  render();
+  clearTimeout(successDialogTimer);
+  successDialogTimer = setTimeout(()=>{ S.successDialog=null; render(); }, 1700);
+}
+// Round 15 follow-up: the single choke point for "a brand-new Daily Work
+// entry was just saved" -- pairs closeModal('flyaway') (the paper-airplane
+// exit, see its own CSS comment) with showSuccessDialog() timed to appear
+// just as the modal finishes flying off, instead of the plain
+// closeModal()+showToast() every other save in the app still uses.
+// Deliberately scoped to only the 5 places that call it (Purchase/Filling/
+// Packaging/new-Expense/new-Retail-Sale-or-Sample -- exactly the flows
+// already gated by blockIfOutsideEntryWindow(), i.e. "Daily Work" entries)
+// -- edits, deletes, undos, and every other save in the app are UNCHANGED.
+function celebrateEntrySaved(msg){
+  closeModal('flyaway');
+  setTimeout(()=>showSuccessDialog(msg), 480);
+}
+
 /* ============================= AUTH ============================= */
 // Session persists across app restarts using localStorage, but auto-expires
 // after 48 hours of INACTIVITY (SESSION_MAX_MS) -- not 48 hours since login.
@@ -4568,19 +4655,32 @@ function openEditLogModal(e, opts){
     closeModal(); render(); showToast('Entry updated');
   });
 }
+// Round 15 follow-up (2026-09-...): "stock wale me low ka bada tile usme
+// har item ke chote chote tiles, aese hi short ka bada tile uske andr
+// chote chote har item ke tiles" -- ONE BIG outer tile per severity group
+// (Short=red / Low=amber, matching the app's existing tile-card language:
+// box-shadow:var(--tile-shadow), rounded corners, same family as
+// .alert-tile) containing a SMALL inner tile per item, replacing the old
+// plain divider-separated list (`.alert-banner`'s own entryHtml, previously
+// used here -- that class stays in place, still used elsewhere in the file
+// for single-message banners, e.g. the "Last working day of the month"
+// reminder and the GPS/HTTPS warnings -- only THIS function's own output
+// changed). Used on the Raw/Filled/Ready stock pages and the Home "Alerts
+// for you" card, for every role that sees it -- one shared function, one
+// change point.
 function alertBanner(list){
   if(!list.length) return '';
   const crit = list.filter(a=>a.level!=='low');
   const low = list.filter(a=>a.level==='low');
-  const entryHtml = (a, isCrit)=>`
-    <div style="padding:8px 0;border-top:1px solid ${isCrit?'rgba(216,72,59,0.18)':'rgba(201,114,14,0.2)'};">
-      <div style="font-size:14px;font-weight:800;margin-bottom:2px;">${esc(a.label)}</div>
-      <div style="font-size:12.5px;">${isCrit?`<span class="stockneg">${esc(a.text)}</span>`:esc(a.text)}</div>
-      <div style="font-size:11px;opacity:0.75;margin-top:1px;">${esc(a.team)}</div>
+  const itemTile = (a, isCrit)=>`
+    <div class="alert-item-tile">
+      <div class="ait-label">${esc(a.label)}</div>
+      <div class="ait-detail">${isCrit?`<span class="stockneg">${esc(a.text)}</span>`:esc(a.text)}</div>
+      <div class="ait-team">${esc(a.team)}</div>
     </div>`;
   let out = '';
-  if(crit.length) out += `<div class="alert-banner"><b>⚠ ${crit.length} item(s) short</b>${crit.map(a=>entryHtml(a,true)).join('')}</div>`;
-  if(low.length) out += `<div class="alert-banner warn-mild"><b>🔔 ${low.length} item(s) running low</b>${low.map(a=>entryHtml(a,false)).join('')}</div>`;
+  if(crit.length) out += `<div class="alert-banner-tile"><div class="abt-head">⚠ ${crit.length} item(s) short</div><div class="alert-banner-items">${crit.map(a=>itemTile(a,true)).join('')}</div></div>`;
+  if(low.length) out += `<div class="alert-banner-tile warn-mild"><div class="abt-head">🔔 ${low.length} item(s) running low</div><div class="alert-banner-items">${low.map(a=>itemTile(a,false)).join('')}</div></div>`;
   return out;
 }
 
@@ -5074,6 +5174,7 @@ function renderShell(){
     ${S.moreOpen ? renderSheet(renderMorePanel(overflow), 'closeMore') : ''}
     ${S.profileOpen ? renderSheet(renderProfilePanel(role), 'closeProfile') : ''}
     ${S.toast ? `<div class="app-toast" style="position:absolute;bottom:calc(var(--navbar-h) + var(--sab) + 14px);left:50%;background:${S.toast.isErr?'var(--danger)':'var(--ink)'};color:#fff;padding:9px 16px;border-radius:30px;font-size:12.5px;z-index:200;max-width:88%;text-align:center;">${esc(S.toast.msg)}</div>` : ''}
+    ${S.successDialog ? `<div class="success-dialog-overlay"><div class="success-dialog-box"><div class="success-dialog-check">✔</div><div class="success-dialog-msg">${esc(S.successDialog.msg)}</div></div></div>` : ''}
   `;
 }
 
@@ -6660,7 +6761,11 @@ function openExpenseModal(existing, type, forUsername){
     }
     if(isAdmin) S.expenseAdminSel = byUsername;
     savePartitionForItem('expenses', touched);
-    closeModal(); render(); showToast(existing?'Entry updated':'Saved');
+    // Round 15 follow-up: reached only for a genuinely NEW expense/
+    // settlement (the `existing` edit path already returned at its own
+    // closeModal()/showToast() above) -- paper-airplane + green success
+    // dialog instead of the plain toast.
+    render(); celebrateEntrySaved('Saved');
   }));
 }
 
@@ -9089,6 +9194,11 @@ function refreshMessagesModal(){
 function bindQuickActionIcons(){
   document.querySelectorAll('[data-quick-action]').forEach(el=>el.addEventListener('click', ()=>{
     const k = el.dataset.quickAction;
+    // Round 15 follow-up: stamps this open as quick-action-originated (see
+    // __modalOpenedViaQuickAction's own header comment above showModal())
+    // so the phone back button, once this flow's modal(s) are all closed,
+    // returns to Home instead of wherever the tile happened to be tapped from.
+    __modalOpenedViaQuickAction = true;
     if(k==='purchase') openPurchaseModal();
     if(k==='filling') openFillingModal(null);
     if(k==='packing') openPackagingModal(null);
@@ -9439,7 +9549,7 @@ function openPurchaseModal(){
     logActivity({kind:'purchase', cat, ml});
     logStockMovement(cat, cat, 'purchase', ml, 'Purchase recorded');
     syncStockTasksFromAlerts();
-    closeModal(); render(); showToast('Purchase recorded');
+    render(); celebrateEntrySaved('Purchase recorded'); // Round 15 follow-up: paper-airplane + green success dialog for a new entry
   }));
 }
 function openFillingModal(prefillKey, prefillQty){
@@ -9479,8 +9589,7 @@ function openFillingModal(prefillKey, prefillQty){
     logStockMovement(key, `${it.name} ${it.size}`, 'filling', qty, 'Filling recorded');
     completeStockTasksForItem('filled', key);
     syncStockTasksFromAlerts();
-    closeModal(); render();
-    showToast('Filling recorded');
+    render(); celebrateEntrySaved('Filling recorded'); // Round 15 follow-up: paper-airplane + green success dialog for a new entry
   }));
 }
 
@@ -9576,8 +9685,7 @@ function openPackagingModal(prefillKey, prefillQty){
     completeStockTasksForItem('ready', key);
     autoAdvanceOrders();
     syncStockTasksFromAlerts();
-    closeModal(); render();
-    showToast('Packaging recorded');
+    render(); celebrateEntrySaved('Packaging recorded'); // Round 15 follow-up: paper-airplane + green success dialog for a new entry
   }));
 }
 
@@ -9774,8 +9882,12 @@ function openRetailModal(type, existingEntry){
     safeSet('app:readyStock', S.readyStock);
     savePartitionForItem('retailSales', entry);
     syncStockTasksFromAlerts(); // this deduction can itself create/worsen a shortage
-    closeModal(); render();
-    showToast(existingEntry ? 'Updated' : (isSale?'Sale recorded':'Sample recorded'));
+    render();
+    // Round 15 follow-up: only a genuinely NEW sale/sample gets the paper-
+    // airplane + green success dialog -- editing an existing entry keeps
+    // the plain close+toast, unchanged.
+    if(existingEntry){ closeModal(); showToast('Updated'); }
+    else celebrateEntrySaved(isSale?'Sale recorded':'Sample recorded');
   });
 }
 function renderRetailDraftList(){
@@ -10643,8 +10755,35 @@ function showPrompt(message, defaultValue, onSubmit, opts, onCancel){
 // effect. Falls back to growing from screen-center when there's no recent
 // real tap to anchor to (a modal opened programmatically, e.g. right after
 // a save completes, rather than from a direct click).
-let __lastTapX = null, __lastTapY = null, __lastTapAt = 0;
-document.addEventListener('pointerdown', (e)=>{ __lastTapX = e.clientX; __lastTapY = e.clientY; __lastTapAt = Date.now(); }, true);
+let __lastTapX = null, __lastTapY = null, __lastTapAt = 0, __lastTapRect = null;
+// Round 15 follow-up (2026-09-...): "Jis tile pr bhi hum click kre, vo wala
+// tile flip ho kr bada ho jaye or window khol de" -- besides the tap POINT
+// (ox/oy, used below for the wide/desktop centered layout), also record
+// the actual TILE that was tapped (its real on-screen rect at the moment of
+// the tap) whenever the tap landed on one of the app's tile-card classes.
+// showModal() uses this for a genuine container-transform ("FLIP") open:
+// the tile visually grows into the window instead of the window just
+// sliding up. Scoped to the tile classes specifically (not "any element")
+// so a tap on plain text/table rows/etc never accidentally triggers it.
+document.addEventListener('pointerdown', (e)=>{
+  __lastTapX = e.clientX; __lastTapY = e.clientY; __lastTapAt = Date.now();
+  const tile = e.target.closest && e.target.closest('.order-tile,.stat-card-v2,.alert-tile,.qa-tile,.more-item,.overview-col');
+  __lastTapRect = tile ? tile.getBoundingClientRect() : null;
+}, true);
+// Round 15 follow-up: "quick access wli chize hain unpr click kre to wahi
+// se ik window shoot honi chahiye or khulni chahiye (agar quick action ke
+// kisi page par hum hain or back dabate hn to wapas homepage par ana
+// chahiye)". Quick Action tiles already open a modal via showModal() (see
+// bindQuickActionIcons), so the "shoot open" part is just the FLIP-open
+// above -- .qa-tile is already in the tile-selector list. This flag is the
+// OTHER half: set true right before a quick action's open*Modal() call,
+// consumed by the very next showModal() call (stamped onto that overlay's
+// dataset so it survives a same-instant showModal() REPLACE within the
+// same flow -- e.g. Messages' "thread list -> one thread" navigation --
+// without leaking onto a later, unrelated modal). The phone-back handler
+// (see the popstate listener, below) reads that stamp to decide whether
+// closing this modal should also jump back to Home.
+let __modalOpenedViaQuickAction = false;
 function showModal(innerHtml, extraClass){
   // Bypasses closeModal()/syncBackStack() deliberately -- this is only ever
   // a same-instant REPLACE (one modal's content swapped for another's, e.g.
@@ -10658,10 +10797,13 @@ function showModal(innerHtml, extraClass){
   // sync with what's really on screen -- avoided by not touching history
   // during a same-instant replace at all.)
   const existingOverlay = document.getElementById('modalOverlay');
+  const inheritedViaQA = existingOverlay ? existingOverlay.dataset.viaQuickAction==='1' : false;
   if(existingOverlay) existingOverlay.remove(); // never stack modals — opening a new one while one is already showing used to leave two overlays behind, needing two closes to get rid of both.
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   overlay.id = 'modalOverlay';
+  overlay.dataset.viaQuickAction = (inheritedViaQA || __modalOpenedViaQuickAction) ? '1' : '';
+  __modalOpenedViaQuickAction = false; // consumed -- a later, unrelated showModal() must not inherit this
   overlay.innerHTML = `<div class="modal${extraClass?' '+extraClass:''}"><div class="sheet-handle"></div>${innerHtml}</div>`;
   const host = document.querySelector('.device-screen') || document.body;
   host.appendChild(overlay);
@@ -10669,27 +10811,72 @@ function showModal(innerHtml, extraClass){
   const originFresh = __lastTapX!==null && (Date.now()-__lastTapAt) < 800;
   const ox = originFresh ? Math.round(__lastTapX/window.innerWidth*100) : 50;
   const oy = originFresh ? Math.round(__lastTapY/window.innerHeight*100) : 40;
-  modalEl.style.transformOrigin = `${ox}% ${oy}%`; // only visually used on the wide/desktop centered layout (see CSS) -- harmless no-op on the mobile bottom-sheet slide
+  modalEl.style.transformOrigin = `${ox}% ${oy}%`; // only visually used on the wide/desktop centered layout (see CSS) -- harmless no-op once the FLIP-open below takes over, and the fallback when there's no tile rect to FLIP from at all.
+  // Round 15 follow-up: container-transform ("FLIP") open -- when we know
+  // exactly which tile was tapped (fresh __lastTapRect, same freshness
+  // window as ox/oy above), the modal visually GROWS OUT of that tile's
+  // real on-screen rect instead of sliding up from the bottom. Falls back
+  // to the existing sheetUp slide-up (CSS `animation`, untouched) when
+  // there's no fresh tile rect -- e.g. a modal opened by code, not a tap
+  // (an auto-opened alert, or a background sync re-render while a modal is
+  // already up).
+  const tileRect = originFresh ? __lastTapRect : null;
+  if(tileRect && tileRect.width>4 && tileRect.height>4){
+    modalEl.style.animation = 'none'; // suppress the default sheetUp keyframe FIRST -- the rect measured next must be the modal's true resting position, not a mid-keyframe one
+    const finalRect = modalEl.getBoundingClientRect();
+    if(finalRect.width>4 && finalRect.height>4){
+      const scaleX = tileRect.width / finalRect.width;
+      const scaleY = tileRect.height / finalRect.height;
+      const dx = (tileRect.left + tileRect.width/2) - (finalRect.left + finalRect.width/2);
+      const dy = (tileRect.top + tileRect.height/2) - (finalRect.top + finalRect.height/2);
+      modalEl.style.transformOrigin = '50% 50%';
+      modalEl.style.transition = 'none';
+      modalEl.style.opacity = '0.55';
+      modalEl.style.transform = `perspective(900px) translate(${dx}px, ${dy}px) scale(${scaleX}, ${scaleY}) rotateX(-8deg)`;
+      void modalEl.offsetWidth; // force reflow -- register the start state above before transitioning away from it
+      modalEl.style.transition = 'transform .32s cubic-bezier(.22,.9,.3,1), opacity .22s ease';
+      modalEl.style.transform = 'perspective(900px) translate(0,0) scale(1,1) rotateX(0deg)';
+      modalEl.style.opacity = '1';
+      modalEl.addEventListener('transitionend', function cleanup(ev){
+        if(ev.propertyName!=='transform') return;
+        modalEl.style.transition = ''; modalEl.style.transform = ''; modalEl.style.opacity = ''; modalEl.style.animation = '';
+        modalEl.removeEventListener('transitionend', cleanup);
+      });
+    } else {
+      modalEl.style.animation = ''; // finalRect came back empty (hidden/zero-size) -- bail back to the normal sheetUp animation
+    }
+  }
   enhanceFormControls(overlay);
   overlay.addEventListener('click', (e)=>{ if(e.target===overlay) closeModal(); });
   const cancelBtn = overlay.querySelector('#cancelModal');
   if(cancelBtn) cancelBtn.addEventListener('click', closeModal);
   syncBackStack(); // a modal is open now (whether freshly opened or replacing another) -- make sure the phone's back button has somewhere of ours to land on. See syncBackStack's own header comment for the full "phone back band ho jati hai" story.
 }
-// instant=true skips the closing animation (only ever used internally by
-// showModal's own same-instant replace, above -- see its comment for why
-// that path bypasses closeModal() entirely and never reaches here).
-// Default (real close: X/Cancel/tap-outside/after-save) plays a matching
-// shrink-back-down exit before removal, so modals no longer just vanish --
-// guarded against being called twice on the same overlay (e.g. two
+// mode: undefined = normal close (shrink-back-down exit before removal).
+// true/'instant' = skip the closing animation entirely (only ever used
+// internally by showModal's own same-instant replace, above -- see its
+// comment for why that path bypasses closeModal() entirely and never
+// reaches here). 'flyaway' = Round 15 follow-up ("entry save hone pr us
+// page ko paper airplane ki trah bana do or fly krwa do") -- plays the
+// paperPlaneFly exit instead of the default shrink-down; see
+// celebrateEntrySaved(), the sole caller of this mode, for the full story.
+// Guarded against being called twice on the same overlay (e.g. two
 // closeModal() calls racing) via the 'closing' class check.
-function closeModal(instant){
+function closeModal(mode){
   const o = document.getElementById('modalOverlay');
   if(!o) return;
-  if(instant){ o.remove(); syncBackStack(); return; }
+  if(mode===true || mode==='instant'){ o.remove(); syncBackStack(); return; }
   if(o.classList.contains('closing')) return;
   o.classList.add('closing');
-  setTimeout(()=>{ if(o.parentNode) o.remove(); syncBackStack(); }, 180);
+  const flyaway = mode==='flyaway';
+  if(flyaway){
+    o.classList.add('flyaway');
+    const plane = document.createElement('div');
+    plane.className = 'paper-plane-fx';
+    plane.textContent = '✈️';
+    o.appendChild(plane);
+  }
+  setTimeout(()=>{ if(o.parentNode) o.remove(); syncBackStack(); }, flyaway ? 520 : 180);
 }
 
 // ---- Phone/gesture back-button handling (2026-08-29, "phone me back krne
@@ -10760,7 +10947,19 @@ window.addEventListener('popstate', ()=>{
     const okBtn = alertOverlay.querySelector('#appAlertOkBtn');
     if(cancelBtn) cancelBtn.click(); else if(okBtn) okBtn.click(); else alertOverlay.remove();
   } else if(document.getElementById('modalOverlay')){
+    // Round 15 follow-up: "quick action ke kisi page par hum hain or back
+    // dabate hn to wapas homepage par ana chahiye" -- a modal stamped
+    // viaQuickAction (see showModal()'s own comment) also jumps the app
+    // back to Home once it finishes closing, regardless of which tab it
+    // was opened from. Read the stamp BEFORE calling closeModal() (the
+    // element is still there to read; closeModal() only marks it .closing,
+    // removal is the timer below), then wait out closeModal()'s own
+    // 180ms shrink-down removal timer before switching views, so the
+    // modal's exit animation isn't interrupted by a mid-flight full shell
+    // re-render.
+    const wasViaQuickAction = document.getElementById('modalOverlay').dataset.viaQuickAction==='1';
     closeModal(); // close the modal next if one's open — matches "back closes the topmost thing", not the whole app
+    if(wasViaQuickAction && S.view!=='home') setTimeout(()=>{ S.view='home'; render(); }, 190);
   } else if(S.notifOpen || S.moreOpen || S.profileOpen || S.alertPanelOpen){
     S.notifOpen=false; S.moreOpen=false; S.profileOpen=false; S.alertPanelOpen=null;
     render();
