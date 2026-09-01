@@ -697,6 +697,15 @@
      they run as Cloud Functions the signed-in admin's own ID token calls
      via firebase.functions() -- this SDK is what makes that callable. -->
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-functions-compat.js"></script>
+<!-- ADDED (2026-08-31, "Round 13" -- order photo storage): LR/Stock order
+     photos now upload to Firebase Storage (explicit user request, this
+     time -- unlike the earlier Round 12 LR fix, which deliberately stayed
+     on Google Drive per the user's choice back then; this round the user
+     explicitly asked for Firebase Storage specifically BECAUSE it can
+     auto-delete photos 30 days after upload via a plain Storage bucket
+     lifecycle rule, no scheduled code needed -- see storage.rules and
+     STEP18_ROUND13_DEPLOY_GUIDE.md's lifecycle.json). -->
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script>
 </head>
 <body>
 <div id="printArea"></div>
@@ -715,7 +724,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-08-31-firestore-preview18"; // ROUND 12 (2026-08-31), 3 explicit user requests: (1) LR photo "Upload Failed" every single time -- root cause was that apiUploadLR/apiDeleteLR sent this app's OWN unrelated single-device-login token (S.authToken) as `sessionToken`, which order-ops-backend.gs's requireSession_ could never recognize (it only knows tokens from that script's own OLD Sheets-based login action, which this app never calls anymore) -- every upload/delete rejected with session_required, no matter what. FIXED WITHOUT changing storage backend (explicit user request: keep the same Google Drive space, not Firebase Storage) -- apiUploadLR/apiDeleteLR now also send a real, live Firebase Auth ID token, and order-ops-backend.gs verifies THAT instead (verifyFirebaseIdToken_, via Google's Identity Toolkit REST API) -- see the Round 12 deploy guide, this needs a fresh Apps Script deployment (order-ops-backend.gs changed for the first time this whole engagement -- surgically, only the uploadLR/deleteLR auth check, nothing else). (2) A photo over 2MB is now actually guaranteed compressed under that cap (resizeImageFileMaxBytes, byte-size-checked via dataUrlByteLength, not just pixel-dimension-capped like before) before every LR upload, independent of storage backend. (3) Orders entered directly in OMS ("+ New order" / chat "Quick order") are now created ALREADY ACCEPTED (status:'processing', stock reserved immediately via the new shared reserveStockForAcceptedOrder helper) instead of sitting in the pending/"New" queue needing a separate Accept click -- only orders from the public customer-facing order form (buildOrderDocFromPayload, untouched, still status:'pending') still need that Approval step. ROUND 11 (2026-08-31), new "Opening Balance" expense checkpoint feature -- admin (for ANY manager) can now set the manager's running expense/settlement balance to a known-correct absolute figure via a dedicated 📌 Opening Balance entry (Expenses tab, admin view), instead of the balance being trusted to stay correct purely from every historical add/subtract. All OLD expense/settlement entries are untouched -- only the derived running total is corrected going forward. The new entry type stores BOTH the signed delta actually applied (so the existing balance math needs no changes at all -- see applyExpenseBalanceDelta's comment) AND the plain target figure (so every screen can always show "Balance set to ₹X", never a confusing raw delta) -- see expenseEntryAmountText/expenseEntryBadgeHtml, the one shared place all of Expenses/Daily Work/print/monthly-report/Home-activity read from, so the totaling stays consistent everywhere at once. Opening Balance entries are excluded from "total expense" sums (they're a correction, not spending), support create+delete only (no edit -- delete and re-add instead, to limit risk), and a new in-app banner (no push notification) on the admin Expenses page flags any manager still missing this month's checkpoint. ROUND 10 (2026-08-31), "sab ek sath shuru karo, saare bugs thik karo" full fix pass -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md's Round 10 section for the complete list. Highlights: messaging seen/read-write permissions now work for every role, not just admin (the specific bug reported this round -- see firestore.rules' new dedicated chatMessages block); the canEntry() default-fallback bug that silently permission-denied every entry-gated write for any newly-added/uncustomized role; the stock-ledger clobber race (fsSetStockField now does a scoped dot-path update, not a whole-field overwrite); FIFO-covered orders no longer stuck (orderIsFullyStocked/autoAdvanceOrders); cancelled order items no longer double-deducted on edit; concurrent expense edits no longer double-count balances (fsEditExpenseAtomic); offboarded staff Auth accounts + live sessions now actually get revoked (deleteStaffUser/forceLogoutStaffUser/resetStaffPassword); Retail Sale/Sample booked-entry lock + double-submit guard; double-submit guards on the dispatch, attendance, and post-login "Tap to Continue" buttons; a magnitude/typo cap on Bulk stock edit (matching the single-item Adjust modal); and the shared-tablet push-notification bug where a second person logging in on the same device/session stopped receiving push until a full page reload. (Round 9: Enter-to-send. Round 8: the login-skip/duplicate-notification/stray-welcome race fix. Rounds 1-7: session-token adoption, FIFO stock allocation, Daily Work resync, System Health panel removal, modal animations, live-listener reconnect, the real bar-bar-password root cause, chat ordering/read-receipts, admin-only password reset, phone back button, the first (incomplete) login-race fix -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md for full history.)
+const APP_BUILD = "2026-08-31-firestore-preview19"; // ROUND 13 (2026-08-31), 2 explicit user requests: (1) "Manager wala Checkpoint khud hi ban jaye, 30 Days ke Expenses rakho, usse pehle ke, usse pehle ke apne aap hi previous balance ke naam se save karte raho" -- the Expenses page now only ever shows the last 30 days (computeVisibleExpenses); everything before that is summarized live into an automatic "📌 Previous Balance" line (previousBalanceRowHtml) needing zero manual action -- safe because S.expenseBalances is a durable running total, never re-derived from history (see expenseBalanceFor's comment). The old monthly reminder banner (nagging admin to manually set a checkpoint) is gone; the manual "📌 Opening Balance" button itself stays, for genuine corrections. Entries older than 90 days are now deleted automatically server-side (functions/index.js's new cleanupOldExpenses scheduled function) -- the Firestore fetch window narrowed from 365 to 90 days to match. (2) "Order finalization me LR ya Stock photo 2 options rakho ... Ye Photo Automatically deleted hojaye after 30 days" -- LR photo upload (openUploadLRModal + the dispatch flow) now offers a Stock Photo option too (for loose-goods pickups needing a verification photo), and BOTH new uploads go through Firebase Storage (fsUploadOrderPhoto/fsDeleteOrderPhoto) instead of Google Drive -- an explicit, informed reversal of Round 12's Drive-only choice, made specifically because Storage can auto-delete a photo 30 days after upload via a plain bucket lifecycle rule (see storage.rules + lifecycle.json), no scheduled code needed. Legacy (pre-Round-13) Drive-based photos are unaffected and still deletable via apiDeleteLR. Also this round: the Sheet backup scheme (order-ops-backend.gs's dailyBackup) changed from one file per WEEK (refreshed in place daily, so never more than one real snapshot per week) kept for 8 weeks, to one real, distinct snapshot per DAY kept for 7 days (BACKUP_RETENTION_DAYS) -- explicit user request ("7 din ka backup rakho bas, usse pehle ka backup auto delete ho jana chahiye"). ROUND 12 (2026-08-31), 3 explicit user requests: (1) LR photo "Upload Failed" every single time -- root cause was that apiUploadLR/apiDeleteLR sent this app's OWN unrelated single-device-login token (S.authToken) as `sessionToken`, which order-ops-backend.gs's requireSession_ could never recognize (it only knows tokens from that script's own OLD Sheets-based login action, which this app never calls anymore) -- every upload/delete rejected with session_required, no matter what. FIXED WITHOUT changing storage backend (explicit user request: keep the same Google Drive space, not Firebase Storage) -- apiUploadLR/apiDeleteLR now also send a real, live Firebase Auth ID token, and order-ops-backend.gs verifies THAT instead (verifyFirebaseIdToken_, via Google's Identity Toolkit REST API) -- see the Round 12 deploy guide, this needs a fresh Apps Script deployment (order-ops-backend.gs changed for the first time this whole engagement -- surgically, only the uploadLR/deleteLR auth check, nothing else). (2) A photo over 2MB is now actually guaranteed compressed under that cap (resizeImageFileMaxBytes, byte-size-checked via dataUrlByteLength, not just pixel-dimension-capped like before) before every LR upload, independent of storage backend. (3) Orders entered directly in OMS ("+ New order" / chat "Quick order") are now created ALREADY ACCEPTED (status:'processing', stock reserved immediately via the new shared reserveStockForAcceptedOrder helper) instead of sitting in the pending/"New" queue needing a separate Accept click -- only orders from the public customer-facing order form (buildOrderDocFromPayload, untouched, still status:'pending') still need that Approval step. ROUND 11 (2026-08-31), new "Opening Balance" expense checkpoint feature -- admin (for ANY manager) can now set the manager's running expense/settlement balance to a known-correct absolute figure via a dedicated 📌 Opening Balance entry (Expenses tab, admin view), instead of the balance being trusted to stay correct purely from every historical add/subtract. All OLD expense/settlement entries are untouched -- only the derived running total is corrected going forward. The new entry type stores BOTH the signed delta actually applied (so the existing balance math needs no changes at all -- see applyExpenseBalanceDelta's comment) AND the plain target figure (so every screen can always show "Balance set to ₹X", never a confusing raw delta) -- see expenseEntryAmountText/expenseEntryBadgeHtml, the one shared place all of Expenses/Daily Work/print/monthly-report/Home-activity read from, so the totaling stays consistent everywhere at once. Opening Balance entries are excluded from "total expense" sums (they're a correction, not spending), support create+delete only (no edit -- delete and re-add instead, to limit risk), and a new in-app banner (no push notification) on the admin Expenses page flags any manager still missing this month's checkpoint. ROUND 10 (2026-08-31), "sab ek sath shuru karo, saare bugs thik karo" full fix pass -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md's Round 10 section for the complete list. Highlights: messaging seen/read-write permissions now work for every role, not just admin (the specific bug reported this round -- see firestore.rules' new dedicated chatMessages block); the canEntry() default-fallback bug that silently permission-denied every entry-gated write for any newly-added/uncustomized role; the stock-ledger clobber race (fsSetStockField now does a scoped dot-path update, not a whole-field overwrite); FIFO-covered orders no longer stuck (orderIsFullyStocked/autoAdvanceOrders); cancelled order items no longer double-deducted on edit; concurrent expense edits no longer double-count balances (fsEditExpenseAtomic); offboarded staff Auth accounts + live sessions now actually get revoked (deleteStaffUser/forceLogoutStaffUser/resetStaffPassword); Retail Sale/Sample booked-entry lock + double-submit guard; double-submit guards on the dispatch, attendance, and post-login "Tap to Continue" buttons; a magnitude/typo cap on Bulk stock edit (matching the single-item Adjust modal); and the shared-tablet push-notification bug where a second person logging in on the same device/session stopped receiving push until a full page reload. (Round 9: Enter-to-send. Round 8: the login-skip/duplicate-notification/stray-welcome race fix. Rounds 1-7: session-token adoption, FIFO stock allocation, Daily Work resync, System Health panel removal, modal animations, live-listener reconnect, the real bar-bar-password root cause, chat ordering/read-receipts, admin-only password reset, phone back button, the first (incomplete) login-race fix -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md for full history.)
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -2122,6 +2131,41 @@ async function apiDeleteLR(fileId){
   if(json && json.error) handleAuthError(json.error);
   return json;
 }
+// ---- ROUND 13 (2026-08-31) -- order photo storage (LR + new Stock type) ----
+// apiUploadLR/apiDeleteLR above (Google Drive, via the old Apps Script
+// backend) are KEPT, unchanged, purely to still be able to delete an OLD
+// (pre-Round-13) Drive-based LR photo when someone removes one -- see
+// openViewLRModal's remove-photo handler, which branches on whether the
+// order has o.lrStoragePath (new) or only o.lrFileId (legacy Drive). Every
+// NEW upload, of either type, goes through Firebase Storage instead
+// (fsUploadOrderPhoto below), per the user's explicit choice this round --
+// unlike the Round 12 LR-only fix, which stayed on Drive on purpose, this
+// time the user specifically asked for Storage BECAUSE it can genuinely
+// auto-delete a photo 30 days after upload via a plain bucket lifecycle
+// rule (see storage.rules' own comment + the deploy guide's lifecycle.json)
+// -- no scheduled code needed, and it applies to BOTH photo types alike
+// (single `orderPhotos/` path prefix covers both "lr" and "stock").
+//
+// Worth noting: the LR view modal's "photo auto-removed in N days" text
+// (openViewLRModal's hasFreshPhoto/daysLeft) already existed BEFORE this
+// round -- but nothing ever actually deleted the underlying Drive file, so
+// that promise was purely a client-side display convention (the photo just
+// stopped being SHOWN after 30 days, forever orphaned in Drive underneath).
+// Storage's lifecycle rule is what finally makes that promise literally
+// true for every photo uploaded from this point on.
+async function fsUploadOrderPhoto(orderId, dataUrl, photoType){
+  const blob = await (await fetch(dataUrl)).blob();
+  const storagePath = `orderPhotos/${orderId}/${photoType==='stock'?'stock':'lr'}_${Date.now()}.jpg`;
+  const ref = fsStorage.ref(storagePath);
+  await ref.put(blob, { contentType:'image/jpeg' });
+  const url = await ref.getDownloadURL();
+  return { ok:true, url, storagePath };
+}
+async function fsDeleteOrderPhoto(storagePath){
+  if(!storagePath) return;
+  try{ await fsStorage.ref(storagePath).delete(); }
+  catch(e){ /* already gone (manually deleted, or the 30-day lifecycle rule already swept it) -- either way there's nothing left to clean up */ }
+}
 // Progressively shrinks BOTH pixel dimensions and JPEG quality until the
 // actual encoded byte size is under maxBytes -- unlike resizeImageFile
 // (which only caps pixel dimensions and can still produce a file well over
@@ -2211,6 +2255,13 @@ const fsDb = firebase.firestore();
 // callable's default (us-central1) region when the function is actually
 // deployed to asia-south2 fails with "not-found", not a helpful error.
 const fsFunctions = firebase.app().functions('asia-south2');
+// ROUND 13 (2026-08-31, order photo storage) -- Firebase Storage, for the
+// new LR/Stock order-photo upload flow (see fsUploadOrderPhoto below).
+// Explicit user choice this round: unlike LR photos historically (kept on
+// Google Drive), the new photos go here specifically so a plain bucket
+// lifecycle rule can auto-delete them 30 days after upload with zero
+// scheduled code.
+const fsStorage = firebase.storage();
 // Built-in offline persistence — the direct replacement for the hand-built
 // offlineQueue/persistOfflineQueue (see firestore_client_design.md
 // section 4): a write made offline is applied to the local cache
@@ -2664,7 +2715,17 @@ function attachFirestoreListeners(){
   // these same fields already.)
   fsBindCollection('orders', db.collection('orders').where('createdAt','>=', now-60*DAY_MS).orderBy('createdAt'), (a,b)=>a.createdAt-b.createdAt);
   fsBindCollection('attendance', db.collection('attendance').where('timestamp','>=', now-60*DAY_MS).orderBy('timestamp'), (a,b)=>a.timestamp-b.timestamp);
-  fsBindCollection('expenses', db.collection('expenses').where('at','>=', now-365*DAY_MS).orderBy('at'), (a,b)=>a.at-b.at);
+  // ROUND 13 (2026-08-31, explicit user request: "30 Days ke Expenses rkho,
+  // usse phle ke ... old entries 90 din tk save rhe"): was 365 days --
+  // narrowed to 90, matching functions/index.js's cleanupOldExpenses
+  // scheduled Cloud Function, which now actually deletes expenses/{id}
+  // docs older than 90 days server-side (see that function's own comment
+  // for why this is safe: S.expenseBalances is a durable running total,
+  // never re-derived from this query's results). renderExpenses further
+  // narrows the DISPLAYED list to just the last 30 days on top of this --
+  // the extra 30-90 day slack fetched here exists only so the client isn't
+  // racing the daily cleanup by a few hours right at the boundary.
+  fsBindCollection('expenses', db.collection('expenses').where('at','>=', now-90*DAY_MS).orderBy('at'), (a,b)=>a.at-b.at);
   fsBindCollection('activityLog', db.collection('activityLog').where('at','>=', now-7*DAY_MS).orderBy('at'), (a,b)=>a.at-b.at);
   fsBindCollection('dominoPrints', db.collection('dominoPrints').orderBy('at'), (a,b)=>a.at-b.at); // never age-filtered — explicit exemption, see firebase_data_model.md
   fsBindCollection('loginLog', db.collection('loginLog').where('at','>=', now-7*DAY_MS).orderBy('at'), (a,b)=>a.at-b.at);
@@ -2930,11 +2991,42 @@ function handleAuthError(errMsg){
   }
   return false;
 }
+// ROUND 13 (2026-08-31, explicit user request): "Order finalization me LR
+// ya Stock photo 2 options rakho (inme choice while uploading LR) so that
+// jo loose mal lete h unko stock ki photo mil jaye verification k liye" --
+// a customer who picks up loose goods (no real Lorry Receipt involved)
+// still needs a verification photo, so the same upload flow now lets staff
+// pick which KIND of photo they're attaching, not just always "LR". Single
+// slot per order (whatever was picked replaces whatever was there before,
+// exactly like the old LR-only flow always worked) -- o.photoType records
+// which one it is; every OTHER field (lrPhotoUrl/lrUploadedAt/lrUploadedBy/
+// lrNumber) stays shared/generic on purpose, so nothing downstream (badges,
+// the 30-day hide logic, print, etc.) needs to know or care which type it
+// is except where the label itself is shown.
+function photoTypeToggleHtml(selected){
+  return `<div class="field"><label>Photo type</label><div style="display:flex;gap:8px;">
+    <button type="button" class="btn btn-sm ${selected==='lr'?'btn-primary':'btn-outline'}" id="photoTypeLRBtn" data-ptype="lr">📄 LR Photo</button>
+    <button type="button" class="btn btn-sm ${selected==='stock'?'btn-primary':'btn-outline'}" id="photoTypeStockBtn" data-ptype="stock">📦 Stock Photo</button>
+  </div></div>`;
+}
+function wirePhotoTypeToggle(getSelected, setSelected){
+  const lrBtn = document.getElementById('photoTypeLRBtn');
+  const stockBtn = document.getElementById('photoTypeStockBtn');
+  if(!lrBtn || !stockBtn) return;
+  const refresh = ()=>{
+    lrBtn.className = 'btn btn-sm ' + (getSelected()==='lr' ? 'btn-primary' : 'btn-outline');
+    stockBtn.className = 'btn btn-sm ' + (getSelected()==='stock' ? 'btn-primary' : 'btn-outline');
+  };
+  lrBtn.addEventListener('click', ()=>{ setSelected('lr'); refresh(); });
+  stockBtn.addEventListener('click', ()=>{ setSelected('stock'); refresh(); });
+}
 function openUploadLRModal(orderId){
   const o = S.orders.find(x=>x.id===orderId); if(!o) return;
+  let photoType = o.photoType || 'lr';
   showModal(`
-    <h3>📄 Upload LR (Lorry Receipt)</h3>
+    <h3>📄 Upload Photo</h3>
     <p class="desc" style="margin-top:-6px;">${esc(orderDisplayLabel(o))} — photo kept for 30 days, then auto-removed.</p>
+    ${photoTypeToggleHtml(photoType)}
     <div class="field"><label>Photo (optional)</label><input id="lrFileInput" type="file" accept="image/*" capture="environment" /></div>
     <div class="field"><label>LR Number (optional)</label><input id="lrNumberInput" value="${esc(o.lrNumber||'')}" placeholder="e.g. LR-4821" /></div>
     <div id="lrUploadStatus" style="font-size:12.5px;color:var(--ink-soft);margin-top:6px;"></div>
@@ -2943,6 +3035,7 @@ function openUploadLRModal(orderId){
       <button type="button" class="btn btn-primary" id="confirmUploadLRBtn">Save</button>
     </div>
   `);
+  wirePhotoTypeToggle(()=>photoType, (v)=>{ photoType = v; });
   const fileInput = document.getElementById('lrFileInput');
   const uploadBtn = document.getElementById('confirmUploadLRBtn');
   const statusEl = document.getElementById('lrUploadStatus');
@@ -2954,20 +3047,20 @@ function openUploadLRModal(orderId){
     if(file){
       statusEl.textContent = 'Uploading…';
       try{
-        // Round 12: still Google Drive (via the old Apps Script backend),
-        // per the explicit user request to keep using the same storage --
-        // but now sends a real Firebase ID token so it actually succeeds
-        // (see apiUploadLR's own comment), and hard-caps to 2MB
-        // (resizeImageFileMaxBytes) instead of just capping pixel
-        // dimensions like before.
+        // Round 13: Firebase Storage (see fsUploadOrderPhoto's own comment
+        // for why this round moved off Drive) -- still hard-capped to 2MB
+        // first (resizeImageFileMaxBytes), same as before.
         const dataUrl = await resizeImageFileMaxBytes(file, 1600, LR_PHOTO_MAX_BYTES);
-        const base64Data = dataUrl.split(',')[1];
-        const result = await apiUploadLR(base64Data, 'image/jpeg', `LR-${o.id}.jpg`);
+        const result = await fsUploadOrderPhoto(o.id, dataUrl, photoType);
+        const oldStoragePath = o.lrStoragePath; // replacing an existing Storage-based photo -- clean up the old object instead of leaving it orphaned
         if(result && result.ok){
           o.lrPhotoUrl = result.url;
-          o.lrFileId = result.fileId;
+          o.lrStoragePath = result.storagePath;
+          delete o.lrFileId; // this order no longer points at a legacy Drive file
+          o.photoType = photoType;
           o.lrUploadedAt = Date.now();
           o.lrUploadedBy = S.currentUser.name;
+          if(oldStoragePath && oldStoragePath!==result.storagePath) fsDeleteOrderPhoto(oldStoragePath).catch(()=>{});
         } else {
           statusEl.textContent = 'Photo upload failed — try again.';
           uploadBtn.disabled = false;
@@ -2982,17 +3075,22 @@ function openUploadLRModal(orderId){
     if(lrNumber) o.lrNumber = lrNumber; else delete o.lrNumber;
     savePartitionForItem('orders', o);
     closeModal(); render();
-    showToast('LR saved');
+    showToast('Photo saved');
   });
 }
-// o.lrPhotoUrl is Drive's "uc?export=download&id=..." link — reliable when used
-// as-is for a real navigation (the <a href> download link), but Drive does not
-// reliably serve raw image bytes on that same endpoint when hotlinked as an
-// <img src> — it can redirect to an interstitial instead, which shows up as a
-// broken-image icon. Drive's "thumbnail" endpoint is the one meant for inline
-// embedding, so the preview <img> uses that instead (built from lrFileId if
+// A NEW (Round 13+) photo's o.lrPhotoUrl is already a real Firebase Storage
+// download URL, fine to use directly as-is for both the <img src> and the
+// <a href> download link -- no Drive-specific workaround needed for it.
+// Only a LEGACY (pre-Round-13) Drive-based photo needs the thumbnail-
+// endpoint rewrite below: o.lrPhotoUrl there is Drive's "uc?export=
+// download&id=..." link -- reliable for a real navigation (the <a href>),
+// but Drive does not reliably serve raw image bytes on that same endpoint
+// when hotlinked as an <img src> -- it can redirect to an interstitial
+// instead, which shows up as a broken-image icon. Drive's "thumbnail"
+// endpoint is the one meant for inline embedding (built from lrFileId if
 // present, else parsed back out of lrPhotoUrl for older records).
 function lrEmbedUrl(o){
+  if(o.lrStoragePath) return o.lrPhotoUrl;
   let fileId = o.lrFileId;
   if(!fileId && o.lrPhotoUrl){
     const m = String(o.lrPhotoUrl).match(/[?&]id=([^&]+)/);
@@ -3004,8 +3102,9 @@ function openViewLRModal(orderId){
   const o = S.orders.find(x=>x.id===orderId); if(!o) return;
   const hasFreshPhoto = o.lrPhotoUrl && (Date.now()-o.lrUploadedAt)<30*24*60*60*1000;
   const daysLeft = hasFreshPhoto ? Math.max(0, 30 - Math.floor((Date.now()-o.lrUploadedAt)/(24*60*60*1000))) : null;
+  const typeLabel = o.photoType==='stock' ? '📦 Stock Photo' : '📄 LR';
   showModal(`
-    <h3>📄 LR — ${esc(orderDisplayLabel(o))}</h3>
+    <h3>${typeLabel} — ${esc(orderDisplayLabel(o))}</h3>
     ${hasFreshPhoto ? `
       <p class="desc" style="margin-top:-6px;">Uploaded by ${esc(o.lrUploadedBy||'—')} on ${fmtDate(o.lrUploadedAt)} · photo auto-removed in ${daysLeft} day${daysLeft===1?'':'s'}.</p>
       <a href="${esc(o.lrPhotoUrl)}" target="_blank" rel="noopener"><img src="${esc(lrEmbedUrl(o))}" id="lrModalImg" style="width:100%;border-radius:10px;border:1px solid var(--border);margin:10px 0;" /></a>
@@ -3030,13 +3129,19 @@ function openViewLRModal(orderId){
   document.getElementById('editLRBtn').addEventListener('click', ()=>openUploadLRModal(orderId));
   const removeBtn = document.getElementById('removeLRBtn');
   if(removeBtn) removeBtn.addEventListener('click', ()=>{
-    showConfirm('Remove this LR photo? (LR number, if any, stays.)', async ()=>{
+    showConfirm('Remove this photo? (LR number, if any, stays.)', async ()=>{
       const fileId = o.lrFileId;
-      delete o.lrPhotoUrl; delete o.lrFileId; delete o.lrUploadedAt; delete o.lrUploadedBy;
+      const storagePath = o.lrStoragePath;
+      delete o.lrPhotoUrl; delete o.lrFileId; delete o.lrStoragePath; delete o.photoType; delete o.lrUploadedAt; delete o.lrUploadedBy;
       savePartitionForItem('orders', o);
       closeModal(); render();
-      showToast('LR photo removed');
-      if(fileId) apiDeleteLR(fileId).catch(()=>{}); // fire-and-forget — the daily cleanup would catch it anyway even if this fails
+      showToast('Photo removed');
+      // fire-and-forget either way -- for a Storage-based photo the 30-day
+      // lifecycle rule would eventually catch it even if this fails; for a
+      // legacy Drive photo there's no such backstop, but this mirrors the
+      // exact same best-effort behaviour Round 12 already shipped for it.
+      if(storagePath) fsDeleteOrderPhoto(storagePath).catch(()=>{});
+      else if(fileId) apiDeleteLR(fileId).catch(()=>{});
     });
   });
 }
@@ -5113,6 +5218,7 @@ function openDispatchModal(orderId){
       <datalist id="dispatchTransportList">${S.transports.map(t=>`<option value="${esc(t)}"></option>`).join('')}</datalist>
     </div>
     <div class="field"><label>Total No. of Cases</label><input id="dispatchCases" type="number" min="0" placeholder="e.g. 12" /></div>
+    ${photoTypeToggleHtml('lr')}
     <div class="field"><label>LR Photo (optional)</label><input id="dispatchLRFile" type="file" accept="image/*" capture="environment" /></div>
     <div class="field"><label>LR Number (optional)</label><input id="dispatchLRNumber" placeholder="e.g. LR-4821" /></div>
     <div id="dispatchLRStatus" style="font-size:12px;color:var(--ink-soft);margin:-6px 0 4px;"></div>
@@ -5121,6 +5227,8 @@ function openDispatchModal(orderId){
       <button type="button" class="btn" id="dispatchSubmitBtn" style="background:var(--warning);color:#fff;">Submit Without LR</button>
     </div>
   `);
+  let dispatchPhotoType = 'lr';
+  wirePhotoTypeToggle(()=>dispatchPhotoType, (v)=>{ dispatchPhotoType = v; });
   const lrFileInputEl = document.getElementById('dispatchLRFile');
   const submitBtnEl = document.getElementById('dispatchSubmitBtn');
   const refreshDispatchSubmitBtn = ()=>{
@@ -5161,23 +5269,26 @@ function openDispatchModal(orderId){
     // before ever calling finalizeDispatch.
     bookedBtn.disabled = true;
     if(lrFile){
-      statusEl.textContent = 'Uploading LR photo…';
+      statusEl.textContent = 'Uploading photo…';
       try{
-        // Round 12: still Google Drive (see apiUploadLR's own comment for
-        // how the real session_required bug got fixed) + hard-capped to
-        // 2MB (resizeImageFileMaxBytes).
+        // Round 13: Firebase Storage (see fsUploadOrderPhoto's own comment
+        // for why) + hard-capped to 2MB (resizeImageFileMaxBytes), same as
+        // the standalone Upload LR modal.
         const dataUrl = await resizeImageFileMaxBytes(lrFile, 1600, LR_PHOTO_MAX_BYTES);
-        const base64Data = dataUrl.split(',')[1];
-        const result = await apiUploadLR(base64Data, 'image/jpeg', `LR-${o.id}.jpg`);
+        const result = await fsUploadOrderPhoto(o.id, dataUrl, dispatchPhotoType);
+        const oldStoragePath = o.lrStoragePath;
         if(result && result.ok){
-          o.lrPhotoUrl = result.url; o.lrFileId = result.fileId;
+          o.lrPhotoUrl = result.url; o.lrStoragePath = result.storagePath;
+          delete o.lrFileId;
+          o.photoType = dispatchPhotoType;
           o.lrUploadedAt = Date.now(); o.lrUploadedBy = S.currentUser.name;
+          if(oldStoragePath && oldStoragePath!==result.storagePath) fsDeleteOrderPhoto(oldStoragePath).catch(()=>{});
         } else {
-          statusEl.textContent = 'LR photo upload failed — dispatching without it.';
+          statusEl.textContent = 'Photo upload failed — dispatching without it.';
           await new Promise(r=>setTimeout(r, 900));
         }
       }catch(err){
-        statusEl.textContent = 'LR photo upload failed — dispatching without it.';
+        statusEl.textContent = 'Photo upload failed — dispatching without it.';
         await new Promise(r=>setTimeout(r, 900));
       }
     }
@@ -5964,6 +6075,42 @@ function expenseEntryBadgeHtml(x, opts){
   else label = 'Expense';
   return `<span class="badge badge-${cls}" style="margin-top:4px;display:inline-block;">${label}</span>`;
 }
+// ---- AUTO "Previous Balance" (2026-08-31, "Round 13" -- explicit user
+// request: "Manager wala Checkpoint khud hi ban jaye ... 30 Days ke
+// Expenses rakho, usse pehle ke apne aap hi previous balance ke naam se
+// save karte raho"): replaces having to rely on the admin manually
+// clicking "📌 Opening Balance" every month just to keep the list from
+// growing forever. The Expenses list itself now only ever shows the last
+// EXPENSE_VISIBLE_WINDOW_MS (30 days) of entries -- everything before that
+// is summarized into one always-correct, zero-effort "📌 Previous Balance"
+// line instead, computed live, with no extra Firestore writes and no
+// scheduled job needed for the DISPLAY side of this.
+//
+// This is safe specifically BECAUSE S.expenseBalances[username] is a
+// DURABLE running total (see expenseBalanceFor's own comment above) that
+// is NEVER recomputed by re-summing expense history -- so:
+//   previousBalance = durable total − sum(contribution of the entries
+//   actually shown, i.e. the last 30 days)
+// is exactly the balance as it stood at the start of the visible window,
+// and stays correct even after old entries are actually deleted from
+// Firestore (see cleanupOldExpenses in functions/index.js -- entries
+// older than 90 days are removed automatically once a day; safe for the
+// exact same "durable total, not re-summed" reason -- retention window is
+// deliberately longer than the 30-day display window so there's a little
+// slack before a not-yet-cleaned-up entry actually disappears).
+const EXPENSE_VISIBLE_WINDOW_MS = 30*24*60*60*1000;
+function expenseEntryContribution(x){ return x ? ((x.type==='settlement' ? -x.amount : x.amount) || 0) : 0; }
+function computeVisibleExpenses(allForUser, durableBalance){
+  const cutoff = Date.now() - EXPENSE_VISIBLE_WINDOW_MS;
+  const visible = allForUser.filter(x=>x.at>=cutoff).sort((a,b)=>b.at-a.at);
+  const visibleContribution = visible.reduce((s,x)=>s+expenseEntryContribution(x),0);
+  const previousBalance = durableBalance - visibleContribution;
+  return { visible, previousBalance };
+}
+function previousBalanceRowHtml(previousBalance){
+  if(previousBalance===0) return ''; // nothing to summarize -- e.g. a brand-new manager, or a window with no prior history
+  return `<div class="stat" style="margin:10px 0 4px;background:var(--bg-soft,#F5F5F7);"><div class="n" style="font-size:16px;">₹${previousBalance.toLocaleString('en-IN')}</div><div class="l">📌 Previous Balance (30 din se pehle tak)</div></div>`;
+}
 // 'YYYY-MM' key for whichever month `ts` (default now) falls in -- reuses
 // localDateKey (already the app's one source of truth for local-timezone
 // date math) rather than rolling fresh Date logic, so this can't drift out
@@ -6059,12 +6206,13 @@ function openOpeningBalanceModal(forUsername){
 function renderExpenses(){
   const isAdmin = S.currentUser.role==='admin';
   if(!isAdmin){
-    const mine = S.expenses.filter(x=>x.byUsername===S.currentUser.username).sort((a,b)=>b.at-a.at);
+    const mineAll = S.expenses.filter(x=>x.byUsername===S.currentUser.username);
     const balance = expenseBalanceFor(S.currentUser.username);
+    const { visible: mine, previousBalance } = computeVisibleExpenses(mineAll, balance);
     return `
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-        <div><h2>My expenses</h2><p class="desc">Your pocket expenses — log it yourself when admin hands you cash.</p></div>
+        <div><h2>My expenses</h2><p class="desc">Your pocket expenses — log it yourself when admin hands you cash. Sirf pichle 30 din dikhte hain.</p></div>
         <div class="row-actions" style="flex-wrap:wrap;gap:6px;">
           <button class="btn btn-primary btn-sm" id="newExpBtn">+ Add expense</button>
           <button class="btn btn-accent btn-sm" id="newSelfSettleBtn">💵 Cash Settlement (from Admin)</button>
@@ -6080,6 +6228,7 @@ function renderExpenses(){
             <td class="mono">${fmtTime(x.at)}</td>
           </tr>`).join('')}
         </tbody></table>`).join('')}
+      ${previousBalanceRowHtml(previousBalance)}
     </div>`;
   }
   // Admin view: pick a manager, see balance, add settlement or expense-on-their-behalf, edit/delete anything.
@@ -6096,27 +6245,22 @@ function renderExpenses(){
   // button here, mirroring the one managers already have for themselves.
   const managers = S.users.filter(u=>u.role==='manager' || S.expenses.some(x=>x.byUsername===u.username));
   const selUsername = S.expenseAdminSel || (managers[0] && managers[0].username) || '';
-  const list = S.expenses.filter(x=>x.byUsername===selUsername).sort((a,b)=>b.at-a.at);
+  const listAll = S.expenses.filter(x=>x.byUsername===selUsername);
   const balance = selUsername ? expenseBalanceFor(selUsername) : 0;
-  // Reminder banner (in-app only, per the user's explicit choice -- no push
-  // notification, no scheduled Cloud Function): flags any manager who does
-  // not yet have an opening_balance checkpoint entry for THIS calendar
-  // month, so the admin notices before the running balance drifts again.
-  const currentPk = currentPeriodKey();
-  const missingManagers = managers.filter(u => !S.expenses.some(x=>isOpeningBalanceEntry(x) && x.byUsername===u.username && x.periodKey===currentPk));
-  const reminderBannerHtml = missingManagers.length===0 ? '' : `
-    <div class="alert-tile mild" style="margin-bottom:12px;">
-      <div class="at-label">📌 Opening Balance checkpoint pending — ${esc(periodKeyLabel(currentPk))}</div>
-      <div class="at-detail">${missingManagers.length===1?'Ye manager':'Ye managers'} ka is mahine ka balance checkpoint set nahi hua — running total ghalat ho sakta hai. Neeche se set kar do.</div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px;">
-        ${missingManagers.map(u=>`<button type="button" class="btn btn-sm btn-accent" data-set-opening="${esc(u.username)}">${esc(u.name)} — Set now</button>`).join('')}
-      </div>
-    </div>`;
+  const { visible: list, previousBalance } = computeVisibleExpenses(listAll, balance);
+  // ROUND 13 (2026-08-31, explicit user request: "Manager wala Checkpoint
+  // khud hi ban jaye"): the old monthly reminder banner (nagging admin to
+  // manually click "📌 Opening Balance" every month) is gone -- the
+  // "📌 Previous Balance" line below the list now does that job
+  // automatically, with zero manual action needed. The manual "📌 Opening
+  // Balance" button itself STAYS (see openOpeningBalanceModal) -- still
+  // useful for genuinely correcting the balance after a real-world mistake
+  // (e.g. cash handled outside the app) -- it's just no longer a required
+  // monthly ritual.
   return `
-  ${reminderBannerHtml}
   <div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-      <div><h2>Expenses &amp; settlements</h2><p class="desc">Manager expenses &amp; settlements.</p></div>
+      <div><h2>Expenses &amp; settlements</h2><p class="desc">Manager expenses &amp; settlements. Sirf pichle 30 din dikhte hain.</p></div>
       <div class="row-actions" style="flex-wrap:wrap;gap:6px;">
         <button class="btn btn-outline btn-sm" id="newAdminExpBtn">+ Add expense</button>
         <button class="btn btn-primary btn-sm" id="newSettleBtn">+ Add entry</button>
@@ -6137,7 +6281,8 @@ function renderExpenses(){
           <td class="mono">${fmtTime(x.at)}</td>
           <td class="row-actions">${x.type!=='opening_balance'?`<button class="btn btn-sm btn-outline" data-edit-exp="${x.id}">Edit</button>`:''}<button class="btn btn-sm btn-danger" data-del-exp="${x.id}">Delete</button></td>
         </tr>`).join('')}
-      </tbody></table>`).join('')}`}
+      </tbody></table>`).join('')}
+    ${previousBalanceRowHtml(previousBalance)}`}
   </div>`;
 }
 function bindExpenses(){
@@ -6801,7 +6946,7 @@ function renderOrderTile(o, showUndoDispatch){
       ${o.status==='processed' && showUndoDispatch?`<button class="btn btn-sm btn-outline" data-undo-dispatch="${o.id}">↩ Undo Dispatch</button>`:''}
       `:''}
       ${isAdmin?`<button class="btn btn-sm btn-outline" data-edit-order="${o.id}">Edit</button>`:''}
-      ${(isLRUploader && (o.status==='packed'||o.status==='processed'))?(((o.lrPhotoUrl && (Date.now()-o.lrUploadedAt)<30*24*60*60*1000) || o.lrNumber)?`<button class="btn btn-sm btn-outline" data-view-lr="${o.id}">📄 LR</button>`:`<button class="btn btn-sm btn-outline" data-upload-lr="${o.id}">📄 Upload LR</button>`):''}
+      ${(isLRUploader && (o.status==='packed'||o.status==='processed'))?(((o.lrPhotoUrl && (Date.now()-o.lrUploadedAt)<30*24*60*60*1000) || o.lrNumber)?`<button class="btn btn-sm btn-outline" data-view-lr="${o.id}">${o.photoType==='stock'?'📦 Stock':'📄 LR'}</button>`:`<button class="btn btn-sm btn-outline" data-upload-lr="${o.id}">📄 Upload LR</button>`):''}
       ${isAdmin?`<button class="btn btn-sm btn-outline" data-del-order="${o.id}">Delete</button>`:''}
     </div>
   </div>`;
