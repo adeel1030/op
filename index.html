@@ -14,6 +14,23 @@
 <title>OMS - M A PRODUCTS INDIA</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
+  /* FEATURE (2026-09-03, explicit user request: "English k alawa Font Size
+     ko Increase ya decrease krne ka option bhi dedo, bas Normal, XL, XXL
+     ye 3 option"): every font-size in this stylesheet is expressed in rem
+     (relative to the <html> element's own font-size), specifically so a
+     single change here scales EVERY piece of text in the app proportionally
+     at once. setFontSize()/applyDocumentPrefAttrs() (see the JS below) put
+     exactly one of these 3 classes on <html> -- fs-normal is also the
+     unstyled default (16px, matches every browser's own base), so a page
+     that somehow renders before JS has applied a class still looks
+     correct. Deliberately font-size ONLY -- padding/gaps/widths elsewhere
+     in this file stay in px, unchanged, so this is a pure "make the text
+     bigger" control, not a full UI zoom (a full-zoom XXL could overflow
+     some tight layouts; this doesn't touch spacing, so it can't).
+  */
+  html.fs-normal{ font-size:16px; }
+  html.fs-xl{ font-size:18px; }
+  html.fs-xxl{ font-size:20px; }
   :root{
     --bg:#F1F7F3;
     --surface:#FFFFFF;
@@ -105,7 +122,7 @@
 
 
   /* ---------- Rich home page: icon badges, overview strip, stat cards v2, quick actions, promo banner ---------- */
-  .icon-badge{width:42px;height:42px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:20px;flex:0 0 auto;}
+  .icon-badge{width:42px;height:42px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:1.25rem;flex:0 0 auto;}
   .icon-badge.round{border-radius:50%;}
   .icon-badge.green{background:#DDF0E4;}
   .icon-badge.orange{background:#FDEACB;}
@@ -118,16 +135,16 @@
 
   .overview-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px;}
   .overview-head h2{margin:0;}
-  .overview-head .odate{font-size:11.5px;color:var(--ink-soft);font-family:var(--font-mono);}
+  .overview-head .odate{font-size:0.71875rem;color:var(--ink-soft);font-family:var(--font-mono);}
   .overview-strip{display:flex;justify-content:space-between;gap:4px;}
   .overview-col{flex:1;text-align:center;display:flex;flex-direction:column;align-items:center;gap:7px;cursor:pointer;}
   .overview-col .icon-badge{
-    width:42px;height:42px;font-size:18px;
+    width:42px;height:42px;font-size:1.125rem;
     background:linear-gradient(145deg, var(--primary), var(--primary-dark));
     border:2px solid var(--gold);box-shadow:0 3px 8px -3px rgba(18,74,46,0.5);
   }
-  .overview-col .n{font-family:var(--font-mono);font-size:18px;font-weight:800;color:var(--primary-dark);}
-  .overview-col .l{font-size:11.5px;color:var(--ink-soft);text-align:center;line-height:1.25;}
+  .overview-col .n{font-family:var(--font-mono);font-size:1.125rem;font-weight:800;color:var(--primary-dark);}
+  .overview-col .l{font-size:0.71875rem;color:var(--ink-soft);text-align:center;line-height:1.25;}
 
   .stat-grid-v2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;}
   .stat-card-v2{border:none;border-radius:18px;padding:14px;cursor:pointer;box-shadow:var(--tile-shadow);transition:transform .08s ease, box-shadow .15s ease;}
@@ -139,14 +156,14 @@
   .stat-card-v2:active{transform:scale(0.96);}
   .stat-card-v2 .row-top{display:flex;justify-content:space-between;align-items:flex-start;}
   .stat-card-v2 .icon-badge{background:rgba(255,255,255,0.55);}
-  .stat-card-v2 .chev{color:var(--gold-dark);background:rgba(255,255,255,0.55);width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;margin-top:8px;}
-  .stat-card-v2 .n{font-family:var(--font-mono);font-size:22px;font-weight:800;color:var(--primary-dark);margin-top:10px;}
-  .stat-card-v2 .title{font-size:12.5px;font-weight:700;margin-top:3px;color:var(--ink);}
-  .stat-card-v2 .sub{font-size:12px;color:var(--ink-soft);margin-top:1px;}
+  .stat-card-v2 .chev{color:var(--gold-dark);background:rgba(255,255,255,0.55);width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.875rem;margin-top:8px;}
+  .stat-card-v2 .n{font-family:var(--font-mono);font-size:1.375rem;font-weight:800;color:var(--primary-dark);margin-top:10px;}
+  .stat-card-v2 .title{font-size:0.78125rem;font-weight:700;margin-top:3px;color:var(--ink);}
+  .stat-card-v2 .sub{font-size:0.75rem;color:var(--ink-soft);margin-top:1px;}
 
   .qa-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px;}
   .qa-head h2{margin:0;padding-left:10px;border-left:3px solid var(--gold);}
-  .qa-head span{font-size:11px;color:var(--ink-soft);}
+  .qa-head span{font-size:0.6875rem;color:var(--ink-soft);}
   .qa-grid{display:flex;flex-wrap:nowrap;justify-content:space-evenly;align-items:flex-start;gap:8px;}
   .qa-grid+.qa-grid{margin-top:10px;}
   /* Follow-up (2026-09-02, same user, "Quick Actions ke icon ke sizes
@@ -164,16 +181,16 @@
      of floating in a sea of padding. */
   .qa-tile{flex:1 1 0;min-width:0;max-width:var(--qa-tile-max, 104px);aspect-ratio:1/1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;background:radial-gradient(90% 65% at 50% -8%, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0) 72%), rgba(255,255,255,0.55);border:1px solid rgba(255,255,255,0.7);border-radius:18px;padding:8px 4px;text-align:center;cursor:pointer;transition:transform .08s ease;box-shadow:0 1.5px 0 rgba(255,255,255,0.85) inset, 0 -12px 16px -8px rgba(0,0,0,0.20) inset, 0 5px 12px -6px rgba(0,0,0,0.32);}
   .qa-tile:active{transform:scale(0.94);}
-  .qa-tile .icon-badge{margin:0;background:rgba(255,255,255,0.85);width:52px;height:52px;font-size:26px;flex:0 0 auto;}
-  .qa-tile .title{font-size:12.5px;font-weight:800;color:var(--ink);line-height:1.2;}
+  .qa-tile .icon-badge{margin:0;background:rgba(255,255,255,0.85);width:52px;height:52px;font-size:1.625rem;flex:0 0 auto;}
+  .qa-tile .title{font-size:0.78125rem;font-weight:800;color:var(--ink);line-height:1.2;}
   .qa-tile .sub{display:none;}
 
   .promo-banner{background:linear-gradient(120deg, #0E1F14, var(--primary-dark));border-radius:16px;padding:16px;display:flex;align-items:center;gap:12px;color:#fff;margin-bottom:12px;box-shadow:0 8px 20px -10px rgba(18,74,46,0.5);}
-  .promo-banner .pico{font-size:30px;flex:0 0 auto;}
+  .promo-banner .pico{font-size:1.875rem;flex:0 0 auto;}
   .promo-banner .txt{flex:1;min-width:0;}
-  .promo-banner .txt b{font-size:14px;display:block;margin-bottom:2px;}
-  .promo-banner .txt span{font-size:11px;opacity:0.85;line-height:1.4;display:block;}
-  .promo-banner button{background:#fff;color:var(--primary-dark);border:none;border-radius:10px;padding:9px 12px;font-weight:800;font-size:11.5px;white-space:nowrap;cursor:pointer;flex:0 0 auto;}
+  .promo-banner .txt b{font-size:0.875rem;display:block;margin-bottom:2px;}
+  .promo-banner .txt span{font-size:0.6875rem;opacity:0.85;line-height:1.4;display:block;}
+  .promo-banner button{background:#fff;color:var(--primary-dark);border:none;border-radius:10px;padding:9px 12px;font-weight:800;font-size:0.71875rem;white-space:nowrap;cursor:pointer;flex:0 0 auto;}
 
   /* ---------- Login ---------- */
   .login-wrap{
@@ -192,18 +209,18 @@
   @keyframes loginCardIn{from{transform:translateY(14px);opacity:0;}to{transform:translateY(0);opacity:1;}}
   .login-brand{display:flex;align-items:center;gap:10px;margin-bottom:6px;}
   .login-brand .dot{width:10px;height:10px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 4px rgba(242,169,59,0.25);}
-  .login-brand span{font-weight:800;letter-spacing:0.02em;font-size:15px;color:var(--primary-dark);text-transform:uppercase;}
+  .login-brand span{font-weight:800;letter-spacing:0.02em;font-size:0.9375rem;color:var(--primary-dark);text-transform:uppercase;}
   .login-brand-lg{display:flex;align-items:center;gap:12px;margin-bottom:22px;}
   .login-logo{width:52px;height:52px;border-radius:16px;background:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 20px -6px rgba(18,74,46,0.35);flex:0 0 auto;padding:4px;border:2px solid var(--gold);}
-  .login-brand-name{font-weight:800;font-size:17px;color:var(--primary-dark);letter-spacing:-0.01em;}
-  .login-brand-sub{font-size:11px;color:var(--gold-dark);text-transform:uppercase;letter-spacing:0.04em;margin-top:1px;font-weight:700;}
-  .login-card h1{font-size:23px;margin:4px 0 2px;letter-spacing:-0.01em;}
-  .login-card p.sub{color:var(--ink-soft);font-size:13px;margin:0 0 20px;}
+  .login-brand-name{font-weight:800;font-size:1.0625rem;color:var(--primary-dark);letter-spacing:-0.01em;}
+  .login-brand-sub{font-size:0.6875rem;color:var(--gold-dark);text-transform:uppercase;letter-spacing:0.04em;margin-top:1px;font-weight:700;}
+  .login-card h1{font-size:1.4375rem;margin:4px 0 2px;letter-spacing:-0.01em;}
+  .login-card p.sub{color:var(--ink-soft);font-size:0.8125rem;margin:0 0 20px;}
 
   /* ---------- Post-login sequence: loading -> welcome ---------- */
   .welcome-screen{text-align:center;color:#fff;max-width:320px;}
   .welcome-logo{width:76px;height:76px;border-radius:20px;background:#fff;padding:8px;object-fit:contain;box-shadow:0 12px 28px -8px rgba(0,0,0,0.5);border:2px solid var(--gold);}
-  .welcome-brand{font-size:26px;font-weight:800;letter-spacing:-0.01em;margin:6px 0 22px;color:#fff;text-shadow:0 2px 12px rgba(0,0,0,0.25);}
+  .welcome-brand{font-size:1.625rem;font-weight:800;letter-spacing:-0.01em;margin:6px 0 22px;color:#fff;text-shadow:0 2px 12px rgba(0,0,0,0.25);}
   .postlogin-spinner{
     width:46px;height:46px;border-radius:50%;margin:0 auto;
     border:4px solid rgba(255,255,255,0.22);border-top-color:var(--gold);
@@ -226,16 +243,16 @@
   .skel-cards{display:grid;grid-template-columns:1fr 1fr;gap:10px;width:100%;max-width:280px;margin:0 auto;}
   .skel-cards .skel-block{height:64px;}
   .welcome-fade{opacity:0;animation:welcomeFadeIn .6s ease forwards;}
-  .welcome-fade.d1{animation-delay:.05s;font-size:16px;font-weight:600;}
+  .welcome-fade.d1{animation-delay:.05s;font-size:1rem;font-weight:600;}
   .welcome-fade.d2{animation-delay:.22s;}
   .welcome-fade.d3{animation-delay:.4s;}
   .welcome-fade.d4{animation-delay:.58s;}
   @keyframes welcomeFadeIn{ from{opacity:0;transform:translateY(12px);} to{opacity:1;transform:translateY(0);} }
   .field{margin-bottom:14px;}
-  .field label{display:block;font-size:12px;font-weight:600;color:var(--ink-soft);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.03em;}
+  .field label{display:block;font-size:0.75rem;font-weight:600;color:var(--ink-soft);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.03em;}
   .field input, .field select, .field textarea{
     width:100%;padding:12px 13px;border:1.5px solid var(--border);border-radius:11px;
-    font-size:16.5px;font-family:var(--font-body);background:#FBFBFD;
+    font-size:1.03125rem;font-family:var(--font-body);background:#FBFBFD;
   }
   .field input:focus, .field select:focus, .field textarea:focus{outline:none;border-color:var(--primary);background:#fff;}
   /* Custom in-app dropdown: replaces the native browser <select> popup with
@@ -244,7 +261,7 @@
   .idd-wrap{width:100%;}
   .idd-trigger{
     width:100%;padding:12px 13px;border:1.5px solid var(--border);border-radius:11px;
-    font-size:16.5px;font-family:var(--font-body);background:#FBFBFD;text-align:left;
+    font-size:1.03125rem;font-family:var(--font-body);background:#FBFBFD;text-align:left;
     display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;color:var(--ink);
   }
   .idd-trigger.idd-placeholder{color:var(--ink-soft);}
@@ -256,14 +273,14 @@
     max-height:240px;overflow-y:auto;background:#fff;box-shadow:0 8px 18px -8px rgba(10,16,32,0.18);
   }
   .idd-list.idd-list-open{display:block;}
-  .idd-item{padding:11px 13px;font-size:15px;cursor:pointer;border-top:1px solid var(--border);}
+  .idd-item{padding:11px 13px;font-size:0.9375rem;cursor:pointer;border-top:1px solid var(--border);}
   .idd-item:first-child{border-top:none;}
   .idd-item:active{background:var(--bg);}
   .idd-item.idd-selected{background:var(--success-bg);font-weight:700;color:var(--primary-dark);}
   .idd-item.idd-disabled{color:var(--ink-soft);pointer-events:none;}
   .btn{
     display:inline-flex;align-items:center;justify-content:center;gap:6px;
-    border:none;border-radius:12px;padding:13px 16px;font-size:15px;font-weight:700;
+    border:none;border-radius:12px;padding:13px 16px;font-size:0.9375rem;font-weight:700;
     cursor:pointer;font-family:var(--font-body);letter-spacing:0.01em;transition:transform .08s ease, box-shadow .15s ease, background .15s ease;
     min-height:44px;
   }
@@ -274,9 +291,9 @@
   .btn-outline{background:var(--surface);border:1.5px solid var(--border);color:var(--ink);}
   .btn-danger{background:var(--danger-bg);color:var(--danger);}
   .btn-success{background:var(--success-bg);color:var(--success);}
-  .btn-sm{padding:8px 12px;font-size:12.5px;border-radius:9px;width:auto;min-height:36px;}
-  .err{background:var(--danger-bg);color:var(--danger);padding:9px 12px;border-radius:9px;font-size:13px;margin-bottom:14px;}
-  .login-hint{margin-top:16px;font-size:11.5px;color:var(--ink-soft);text-align:center;line-height:1.5;}
+  .btn-sm{padding:8px 12px;font-size:0.78125rem;border-radius:9px;width:auto;min-height:36px;}
+  .err{background:var(--danger-bg);color:var(--danger);padding:9px 12px;border-radius:9px;font-size:0.8125rem;margin-bottom:14px;}
+  .login-hint{margin-top:16px;font-size:0.71875rem;color:var(--ink-soft);text-align:center;line-height:1.5;}
 
   /* ---------- App bar ---------- */
   .topbar{
@@ -294,20 +311,20 @@
   .topbar-left{display:flex;align-items:center;gap:9px;min-width:0;overflow:visible;}
   .topbar-left .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex:0 0 auto;}
   .topbar-left .titles{min-width:0;}
-  .topbar-left b{letter-spacing:0.01em;font-size:17px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .topbar-left .screen-label{font-size:12px;opacity:0.8;text-transform:uppercase;letter-spacing:0.04em;}
+  .topbar-left b{letter-spacing:0.01em;font-size:1.0625rem;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .topbar-left .screen-label{font-size:0.75rem;opacity:0.8;text-transform:uppercase;letter-spacing:0.04em;}
   .sync-dot{width:6px;height:6px;border-radius:50%;background:#7CDDB0;display:inline-block;margin-right:5px;}
   .sync-dot.syncing{background:var(--accent);animation:syncPulse 0.9s ease-in-out infinite;}
   .sync-dot.pending{background:#FF8A73;animation:syncPulse 1.4s ease-in-out infinite;}
   @keyframes syncPulse{0%,100%{opacity:1;}50%{opacity:0.35;}}
   .topbar-right{display:flex;align-items:center;gap:10px;flex:0 0 auto;overflow:visible;}
   .role-pill{
-    font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;
+    font-size:0.71875rem;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;
     padding:3px 8px;border-radius:20px;display:inline-block;
   }
   .bell, .avatar-btn{
     position:relative;background:rgba(255,255,255,0.16);border:1.5px solid rgba(201,162,39,0.6);color:#fff;
-    width:36px;height:36px;border-radius:50%;cursor:pointer;font-size:16px;
+    width:36px;height:36px;border-radius:50%;cursor:pointer;font-size:1rem;
     display:flex;align-items:center;justify-content:center;font-weight:800;
     padding:0;flex:0 0 auto;transition:background .15s ease;
   }
@@ -315,7 +332,7 @@
   .avatar-btn{overflow:hidden;}
   .bell .badge{
     position:absolute;top:-3px;right:-3px;background:var(--accent);color:var(--accent-ink);
-    font-size:10px;font-weight:800;border-radius:20px;padding:1.5px 5.5px;min-width:16px;text-align:center;
+    font-size:0.625rem;font-weight:800;border-radius:20px;padding:1.5px 5.5px;min-width:16px;text-align:center;
     z-index:30;box-shadow:0 0 0 2px var(--primary-dark);line-height:1.5;
     -webkit-text-size-adjust:100%;text-size-adjust:100%;
   }
@@ -325,7 +342,7 @@
      bell), clearly distinct from the general gray/status .badge class. */
   .notif-dot{
     position:absolute;top:-3px;right:-3px;background:#D8483B!important;color:#fff!important;
-    font-size:10px;font-weight:800;border-radius:20px;padding:1.5px 5.5px;min-width:16px;text-align:center;
+    font-size:0.625rem;font-weight:800;border-radius:20px;padding:1.5px 5.5px;min-width:16px;text-align:center;
     z-index:30;box-shadow:0 0 0 2px #fff;line-height:1.5;
     -webkit-text-size-adjust:100%;text-size-adjust:100%;
   }
@@ -339,12 +356,12 @@
      again -- see the class="notif-dot pulse" -> "notif-dot notif-pulse"
      updates at every badge call site below. */
   .notif-dot.notif-pulse{animation:bellBadgePulse .4s cubic-bezier(.3,1.5,.5,1);}
-  .bell-sm{width:30px;height:30px;font-size:13px;}
+  .bell-sm{width:30px;height:30px;font-size:0.8125rem;}
   .bell-urgent{border-color:rgba(255,255,255,0.5);}
   .bell-urgent .badge{background:var(--danger);color:#fff;}
 
   .pulse{
-    background:var(--ink);color:#D8DEEC;font-family:var(--font-mono);font-size:11px;
+    background:var(--ink);color:#D8DEEC;font-family:var(--font-mono);font-size:0.6875rem;
     padding:7px 16px;display:flex;gap:16px;overflow-x:auto;white-space:nowrap;flex:0 0 auto;
   }
   .pulse b{color:var(--accent);}
@@ -354,29 +371,29 @@
   .card, .order-tile, .alert-tile, .stat{transition:box-shadow .15s ease, transform .1s ease;}
 
   .card{background:var(--tile-highlight), var(--surface);border:1px solid var(--border);border-radius:20px;padding:16px;margin-bottom:12px;box-shadow:var(--tile-shadow);}
-  .card h2{font-size:16px;margin:0 0 4px;letter-spacing:-0.01em;color:var(--ink);}
-  .card .desc{font-size:13px;color:var(--ink-soft);margin:0 0 12px;line-height:1.45;}
+  .card h2{font-size:1rem;margin:0 0 4px;letter-spacing:-0.01em;color:var(--ink);}
+  .card .desc{font-size:0.8125rem;color:var(--ink-soft);margin:0 0 12px;line-height:1.45;}
 
   .grid-stats{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:12px;}
   .stat{background:var(--tile-highlight), var(--surface);border:1px solid var(--border);border-radius:18px;padding:13px 14px;box-shadow:var(--tile-shadow);}
-  .stat .n{font-family:var(--font-mono);font-size:23px;font-weight:800;color:var(--primary-dark);}
-  .stat .l{font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.03em;margin-top:3px;line-height:1.3;}
+  .stat .n{font-family:var(--font-mono);font-size:1.4375rem;font-weight:800;color:var(--primary-dark);}
+  .stat .l{font-size:0.6875rem;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.03em;margin-top:3px;line-height:1.3;}
 
   /* Tables: no forced min-width -> no right-swipe needed. Everything fits the screen. */
-  table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:13.5px;}
-  th{text-align:left;font-size:11.5px;text-transform:uppercase;letter-spacing:0.03em;color:var(--ink-soft);padding:7px 4px;border-bottom:1.5px solid var(--border);word-break:break-word;}
+  table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:0.84375rem;}
+  th{text-align:left;font-size:0.71875rem;text-transform:uppercase;letter-spacing:0.03em;color:var(--ink-soft);padding:7px 4px;border-bottom:1.5px solid var(--border);word-break:break-word;}
   td{padding:10px 4px;border-bottom:1px solid var(--border);vertical-align:top;word-break:break-word;overflow-wrap:anywhere;}
   tr:last-child td{border-bottom:none;}
-  .mono{font-family:var(--font-mono);font-size:12px;color:var(--ink-soft);}
+  .mono{font-family:var(--font-mono);font-size:0.75rem;color:var(--ink-soft);}
   .stockneg{color:var(--danger)!important;font-weight:800;}
   .stocklow{color:#C9720E!important;font-weight:800;}
   .table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -16px;padding:0 16px;}
 
   /* ---------- Search bar ---------- */
   .search-wrap{position:relative;margin-bottom:10px;}
-  .search-wrap input{width:100%;padding:11px 12px 11px 34px;border:1.5px solid var(--border);border-radius:12px;font-size:14.5px;background:var(--bg);font-family:var(--font-body);}
+  .search-wrap input{width:100%;padding:11px 12px 11px 34px;border:1.5px solid var(--border);border-radius:12px;font-size:0.90625rem;background:var(--bg);font-family:var(--font-body);}
   .search-wrap input:focus{outline:none;border-color:var(--primary);background:#fff;}
-  .search-wrap::before{content:"🔎";position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:12px;opacity:0.55;}
+  .search-wrap::before{content:"🔎";position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:0.75rem;opacity:0.55;}
 
   /* ---------- Order tiles ---------- */
   .order-tile{background:var(--tile-highlight), var(--surface);border:1px solid var(--border);border-radius:18px;padding:13px 14px;margin-bottom:10px;box-shadow:var(--tile-shadow);}
@@ -384,9 +401,9 @@
   .order-tile.tile-processing{background:var(--tile-highlight), #FEF6DC;border-color:#F0DDA0;}
   .order-tile.tile-packed{background:var(--tile-highlight), #F1EBFB;border-color:#D7C7F2;}
   .order-tile .ot-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px;}
-  .order-tile .ot-name{font-weight:800;font-size:15px;}
-  .order-tile .ot-items{font-size:13px;color:var(--ink-soft);line-height:1.65;margin-bottom:8px;}
-  .order-tile .ot-meta{font-size:11px;color:var(--ink-soft);font-family:var(--font-mono);margin-bottom:8px;}
+  .order-tile .ot-name{font-weight:800;font-size:0.9375rem;}
+  .order-tile .ot-items{font-size:0.8125rem;color:var(--ink-soft);line-height:1.65;margin-bottom:8px;}
+  .order-tile .ot-meta{font-size:0.6875rem;color:var(--ink-soft);font-family:var(--font-mono);margin-bottom:8px;}
   /* Round 15 tap-feedback audit (2026-09-...): the only two places an
      .order-tile itself (not just a button inside it) is directly clickable
      -- the Team-select tiles (data-select-team) and Notification-kind tiles
@@ -405,8 +422,8 @@
   .alert-tile{border-radius:17px;padding:11px 12px;border:1.5px solid #E8938B;background:var(--tile-highlight), #FCE2DF;box-shadow:var(--tile-shadow);}
   .alert-tile.mild{border-color:#E8B84B;background:var(--tile-highlight), #FCEBC3;}
   .alert-tile.recommended{border-color:#8FB4E8;background:var(--tile-highlight), #E4EEFB;}
-  .alert-tile .at-label{font-weight:800;font-size:13px;margin-bottom:2px;color:var(--ink);}
-  .alert-tile .at-detail{font-size:11.5px;color:var(--ink-soft);margin-bottom:8px;}
+  .alert-tile .at-label{font-weight:800;font-size:0.8125rem;margin-bottom:2px;color:var(--ink);}
+  .alert-tile .at-detail{font-size:0.71875rem;color:var(--ink-soft);margin-bottom:8px;}
 
   /* Round 15 follow-up (2026-09-...): "stock wale me low ka bada tile
      usme har item ke chote chote tiles, aese hi short ka bada tile uske
@@ -418,15 +435,15 @@
      translucent card so it reads as nested, not just another row. */
   .alert-banner-tile{border-radius:18px;padding:14px;margin-bottom:12px;box-shadow:var(--tile-shadow);border:1.5px solid #E8938B;background:var(--tile-highlight), #FCE2DF;}
   .alert-banner-tile.warn-mild{border-color:#E8B84B;background:var(--tile-highlight), #FCEBC3;}
-  .alert-banner-tile .abt-head{font-weight:800;font-size:13.5px;margin-bottom:10px;}
+  .alert-banner-tile .abt-head{font-weight:800;font-size:0.84375rem;margin-bottom:10px;}
   .alert-banner-items{display:grid;grid-template-columns:1fr;gap:8px;}
   .alert-item-tile{background:rgba(255,255,255,0.72);border:1px solid rgba(255,255,255,0.85);border-radius:13px;padding:9px 11px;box-shadow:0 1px 2px rgba(14,36,71,0.06);}
-  .alert-item-tile .ait-label{font-weight:800;font-size:13.5px;margin-bottom:2px;color:var(--ink);}
-  .alert-item-tile .ait-detail{font-size:12px;}
-  .alert-item-tile .ait-team{font-size:11px;opacity:0.75;margin-top:2px;}
+  .alert-item-tile .ait-label{font-weight:800;font-size:0.84375rem;margin-bottom:2px;color:var(--ink);}
+  .alert-item-tile .ait-detail{font-size:0.75rem;}
+  .alert-item-tile .ait-team{font-size:0.6875rem;opacity:0.75;margin-top:2px;}
 
 
-  .badge{display:inline-block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.03em;padding:3px 8px;border-radius:20px;transition:background-color .3s ease, color .3s ease;}
+  .badge{display:inline-block;font-size:0.6875rem;font-weight:800;text-transform:uppercase;letter-spacing:0.03em;padding:3px 8px;border-radius:20px;transition:background-color .3s ease, color .3s ease;}
   .badge-pending{background:var(--warning-bg);color:var(--warning);}
   .badge-processing{background:var(--info-bg);color:var(--info);}
   .badge-ready{background:rgba(242,169,59,0.18);color:var(--accent-ink);}
@@ -443,10 +460,10 @@
   .row-actions{display:flex;gap:6px;flex-wrap:wrap;}
 
   .empty{text-align:center;padding:34px 18px;color:var(--ink-soft);}
-  .empty .big{font-size:28px;margin-bottom:6px;}
+  .empty .big{font-size:1.75rem;margin-bottom:6px;}
 
-  .alert-banner{background:var(--danger-bg);border:1px solid #F3C9C4;color:var(--danger);padding:11px 13px;border-radius:11px;margin-bottom:12px;font-size:12px;line-height:1.65;}
-  .alert-banner b{display:block;margin-bottom:4px;font-size:12.5px;}
+  .alert-banner{background:var(--danger-bg);border:1px solid #F3C9C4;color:var(--danger);padding:11px 13px;border-radius:11px;margin-bottom:12px;font-size:0.75rem;line-height:1.65;}
+  .alert-banner b{display:block;margin-bottom:4px;font-size:0.78125rem;}
   .alert-banner.warn-mild{background:#FEF6E6;border-color:#F3DFA6;color:#9A6B0B;}
 
   /* ---------- Bottom nav ---------- */
@@ -464,8 +481,8 @@
     background:none;border:none;cursor:pointer;color:rgba(255,255,255,0.55);padding:5px 10px;border-radius:14px;
     transition:background-color .2s ease, color .2s ease;
   }
-  .navitem .ico{font-size:19px;line-height:1;}
-  .navitem .lbl{font-size:11px;font-weight:700;letter-spacing:0.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:64px;}
+  .navitem .ico{font-size:1.1875rem;line-height:1;}
+  .navitem .lbl{font-size:0.6875rem;font-weight:700;letter-spacing:0.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:64px;}
   .navitem.active{color:var(--gold);background-color:rgba(201,162,39,0.14);}
   .navitem.active .ico{filter:drop-shadow(0 0 6px rgba(201,162,39,0.5));}
   .navitem.just-activated{animation:navPop .3s cubic-bezier(.3,1.5,.5,1);}
@@ -484,8 +501,8 @@
     padding:14px 16px;text-align:center;border-bottom:2px solid var(--gold);
     background:rgba(0,0,0,0.15);
   }
-  .id-card-company{font-weight:800;font-size:14px;letter-spacing:0.03em;}
-  .id-card-title{font-size:11px;color:var(--gold);text-transform:uppercase;letter-spacing:0.12em;font-weight:700;margin-top:2px;}
+  .id-card-company{font-weight:800;font-size:0.875rem;letter-spacing:0.03em;}
+  .id-card-title{font-size:0.6875rem;color:var(--gold);text-transform:uppercase;letter-spacing:0.12em;font-weight:700;margin-top:2px;}
   .id-card-body{padding:20px 18px 18px;text-align:center;}
   .id-card-photo-wrap{margin-bottom:12px;}
   .id-card-photo{
@@ -494,16 +511,16 @@
   }
   .id-card-photo-fallback{
     display:inline-flex;align-items:center;justify-content:center;
-    background:rgba(255,255,255,0.12);font-weight:800;font-size:26px;color:var(--gold);
+    background:rgba(255,255,255,0.12);font-weight:800;font-size:1.625rem;color:var(--gold);
   }
-  .id-card-name{font-size:17px;font-weight:800;margin-bottom:6px;}
+  .id-card-name{font-size:1.0625rem;font-weight:800;margin-bottom:6px;}
   .id-card-role-pill{
     display:inline-block;background:var(--gold);color:var(--primary-dark);
-    font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;
+    font-size:0.71875rem;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;
     padding:3px 10px;border-radius:20px;margin-bottom:16px;
   }
   .id-card-rows{text-align:left;border-top:1px dashed rgba(255,255,255,0.25);padding-top:14px;}
-  .id-card-row{display:flex;justify-content:space-between;gap:10px;padding:6px 0;font-size:12.5px;}
+  .id-card-row{display:flex;justify-content:space-between;gap:10px;padding:6px 0;font-size:0.78125rem;}
   .id-card-label{color:rgba(255,255,255,0.6);flex:0 0 auto;}
   .id-card-value{text-align:right;font-weight:600;}
 
@@ -537,13 +554,13 @@
     box-shadow:0 20px 50px -12px rgba(18,74,46,0.5);animation:successDialogPop .3s cubic-bezier(.3,1.5,.5,1);
   }
   @keyframes successDialogPop{from{transform:scale(0.85);opacity:0;}to{transform:scale(1);opacity:1;}}
-  .success-dialog-check{font-size:34px;margin-bottom:8px;animation:successPop .35s cubic-bezier(.3,1.5,.5,1) .05s backwards;}
-  .success-dialog-msg{font-size:14.5px;font-weight:800;}
-  .app-alert-icon{font-size:32px;margin-bottom:10px;}
-  .app-alert-message{font-size:14px;color:var(--ink);line-height:1.5;margin-bottom:18px;white-space:pre-line;}
+  .success-dialog-check{font-size:2.125rem;margin-bottom:8px;animation:successPop .35s cubic-bezier(.3,1.5,.5,1) .05s backwards;}
+  .success-dialog-msg{font-size:0.90625rem;font-weight:800;}
+  .app-alert-icon{font-size:2rem;margin-bottom:10px;}
+  .app-alert-message{font-size:0.875rem;color:var(--ink);line-height:1.5;margin-bottom:18px;white-space:pre-line;}
   .app-alert-ok-btn{
     background:var(--danger);color:#fff;border:none;border-radius:11px;padding:11px 32px;
-    font-weight:800;font-size:14px;cursor:pointer;width:100%;
+    font-weight:800;font-size:0.875rem;cursor:pointer;width:100%;
   }
   .app-alert-ok-btn:active{transform:scale(0.96);}
   .modal{
@@ -578,7 +595,7 @@
     100%{transform:translate(120%,-85%) rotate(26deg) scale(0.22);opacity:0;}
   }
   .paper-plane-fx{
-    position:absolute;left:50%;top:40%;font-size:34px;z-index:600;pointer-events:none;
+    position:absolute;left:50%;top:40%;font-size:2.125rem;z-index:600;pointer-events:none;
     animation:paperPlaneFly2 .55s cubic-bezier(.4,0,.2,1) forwards;
     filter:drop-shadow(0 4px 8px rgba(0,0,0,0.25));
   }
@@ -590,7 +607,7 @@
   .success-pop{display:inline-block;animation:successPop .3s cubic-bezier(.3,1.5,.5,1);}
   @keyframes successPop{0%{transform:scale(0.4);opacity:0;}60%{transform:scale(1.15);}100%{transform:scale(1);opacity:1;}}
   .sheet-handle{width:36px;height:4px;border-radius:3px;background:var(--border);margin:4px auto 14px;}
-  .modal h3{margin:0 0 14px;font-size:16px;}
+  .modal h3{margin:0 0 14px;font-size:1rem;}
   .modal-actions{display:flex;gap:8px;margin-top:16px;}
 
   /* ---------- Round 15 (2026-09-...): "Suggest More & More Animations, i
@@ -656,12 +673,12 @@
   .chat-composer{flex:0 0 auto;display:flex;align-items:flex-end;gap:8px;padding-top:10px;}
   .chat-input{
     flex:1;padding:10px 16px;border-radius:22px;border:1.5px solid var(--border);background:var(--bg);
-    color:var(--ink);font-family:inherit;font-size:14px;resize:none;max-height:120px;overflow-y:auto;line-height:1.35;
+    color:var(--ink);font-family:inherit;font-size:0.875rem;resize:none;max-height:120px;overflow-y:auto;line-height:1.35;
   }
   .chat-input:focus{outline:none;border-color:var(--primary);}
   .chat-send-btn{
     flex:0 0 auto;width:40px;height:40px;border-radius:50%;border:none;background:var(--primary);color:#fff;
-    display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer;transition:opacity .15s,transform .1s;
+    display:flex;align-items:center;justify-content:center;font-size:1rem;cursor:pointer;transition:opacity .15s,transform .1s;
   }
   .chat-send-btn:active{transform:scale(0.92);}
   .chat-send-btn:disabled{opacity:0.4;cursor:default;transform:none;}
@@ -669,7 +686,7 @@
   .thread-header{display:flex;align-items:center;gap:10px;flex:0 0 auto;padding-bottom:10px;border-bottom:1px solid var(--border);margin-bottom:10px;}
   .thread-back-btn{
     flex:0 0 auto;width:32px;height:32px;border-radius:50%;border:none;background:transparent;color:var(--ink);
-    font-size:20px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;
+    font-size:1.25rem;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;
   }
   .thread-back-btn:active{background:var(--bg);}
   .bubble-row{display:flex;margin-bottom:2px;}
@@ -677,7 +694,7 @@
   .bubble-row.theirs{justify-content:flex-start;}
   .bubble-row.group-end{margin-bottom:10px;}
   .chat-bubble{
-    position:relative;max-width:78%;padding:7px 12px 6px;border-radius:14px;font-size:13.5px;
+    position:relative;max-width:78%;padding:7px 12px 6px;border-radius:14px;font-size:0.84375rem;
     word-break:break-word;text-align:left;box-shadow:0 1px 1px rgba(0,0,0,0.06);
   }
   .chat-bubble.mine{background:var(--primary);color:#fff;}
@@ -686,7 +703,7 @@
      bubble's own template-literal indentation/newlines around the text+meta
      child divs would otherwise be preserved as visible blank space too. */
   .bubble-text{white-space:pre-wrap;}
-  .bubble-meta{font-size:10.5px;margin-top:3px;display:flex;align-items:center;gap:3px;justify-content:flex-end;}
+  .bubble-meta{font-size:0.65625rem;margin-top:3px;display:flex;align-items:center;gap:3px;justify-content:flex-end;}
   .chat-bubble.mine .bubble-meta{color:rgba(255,255,255,0.75);}
   .chat-bubble.theirs .bubble-meta{color:var(--ink-soft);justify-content:flex-start;}
   /* BUGFIX (2026-08-21): this sits in a flex row next to the "+ New" button
@@ -700,7 +717,7 @@
      instead of overflowing it. */
   .chat-search{
     flex:1;min-width:0;padding:9px 14px;border-radius:20px;border:1.5px solid var(--border);background:var(--bg);
-    color:var(--ink);font-family:inherit;font-size:13px;margin-bottom:10px;
+    color:var(--ink);font-family:inherit;font-size:0.8125rem;margin-bottom:10px;
   }
   .chat-search:focus{outline:none;border-color:var(--primary);}
   .thread-row{display:flex;align-items:center;gap:10px;padding:9px 4px;border-radius:12px;cursor:pointer;}
@@ -720,8 +737,8 @@
     background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:14px 6px;
     display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;
   }
-  .more-item .ico{font-size:22px;}
-  .more-item .lbl{font-size:11px;font-weight:700;color:var(--ink);text-align:center;}
+  .more-item .ico{font-size:1.375rem;}
+  .more-item .lbl{font-size:0.6875rem;font-weight:700;color:var(--ink);text-align:center;}
   .more-item{transition:transform .08s ease, background-color .15s ease;}
   .more-item:active{transform:scale(0.94);background:var(--border);}
   #printArea{display:none;}
@@ -730,10 +747,10 @@
     #printArea, #printArea *{visibility:visible;}
     #printArea{display:block;position:absolute;top:0;left:0;width:100%;padding:20px;}
     #printArea table{width:100%;border-collapse:collapse;margin-bottom:16px;}
-    #printArea th, #printArea td{border:1px solid #999;padding:5px 8px;font-size:11px;text-align:left;}
+    #printArea th, #printArea td{border:1px solid #999;padding:5px 8px;font-size:0.6875rem;text-align:left;}
     #printArea th{background:#eee;}
-    #printArea h2{font-size:15px;margin:16px 0 6px;}
-    #printArea h1{font-size:18px;margin-bottom:2px;}
+    #printArea h2{font-size:0.9375rem;margin:16px 0 6px;}
+    #printArea h1{font-size:1.125rem;margin-bottom:2px;}
   }
 
   /* ---------- Desktop / laptop layout (installable PC app) ----------
@@ -774,8 +791,8 @@
       flex-direction:row;justify-content:flex-start;align-items:center;gap:12px;
       width:100%;min-width:0;padding:11px 14px;border-radius:12px;
     }
-    .navitem .ico{font-size:18px;}
-    .navitem .lbl{font-size:13.5px;max-width:none;overflow:visible;text-overflow:clip;white-space:nowrap;}
+    .navitem .ico{font-size:1.125rem;}
+    .navitem .lbl{font-size:0.84375rem;max-width:none;overflow:visible;text-overflow:clip;white-space:nowrap;}
     /* Login screen: already full-bleed + centered by .login-wrap itself
        (flex, height:100%, align/justify:center) once the #root grid above
        is correctly scoped away from it -- just give the card a touch more
@@ -815,6 +832,46 @@
     @keyframes modalGrowIn{from{transform:scale(0.88);opacity:0;}to{transform:scale(1);opacity:1;}}
     .modal-overlay.closing .modal{animation:modalGrowOut .16s cubic-bezier(.4,0,1,1) forwards;}
     @keyframes modalGrowOut{from{transform:scale(1);opacity:1;}to{transform:scale(0.9);opacity:0;}}
+  }
+
+  /* ============================= RTL (Urdu) BASE FRAMEWORK =============================
+     FEATURE (2026-09-03, explicit user request: "for urdu app ka UI invert
+     krna hai"). applyDocumentPrefAttrs() (see the JS below) sets
+     dir="rtl" on <html> whenever S.language==='ur' -- that alone already
+     correctly mirrors most of the app for free, because almost everything
+     here is written with direction-AWARE CSS to begin with: flexbox
+     start/end (justify-content/align-items: flex-start/flex-end),
+     margin/padding "auto" centering, and CSS Grid's own line numbering
+     (grid-column:1/2 in the desktop sidebar layout below) all already
+     follow the container's `direction` per spec -- browsers reverse them
+     automatically under dir="rtl", no extra CSS needed.
+     What's listed below is only the genuinely PHYSICAL (non-logical) CSS in
+     this file -- literal left/right/border-left/border-right values that
+     don't know about direction on their own -- mirrored explicitly. This is
+     a Phase 1 BASE framework: it covers the screens translated so far
+     (Home/Profile/Orders + the shared shell/nav/chat/table/search
+     components used everywhere), reviewed via real Playwright screenshots
+     before shipping. As more screens get translated in later rounds, this
+     block is the place new physical left/right CSS gets added.
+     Deliberately EXCLUDED: #printArea and its table (LR/invoice print
+     output) -- a printed business document keeps its standard layout
+     regardless of the staff app's on-screen display language.
+     Deliberately NOT touched: anything using flex-start/flex-end/auto
+     margins/CSS Grid line placement -- already correct automatically, see
+     above; re-declaring them here would be redundant, not a fix. */
+  [dir="rtl"] .qa-head h2{ padding-left:0; padding-right:10px; border-left:none; border-right:3px solid var(--gold); }
+  [dir="rtl"] .sync-dot{ margin-right:0; margin-left:5px; }
+  [dir="rtl"] th{ text-align:right; }
+  [dir="rtl"] .search-wrap input{ padding:11px 34px 11px 12px; }
+  [dir="rtl"] .search-wrap::before{ left:auto; right:11px; }
+  [dir="rtl"] .id-card-rows{ text-align:right; }
+  [dir="rtl"] .id-card-value{ text-align:left; }
+  [dir="rtl"] .chat-bubble{ text-align:right; }
+  [dir="rtl"] .bell .badge{ right:auto; left:-3px; }
+  [dir="rtl"] .notif-dot{ right:auto; left:-3px; }
+  [dir="rtl"] #printArea, [dir="rtl"] #printArea th, [dir="rtl"] #printArea td{ text-align:left; direction:ltr; }
+  @media (min-width:900px){
+    [dir="rtl"] .navbar{ border-right:none; border-left:1px solid rgba(201,162,39,0.25); box-shadow:-4px 0 16px -10px rgba(0,0,0,0.35); }
   }
 </style>
 <!--
@@ -878,7 +935,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-09-03-firestore-preview31"; // FEATURE (2026-09-03, explicit user request, spec confirmed verbatim): non-admin staff (sales/manager/filling/packaging etc -- admin stays exempt, same as the existing entry-window rule) may only add a NEW Daily Work entry if TODAY's attendance is marked Present. New entryAttendanceBlockReason() checks attendanceStatusFor(currentUser, today) and returns a specific reason string for each case (Absent: "Aap aaj Absent mark hain, isliye entry nahi daal sakte." / Unmarked: "Aapne aaj attendance mark nahi ki hai -- pehle Mark Attendance karein." / Present or admin: null, no block) -- wired into the single shared choke point blockIfOutsideEntryWindow() (existing Sunday/holiday + time-window check runs first, so whichever reason applies first is the one shown), which already covered exactly the 5 requested flows (Purchase, Filling, Packaging, Expense/Settlement, Retail Sale/Sample) with zero other call sites needing changes. Covered by a new regression block (static + functional vm-executed, all 4 status branches). LANGUAGE SAMPLE (2026-09-03, explicit user request, "pehle ye sample bana doon dikhane ke liye"): one-screen-scope Hindi/Urdu translation proof-of-concept -- new S.language (per-device, localStorage key orderops_app_lang, NOT synced via Firestore, same pattern as the offline queue/session token), a minimal t(enText) lookup (current English string IS the dictionary key, falls back to the English text itself unchanged if untranslated) with I18N.hi/I18N.ur dictionaries, and a language switcher card (renderLanguageSwitcher, English/हिंदी/اردو buttons) placed exactly where requested -- Profile panel, directly below the ID Card, directly above Log out. Translated in this sample: the Profile panel (ID card labels + Log out + the switcher itself), the Home tab (welcome text, all 4 stat cards, Recent orders), Orders-tab tiles (status badges, Accept/Reject/Mark Ready/Dispatch/Edit/Delete buttons), and 6 sample catalog item names (Castor/Roghan Badam/Chameli/Neem/Kalonji/Til oils) -- everything else in the app (other tabs, most catalog items, mobile bottom-nav short labels) intentionally stays English for this sample round. Urdu renders right-to-left at the character/word level automatically (browser's own Unicode bidi handling) -- full RTL page-layout mirroring was deliberately NOT done for this sample, flagged to the user as a separate scope decision. Verified with a real Playwright browser session against the actual unmodified file (English baseline -> Hindi via state -> Hindi Orders tab -> Hindi Profile panel -> Urdu via a real button CLICK -> Urdu Orders tab -> language persists across a real page reload), zero page errors, plus a new static+functional regression block (t/tabLabel/stageLabel/setAppLanguage/renderLanguageSwitcher/the [data-set-lang] click wiring). A code-review pass caught two bugs before they ever shipped: several TAB_LABEL[...] call sites use `t` as a `.map(t=>...)` loop variable, which would shadow the new global t() function and throw -- fixed by always calling the separately-defined tabLabel(key)/stageLabel(status) wrappers in any scope where t is shadowed (plus renaming 2 loop variables t->x for clarity); and an HTML-entity key mismatch (t('Processed &amp; Dispatched') doesn't match the dictionary's plain-ampersand key, would have double-escaped to "&amp;amp;") -- fixed to the plain-ampersand key with esc() removed at that one site (safe, translated/fallback text has nothing needing escaping). Full 36-file test suite green. BUGFIX (2026-09-02), live user report: "order tiles me live update nhi ho rha, agla step click krne pr foran wha se hat jana chahiye lekin us tile ko close kro phir hat jata hai" -- clicking Mark Ready / Undo Ready / Mark Ready to Dispatch / Undo Ready to Dispatch on an order tile shown INSIDE one of the stat-count popups (the "Processing: N" / "Under Packing: N" / "Ready to Dispatch: N" / "Processed: N" buttons on the Orders tab and Home) correctly advanced the order (the real Orders tab tile behind the popup was already right) but the tile stayed visibly stuck in that popup's own list until the popup was manually closed. Root cause: showModal()'s .modal-overlay is deliberately rendered as a DOM SIBLING of #root (so render()'s innerHTML rebuild never disturbs an open modal mid-animation -- see showModal's own comment) -- which also means render() can never reach into an open modal to refresh its snapshotted content. The sibling Accept/Reject/Delete buttons on the same tile already handled this correctly (bindOrderRowActions's `if(closeAfter) closeModal();`), but that fix was never carried over to markOrderReadyNow/undoMarkOrderReady/markOrderPacked/undoMarkOrderPacked. Fixed by giving all 4 an optional onDone callback (invoked right after their own existing render()) and wiring bindOrderRowActions to pass closeModal through as that callback whenever the button was rendered inside a stat-count modal (closeAfter true) -- the plain Orders tab (not a modal) is unaffected, still passes null. Covered by a new regression block in test_order_ops_firestore_client.js (static checks on all 4 functions + bindOrderRowActions' wiring, plus a functional vm-executed test of the real markOrderPacked/undoMarkOrderPacked confirming onDone actually fires, exactly once, only when passed) -- full suite green. CRASH/REGRESSION/STRESS SWEEP (2026-09-02), user request: "ab zra Iska End to end Regression, Stress and Site Crash Ki Full testing krdo. only order form and order ops ki. koi Bug aye to hand to hand fix kr dena." -- full offline-mocked Playwright regression+stress+crash pass, scoped to order-ops-firestore.html and order-form-firestore.html only, every bug found fixed immediately in the same pass. ORDER-OPS (5 fixes): (1) doLogout() left a stale .modal-overlay/#appAlertOverlay sibling node behind on a shared-tablet logout (they're deliberately rendered as DOM siblings of #root, not inside it, so render()'s innerHTML rebuild never touches them mid-animation -- but that also means a LOGOUT never cleared them) plus never reset the phone-back-button dummy-history bookkeeping (__backDepth/__suppressNextPopstate), both now explicitly cleared before the post-logout render(). (2) bindTasks()'s data-mark-filling/data-mark-packaging click handlers threw if the referenced order had been deleted (e.g. by another device) between render and tap -- both now null-guard and bail out silently. (3) safeSet() for notificationPrefs/attendanceSettings could fail writing to Firestore while the UI had already optimistically updated + shown a success toast, silently diverging local state from what's actually saved -- both call sites (saveNotifKindBtn, confirmTwBtn) now await the write, catch a failure, roll the in-memory value back to its previous value, and skip the success toast/close. (4)+(5) PERFORMANCE, found only via interactive stress-testing on a synthetic 4,000-order dataset (Orders tab render time: 1.2-4.5s vs <20ms for every other tab at the same volume) -- renderOrderTile() was calling computeFifoShortages() (an O(all-orders) full order-book walk) once PER TILE instead of once per render (computeFifoShortages already carries a comment about staying "linear instead of quadratic" for autoAdvanceOrders, a fix that was never carried over to renderOrderTile) -- fixed by hoisting the computation into both callers (renderOrdersSegregated/renderOrderTilesGrouped) and passing it through as a parameter; liveCustomerFor() did a plain S.customers.find() linear scan on every call (up to 2x per tile, 8 call sites file-wide) -- fixed with a self-invalidating Map cache keyed on S.customers reference identity (safe: verified via grep that every real update path reassigns S.customers wholesale, never mutates it in place). Both confirmed via before/after instrumented call-counting (fifoShortages calls: ~2668-3333 down to 1 per render; liveCustomerFor's underlying scan: 5336 linear scans down to 1 index build per render). ORDER-FORM: see that file's own header comment for its 7 fixes from this same sweep. Full regression test suite (34 files) green. ARCHITECTURAL FINDING, not fixed this round (flagged for the user, needs an explicit UX-scope decision, not a "hand to hand" bug fix): even after both perf fixes, a single Orders-tab render against 4,000 orders still costs roughly ~500ms baseline (renderShell ~320ms + innerHTML assign ~120ms + bindShell ~70ms for ~2,668 tiles / ~47,000 DOM nodes / ~3.3MB of HTML), because renderOrdersSegregated(0) is fully unpaginated -- this is now a clean, linear cost proportional to real data volume (not an algorithmic bug), but will keep growing as the order book grows; pagination/virtualization would need a deliberate follow-up decision. ROUND 15 FOLLOW-UP #2 (2026-09-02), 2 explicit user bug reports fixed together ("ye b krdo thik sath sath" -- "fix this too, along with [the blink fix]"): (1) "tile par click krne par jo window khul rhi hai vo smooth nhi hai blink kr rhi hain" -- the tile FLIP-open (added in preview27) blinked/restarted ~320ms after visually settling. Root cause: showModal()'s transitionend cleanup used to reset modalEl.style.animation back to '' once the grow-in transition finished -- that un-suppressed the base .modal{animation:sheetUp...} CSS rule, which the browser then treated as a BRAND NEW animation starting from its own 0% keyframe (translateY(28px) scale(0.98) opacity:0.5), producing a visible jump/re-animate well after the FLIP had already smoothly finished. Fixed by leaving style.animation permanently pinned to 'none' on a FLIP-opened modal instance (a fresh DOM node every showModal() call, so there's nothing to "restore" it for), with a matching explicit clear in closeModal() (right before adding .closing) so the CSS-driven sheetDown/paperPlaneFly exit animations still play correctly on a FLIP-opened modal despite that pin. Also dropped the perspective()/rotateX() 3D-tilt transform components as a secondary robustness fix (some Android WebViews render the perspective() transform FUNCTION inconsistently, a plausible contributor to janky visuals on the actual staff tablets this app runs on) -- simplified to a plain, well-supported translate()+scale(). Verified via grep that this exact "set then clear an inline animation override" pattern existed nowhere else in the file, and re-verified interactively with a real Playwright harness: captured the modal's live computed transform/opacity/animationName at 0/50/120/200/260/320/340/400/500/700/1000ms after a real tap -- confirms the transform settles to identity by ~260-320ms and animationName stays 'none' with no restart all the way through 1000ms (previously it would have jumped back to the 0% keyframe state right around 320ms); also re-verified the paper-airplane flyaway close still plays correctly (overlay+plane present through ~550ms, gone by ~700ms, matching the 520ms removal timer) on a FLIP-opened modal, confirming closeModal()'s matching fix works. (2) "home ke alawa hum agar kahi b hn (jese orders ya stock) waha back dabane par app bnd ho rhi hai. me chahta hu Home page par aayen. app close jb hi ho jb home pr hon or back press kren" -- from any non-Home tab (Orders, Stock, etc.), the phone/gesture back button used to close/background the whole app instead of navigating anywhere, because computeWantedBackDepth() only ever accounted for whether a modal/side-sheet/alert was open, never for which tab was active -- so switching tabs never pushed a dummy history entry, leaving nothing of the app's own for a back press to intercept once nothing else was open. Fixed by adding a 4th factor (S.currentUser && S.view!=='home') to computeWantedBackDepth()'s summed depth, and a new terminal else-if branch in the popstate handler (after the existing alert/modal/side-sheet branches) that switches S.view to 'home' and re-renders when nothing else of ours was open but the view isn't home already -- so the app now only ever actually closes/exits on a real back press taken while already on Home with nothing else open. No new syncBackStack() call sites were needed: render() already calls it unconditionally at its own tail, and every tab switch already goes through render(). Verified with new functional tests exercising the real extracted computeWantedBackDepth() against a mocked S/document across every S.view/S.currentUser combination, plus static checks confirming the popstate handler's new branch is correctly ordered as the last resort and gated identically to computeWantedBackDepth(). Both fixes covered by an expanded test_order_ops_firestore_client.js (the now-stale rotateX-presence assertion from preview27 was replaced with regression guards for the actual bug: no perspective()/rotateX() in code, the FLIP-open cleanup never resets style.animation to '', and closeModal() explicitly clears it before adding .closing) -- full suite green. ROUND 15 FOLLOW-UP (2026-09-02), 4 explicit user requests built together after a plan was shared and confirmed ("ok krdo"): (1) "Jis tile pr bhi hum click kre, vo wala tile flip ho kr bada ho jaye or window khol de jo khulna hai" -- a genuine container-transform ("FLIP") open: the pointerdown listener now also records the tapped TILE's real on-screen rect (not just the tap point) whenever the tap lands on .order-tile/.stat-card-v2/.alert-tile/.qa-tile/.more-item/.overview-col (__lastTapRect). showModal() -- the single choke point ~50+ call sites already share -- uses that rect (when fresh, same 800ms freshness window as the existing tap-origin ox/oy) to open the modal GROWING OUT of that exact tile instead of sliding up from the bottom: suppresses the default sheetUp keyframe, measures the modal's true resting rect, then animates translate+scale+a slight rotateX tilt (the "flip" feel) from the tile's rect to identity via a real CSS transition, cleaning up all the inline styles on transitionend. Falls back to the existing sheetUp slide-up when there's no fresh tile rect (a modal opened by code, not a tap). (2) "quick access wli chize hain unpr click kre to wahi se ik window shoot honi chahiye or khulni chahiye (agar quick action ke kisi page par hum hain or back dabate hn to wapas homepage par ana chahiye)" -- the "shoot open" half is already covered by (1), since .qa-tile is in the tile-selector list and every quick action opens a modal via showModal(). The back-to-Home half: bindQuickActionIcons sets a new __modalOpenedViaQuickAction flag right before opening a quick action's modal; showModal() stamps that onto the new overlay's dataset (inherited across a same-instant showModal() REPLACE within the same flow, e.g. Messages' thread-list-to-thread navigation, and reset after being consumed so a later unrelated modal never inherits a stale flag); the phone-back popstate handler reads that stamp and, once the modal finishes its normal close, switches S.view to 'home' -- regardless of which tab the quick action was opened from (Quick Actions appear on both Home and the Tasks tab). (3) "koi bhi entry hum daale to Us page ko ik paper airplane ki trah bana do or fly krwa do, uske baad green color ka dialoge ajaye (ye entry successfully save ho chuki hai)" -- new closeModal('flyaway') mode plays a paperPlaneFly exit (the modal card tumbles/shrinks/fades up-and-right) plus a decorative ✈️ element flying the same trajectory on its own layer, instead of the default shrink-down; a new celebrateEntrySaved(msg) helper pairs that with a new centered green success dialog (showSuccessDialog(), auto-dismissing after ~1.7s, distinct from the plain dark showToast() pill) timed to appear just as the plane finishes flying off. Scoped to exactly the 5 places that call it -- Purchase/Filling/Packaging/new-Expense-or-Settlement/new-Retail-Sale-or-Sample, i.e. the same flows already gated by blockIfOutsideEntryWindow() (Round 14), matching "Daily Work entries" precisely -- every edit/delete/undo/other save in the app is UNCHANGED, still the plain closeModal()+showToast(). (4) "stock wale me low ka bada tile usme har item ke chote chote tiles, aese hi short ka bada tile uske andr chote chote har item ke tiles" -- alertBanner() (used on the Raw/Filled/Ready stock pages and the Home "Alerts for you" card, for every role) rewritten from a plain divider-separated list into nested tiles: one BIG .alert-banner-tile per severity group (red "N item(s) short" / amber "N item(s) running low", matching the app's existing tile-card language -- box-shadow:var(--tile-shadow) etc, same family as .alert-tile) containing a SMALL .alert-item-tile per item, which also picks up the existing Round 15 stagger-in entrance automatically (added to that shared selector list). Verified this whole round with: extended test_order_ops_firestore_client.js (static checks on every CSS/JS piece plus functional tests -- showSuccessDialog's own timer via a mocked render/setTimeout, and alertBanner's real extracted output against a sample mixed short+low list, both counts and content); a real interactive Playwright harness (not just a static style-injected preview like earlier rounds) built from the actual extracted showModal/closeModal/celebrateEntrySaved/showSuccessDialog/alertBanner source plus the real pointerdown listener, clicking a real tile and screenshotting the FLIP-open growing from it, triggering celebrateEntrySaved() and screenshotting the ✈️ mid-flight plus the green dialog, and rendering alertBanner()'s real output to confirm the nested-tile look -- before delivering. ROUND 15 (2026-09-02): "Suggest More & More Animations i want to make this so beautiful" -- two clarifying questions asked and answered before starting: approach = "Subtle & professional" (tap feedback everywhere, list stagger-in, number count-up, status color-morph -- fast even on old tablets -- NOT "Rich & lively": directional tab-slide, ripple, bell shake, checkmark burst, idle empty-state bobbing, none of which were added), scope = "Poore app mein ek saath" (whole app in one pass, not staged by screen). Audited the file's existing animation infra first (loginCardIn/postloginSpin/skelShimmer/welcomeFadeIn/syncPulse/bellBadgePulse/navPop/contentFadeIn/overlayFadeIn+Out/toastSlideUp/appAlertPop/sheetUp+Down/successPop/modalGrowIn+Out, plus existing :active tap-feedback on .btn/.stat/.qa-tile/.navitem/.thread-row/.contact-row) and layered four things on top without touching any of it: (1) tap-feedback gaps closed -- .order-tile[data-select-team]/[data-select-notif-kind] (Team-select and Notification-kind tiles, the only two places a whole order-tile itself is directly clickable) and .more-item (the "More" sheet grid) now scale down on press, matching the existing pattern elsewhere; deliberately scoped rather than a blanket .order-tile:active so a plain non-clickable order tile never shrinks on an incidental touch and falsely implies it's tappable. (2) List stagger-in -- pure CSS, targets .order-tile-grid/.alert-tile-grid/.stat-grid-v2/.more-grid directly so zero render-function changes were needed; each tile fades+slides up with a short nth-child delay staircase capped at 8 items (240ms max) so a long order list finishes appearing quickly. (3) Number count-up -- animateStatNumbers() (new function, just above render()) animates .stat/.stat-card-v2 numbers from their previous value to the new one over 450ms (ease-out cubic) via requestAnimationFrame, but ONLY when the value actually changed since that same tile's last render (cached by a stable data-stat/data-more-tab/label key, not by DOM node, since render() recreates every node) -- a tile seen for the first time (screen just opened) snaps straight to its value, no count-up-from-zero; correctly handles a leading minus sign (e.g. a negative expense balance, "₹-500") so a sign flip between renders doesn't misdraw. (4) Status flash -- flashChangedBadges() (new function, next to animateStatNumbers) adds a brief currentColor glow pulse (.status-flash, 0.6s) to an order's status badge the moment that SAME order's status actually differs from its own last-seen status (order identity via new data-order-id on .order-tile, added to renderOrderTile) -- implemented as a glow/pulse rather than a literal old-color-to-new-color interpolation, since render()'s root.innerHTML=newHtml fully replaces the DOM on every change, so there's no persisting "old" badge node left to smoothly recolor across (the .badge rule's pre-existing background-color/color transition stays in place for the rare case something mutates a live badge in place, unaffected). All four pieces use only transform/opacity/box-shadow (GPU-cheap, no layout thrash), stay under 650ms end-to-end, and are disabled under prefers-reduced-motion via one shared media query. UI FOLLOW-UP (2026-09-02): "Quick Actions ke icon ke sizes Increase kro. inke Tile Size bhi thik kro perfect Square. or perfect fill bhi." -- .qa-tile used to be flex:0 1 auto with a fixed 60-78px min/max-width range, which capped every tile at a small size even when a row (especially the 8-wide desktop row) had plenty of spare width -- and its icon-badge was a fixed 38px/18px-font, looking lost inside the tile. Now .qa-tile is flex:1 1 0 (equal-share growth, min-width:0) with aspect-ratio:1/1, so every tile in a row genuinely fills its equal share of the available width as a true square (capped at 104px so it doesn't grow absurdly huge on a very wide window) instead of leaving unused space as dead gaps; content is centered via flexbox column layout. The icon-badge itself is up from 38px/18px-font to 52px/26px-font, and the tile's own inner layout was simplified (padding/gap tightened) so the bigger icon+label combo actually fills the square instead of floating in a sea of margin. Verified visually with rendered screenshots at both mobile (4+4 split) and desktop (single 8-wide row) widths before delivering. BUGFIX (2026-09-02, live user report): "packing, filling, managers koi bhi message seen nhi kr pa rhe h, not saved likha aa raha h bar bar, na hi msg bhej pa rhe h" -- messaging (Messages / chatMessages) was broken for every NON-ADMIN role. Root cause: markAllAnnouncementsRead (the function actually wired up everywhere -- on open, on tab-switch, on every single live refresh while the default Announcements tab is open) still did a FULL non-merge Firestore .set() of the whole message doc just to flip one person's readBy entry. firestore.rules only allows a non-admin to touch the readBy field alone (a scoped diff/hasOnly check) -- a full-object write is fragile against that rule, so it kept failing with permission-denied for every non-admin, popping a fresh "Save failed" toast on every refresh (the reported "bar bar not saved") and never actually persisting the read state (the reported "seen nahi ho pa raha"). A CORRECTLY-written sibling function (markAnnouncementRead, using a scoped merge + arrayUnion, exactly matching the rule) already existed in the file but was dead code -- never actually called from anywhere. Admin's own writes always bypass this rule entirely via isAdmin(), which is exactly why this was invisible unless tested as a non-admin role. Fixed by routing markAllAnnouncementsRead through the already-correct markAnnouncementRead for each unread announcement instead of duplicating (and diverging from) that logic. Personal-chat "seen" (markThreadRead) was already using the correct scoped-merge pattern and needed no change; sending messages (create) was not gated by this rule at all and should already have worked, but the constant toast/error storm on the default tab likely made the whole feature feel broken. ROUND 14 FOLLOW-UP (2026-09-02): "tiles ko dome shaped 3d dikhna chahiye" -- the first pass's subtle flat-shadow tile treatment wasn't convex enough, made it clearly domed instead. --tile-highlight is now a 2-layer gradient (a glossy top-center highlight arc + an overall top-light/bottom-slightly-darker vertical shade) layered under EVERY tile background -- .card/.stat/.order-tile (incl. its 3 status-color variants)/.alert-tile (incl. mild/recommended)/.stat-card-v2 (incl. all 4 rotating colors)/.qa-tile (its own matching version, since it sits on a dark banner) -- so each tile's surface itself reads as a curved, lit dome, not just a flat card with a shadow under it. --tile-shadow was also strengthened: a brighter inset rim along the top (the dome's crest catching light), a stronger inset shadow hugging the bottom-inside edge (where the curve rolls away from the light), plus firmer outer contact + ambient shadows for real lift. Every tile class also got a few more px of border-radius -- rounder corners read as more dome-like than sharp ones. ROUND 14 (2026-09-01), user-dictated backlog implemented together, ALL 6 ITEMS COMPLETE: (1) no duplicate users -- Username is now readonly when editing an EXISTING user (the doc id/Auth uid/custom claim all stay pinned to the original username forever, so allowing it to be edited only broke that person's login while opening a duplicate-username loophole; NEW user creation was already fully protected -- client check + createStaffUser's server-side dupSnap query + Firebase Auth's own uid-uniqueness constraint). (2) Attendance self-marking now only works inside an admin-configurable window (preset 10am-12pm, non-admin only) -- new "⏰ Marking window" button in the Attendance section. (3) Admin's attendance view (renderAttendanceMap) now shows a Time column alongside Location for self-marked entries. (4) BUG FIX: the "Data Log" tab existed in name only since before this rewrite even started (nav label/icon/Permission-Manager toggle all declared it, but neither renderView() nor bindView() had a 'log' case) -- implemented for the first time as a read-only 7-day activity+login audit trail. (5) Every tile/card class (.card/.stat/.order-tile/.alert-tile/.stat-card-v2/.qa-tile) now shares one consistent subtle 3D-look + soft-shadow treatment (--tile-shadow custom property) instead of each carrying its own one-off shadow. (6) FINISHED THIS BUILD: the general Daily Work entry window (preset 10:30am-8pm, admin-editable via "⏰ Entry window" in Daily Work) is now actually enforced -- withinEntryWindow() (already wired into every non-admin new-entry submit: Purchase, Filling, Packaging, Expenses, Retail Sale/Samples -- this scope pre-dates this round and was left unchanged, it's exactly what "Daily Work" already aggregates) previously had its own HARDCODED 10:30-20:00 literal, entirely disconnected from the new admin setting -- it now reads getAttendanceSettings().entryStart/entryEnd so changing the admin control actually takes effect; the alert/button text is dynamic too, not a stale hardcoded time string. Also caught and fixed during this round's own testing: a genuine fmtHHMM naming collision (a pre-existing Domino Printing duration formatter and this round's new time-of-day display helper briefly shared the same function name, which would have silently broken the attendance-window message with "NaN:NaN") -- renamed the new one to fmtHHMMOfDay. ROUND 13.1 (2026-09-01), 2 explicit user questions: (1) "stock photo me to LR No ki zrurt nhi h na" -- a Stock Photo (loose-goods pickup) has no real Lorry Receipt document behind it, so the LR Number field is now hidden (and never saved) whenever Stock Photo is the selected type, in both the standalone Upload Photo modal and the inline dispatch-flow upload -- see wirePhotoTypeToggle's new onChange callback, and the "LR Photo (optional)" file-input label in the dispatch modal was also generalized to "Photo (optional)" since it can now be either kind. (2) "ye chiz wha b to update hogi na jaha order track hota hai" -- the customer-facing tracking page (order-form-firestore.html) was NOT actually type-aware before this: it always said "LR" (View/Download LR, LR Number, alt="LR photo") no matter which type staff picked -- now it reads order.photoType and shows "Stock Photo" wording for a stock photo. ROUND 13 (2026-08-31), 2 explicit user requests: (1) "Manager wala Checkpoint khud hi ban jaye, 30 Days ke Expenses rakho, usse pehle ke, usse pehle ke apne aap hi previous balance ke naam se save karte raho" -- the Expenses page now only ever shows the last 30 days (computeVisibleExpenses); everything before that is summarized live into an automatic "📌 Previous Balance" line (previousBalanceRowHtml) needing zero manual action -- safe because S.expenseBalances is a durable running total, never re-derived from history (see expenseBalanceFor's comment). The old monthly reminder banner (nagging admin to manually set a checkpoint) is gone; the manual "📌 Opening Balance" button itself stays, for genuine corrections. Entries older than 90 days are now deleted automatically server-side (functions/index.js's new cleanupOldExpenses scheduled function) -- the Firestore fetch window narrowed from 365 to 90 days to match. (2) "Order finalization me LR ya Stock photo 2 options rakho ... Ye Photo Automatically deleted hojaye after 30 days" -- LR photo upload (openUploadLRModal + the dispatch flow) now offers a Stock Photo option too (for loose-goods pickups needing a verification photo), and BOTH new uploads go through Firebase Storage (fsUploadOrderPhoto/fsDeleteOrderPhoto) instead of Google Drive -- an explicit, informed reversal of Round 12's Drive-only choice, made specifically because Storage can auto-delete a photo 30 days after upload via a plain bucket lifecycle rule (see storage.rules + lifecycle.json), no scheduled code needed. Legacy (pre-Round-13) Drive-based photos are unaffected and still deletable via apiDeleteLR. Also this round: the Sheet backup scheme (order-ops-backend.gs's dailyBackup) changed from one file per WEEK (refreshed in place daily, so never more than one real snapshot per week) kept for 8 weeks, to one real, distinct snapshot per DAY kept for 7 days (BACKUP_RETENTION_DAYS) -- explicit user request ("7 din ka backup rakho bas, usse pehle ka backup auto delete ho jana chahiye"). ROUND 12 (2026-08-31), 3 explicit user requests: (1) LR photo "Upload Failed" every single time -- root cause was that apiUploadLR/apiDeleteLR sent this app's OWN unrelated single-device-login token (S.authToken) as `sessionToken`, which order-ops-backend.gs's requireSession_ could never recognize (it only knows tokens from that script's own OLD Sheets-based login action, which this app never calls anymore) -- every upload/delete rejected with session_required, no matter what. FIXED WITHOUT changing storage backend (explicit user request: keep the same Google Drive space, not Firebase Storage) -- apiUploadLR/apiDeleteLR now also send a real, live Firebase Auth ID token, and order-ops-backend.gs verifies THAT instead (verifyFirebaseIdToken_, via Google's Identity Toolkit REST API) -- see the Round 12 deploy guide, this needs a fresh Apps Script deployment (order-ops-backend.gs changed for the first time this whole engagement -- surgically, only the uploadLR/deleteLR auth check, nothing else). (2) A photo over 2MB is now actually guaranteed compressed under that cap (resizeImageFileMaxBytes, byte-size-checked via dataUrlByteLength, not just pixel-dimension-capped like before) before every LR upload, independent of storage backend. (3) Orders entered directly in OMS ("+ New order" / chat "Quick order") are now created ALREADY ACCEPTED (status:'processing', stock reserved immediately via the new shared reserveStockForAcceptedOrder helper) instead of sitting in the pending/"New" queue needing a separate Accept click -- only orders from the public customer-facing order form (buildOrderDocFromPayload, untouched, still status:'pending') still need that Approval step. ROUND 11 (2026-08-31), new "Opening Balance" expense checkpoint feature -- admin (for ANY manager) can now set the manager's running expense/settlement balance to a known-correct absolute figure via a dedicated 📌 Opening Balance entry (Expenses tab, admin view), instead of the balance being trusted to stay correct purely from every historical add/subtract. All OLD expense/settlement entries are untouched -- only the derived running total is corrected going forward. The new entry type stores BOTH the signed delta actually applied (so the existing balance math needs no changes at all -- see applyExpenseBalanceDelta's comment) AND the plain target figure (so every screen can always show "Balance set to ₹X", never a confusing raw delta) -- see expenseEntryAmountText/expenseEntryBadgeHtml, the one shared place all of Expenses/Daily Work/print/monthly-report/Home-activity read from, so the totaling stays consistent everywhere at once. Opening Balance entries are excluded from "total expense" sums (they're a correction, not spending), support create+delete only (no edit -- delete and re-add instead, to limit risk), and a new in-app banner (no push notification) on the admin Expenses page flags any manager still missing this month's checkpoint. ROUND 10 (2026-08-31), "sab ek sath shuru karo, saare bugs thik karo" full fix pass -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md's Round 10 section for the complete list. Highlights: messaging seen/read-write permissions now work for every role, not just admin (the specific bug reported this round -- see firestore.rules' new dedicated chatMessages block); the canEntry() default-fallback bug that silently permission-denied every entry-gated write for any newly-added/uncustomized role; the stock-ledger clobber race (fsSetStockField now does a scoped dot-path update, not a whole-field overwrite); FIFO-covered orders no longer stuck (orderIsFullyStocked/autoAdvanceOrders); cancelled order items no longer double-deducted on edit; concurrent expense edits no longer double-count balances (fsEditExpenseAtomic); offboarded staff Auth accounts + live sessions now actually get revoked (deleteStaffUser/forceLogoutStaffUser/resetStaffPassword); Retail Sale/Sample booked-entry lock + double-submit guard; double-submit guards on the dispatch, attendance, and post-login "Tap to Continue" buttons; a magnitude/typo cap on Bulk stock edit (matching the single-item Adjust modal); and the shared-tablet push-notification bug where a second person logging in on the same device/session stopped receiving push until a full page reload. (Round 9: Enter-to-send. Round 8: the login-skip/duplicate-notification/stray-welcome race fix. Rounds 1-7: session-token adoption, FIFO stock allocation, Daily Work resync, System Health panel removal, modal animations, live-listener reconnect, the real bar-bar-password root cause, chat ordering/read-receipts, admin-only password reset, phone back button, the first (incomplete) login-race fix -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md for full history.)
+const APP_BUILD = "2026-09-03-firestore-preview32"; // FULL-APP TRANSFORMATION, PHASE 1 (2026-09-03, explicit user request, plan confirmed after a pros/cons discussion): rem-based Font Size (Normal/XL/XXL, one html.fs-* class on <html> scales every font-size in the app -- all 190 static font-size:Npx CSS declarations converted to rem so they scale together; dynamic/inherit ones deliberately left alone). Language + Font Size are now 2 real <select> dropdowns (renderPreferencesPanel, replacing the old button-row renderLanguageSwitcher) -- enhanceFormControls (already called on every render()) automatically upgrades them into the app's own in-app dropdown look, no new UI plumbing needed. Language changes now ask for confirmation first (showConfirm, cancelling snaps the dropdown back via render()) -- font size applies immediately, deliberately without a confirm (explicit user request: only language needed the warning). Urdu now gets a genuine RTL base framework: <html dir="rtl"> (applyDocumentPrefAttrs) already mirrors most of the app for free since almost everything here uses direction-aware CSS (flex-start/end, CSS Grid line placement) -- only ~10 genuinely physical left/right/border-left/right rules needed an explicit [dir="rtl"] override (search that block in <style>), #printArea deliberately excluded (LR/invoice print output stays standard-layout regardless of on-screen language). BIGGEST change: language/fontSize moved from a per-DEVICE localStorage-only preference to a real PER-USER one -- applyUserPreferences(u), called from all 3 places a login actually sets S.currentUser (finalizeLogin/restoreSession/the onAuthStateChanged auto-restore branch), loads the person's own saved choice from their Firestore users/{uid} doc (falls back to this device's local default for a user who's never set one, so no silent reset to English/Normal); fsSaveUserPreferences does a scoped MERGE write touching only {language,fontSize} -- firestore.rules' users/{uid} block gained a narrow self-service `allow update` (diff().affectedKeys().hasOnly(['language','fontSize'])) alongside the existing admin-only `allow write`, so a non-admin can save their own preference without gaining any other access to their own or anyone else's account doc. NEEDS A FRESH FIRESTORE RULES DEPLOY for the per-user save to actually work in production (client-side gracefully no-ops to "save failed, rolled back locally" without it -- see fsReportWriteError). Verified with a real Playwright session: dropdown interaction, XL/XXL computed root font-size, the confirm dialog's exact text + Cancel-reverts + Yes-applies-and-sets-dir=rtl, Urdu Orders tab screenshot (translated item names + mirrored layout), and reload persistence -- zero page errors. Full 36-file suite green, including an expanded regression block (font-size rem-conversion sweep, RTL CSS spot-checks, applyDocumentPrefAttrs/applyUserPreferences functional tests, setAppLanguage/setFontSize/fsSaveUserPreferences static assertions, all-3-login-paths wiring check, firestore.rules assertions). This is PHASE 1 (infrastructure + the screens already translated -- Home/Profile/Orders); remaining tabs/catalog roll out in later phased rounds per the agreed plan. FEATURE (2026-09-03, explicit user request, spec confirmed verbatim): non-admin staff (sales/manager/filling/packaging etc -- admin stays exempt, same as the existing entry-window rule) may only add a NEW Daily Work entry if TODAY's attendance is marked Present. New entryAttendanceBlockReason() checks attendanceStatusFor(currentUser, today) and returns a specific reason string for each case (Absent: "Aap aaj Absent mark hain, isliye entry nahi daal sakte." / Unmarked: "Aapne aaj attendance mark nahi ki hai -- pehle Mark Attendance karein." / Present or admin: null, no block) -- wired into the single shared choke point blockIfOutsideEntryWindow() (existing Sunday/holiday + time-window check runs first, so whichever reason applies first is the one shown), which already covered exactly the 5 requested flows (Purchase, Filling, Packaging, Expense/Settlement, Retail Sale/Sample) with zero other call sites needing changes. Covered by a new regression block (static + functional vm-executed, all 4 status branches). LANGUAGE SAMPLE (2026-09-03, explicit user request, "pehle ye sample bana doon dikhane ke liye"): one-screen-scope Hindi/Urdu translation proof-of-concept -- new S.language (per-device, localStorage key orderops_app_lang, NOT synced via Firestore, same pattern as the offline queue/session token), a minimal t(enText) lookup (current English string IS the dictionary key, falls back to the English text itself unchanged if untranslated) with I18N.hi/I18N.ur dictionaries, and a language switcher card (renderLanguageSwitcher, English/हिंदी/اردو buttons) placed exactly where requested -- Profile panel, directly below the ID Card, directly above Log out. Translated in this sample: the Profile panel (ID card labels + Log out + the switcher itself), the Home tab (welcome text, all 4 stat cards, Recent orders), Orders-tab tiles (status badges, Accept/Reject/Mark Ready/Dispatch/Edit/Delete buttons), and 6 sample catalog item names (Castor/Roghan Badam/Chameli/Neem/Kalonji/Til oils) -- everything else in the app (other tabs, most catalog items, mobile bottom-nav short labels) intentionally stays English for this sample round. Urdu renders right-to-left at the character/word level automatically (browser's own Unicode bidi handling) -- full RTL page-layout mirroring was deliberately NOT done for this sample, flagged to the user as a separate scope decision. Verified with a real Playwright browser session against the actual unmodified file (English baseline -> Hindi via state -> Hindi Orders tab -> Hindi Profile panel -> Urdu via a real button CLICK -> Urdu Orders tab -> language persists across a real page reload), zero page errors, plus a new static+functional regression block (t/tabLabel/stageLabel/setAppLanguage/renderLanguageSwitcher/the [data-set-lang] click wiring). A code-review pass caught two bugs before they ever shipped: several TAB_LABEL[...] call sites use `t` as a `.map(t=>...)` loop variable, which would shadow the new global t() function and throw -- fixed by always calling the separately-defined tabLabel(key)/stageLabel(status) wrappers in any scope where t is shadowed (plus renaming 2 loop variables t->x for clarity); and an HTML-entity key mismatch (t('Processed &amp; Dispatched') doesn't match the dictionary's plain-ampersand key, would have double-escaped to "&amp;amp;") -- fixed to the plain-ampersand key with esc() removed at that one site (safe, translated/fallback text has nothing needing escaping). Full 36-file test suite green. BUGFIX (2026-09-02), live user report: "order tiles me live update nhi ho rha, agla step click krne pr foran wha se hat jana chahiye lekin us tile ko close kro phir hat jata hai" -- clicking Mark Ready / Undo Ready / Mark Ready to Dispatch / Undo Ready to Dispatch on an order tile shown INSIDE one of the stat-count popups (the "Processing: N" / "Under Packing: N" / "Ready to Dispatch: N" / "Processed: N" buttons on the Orders tab and Home) correctly advanced the order (the real Orders tab tile behind the popup was already right) but the tile stayed visibly stuck in that popup's own list until the popup was manually closed. Root cause: showModal()'s .modal-overlay is deliberately rendered as a DOM SIBLING of #root (so render()'s innerHTML rebuild never disturbs an open modal mid-animation -- see showModal's own comment) -- which also means render() can never reach into an open modal to refresh its snapshotted content. The sibling Accept/Reject/Delete buttons on the same tile already handled this correctly (bindOrderRowActions's `if(closeAfter) closeModal();`), but that fix was never carried over to markOrderReadyNow/undoMarkOrderReady/markOrderPacked/undoMarkOrderPacked. Fixed by giving all 4 an optional onDone callback (invoked right after their own existing render()) and wiring bindOrderRowActions to pass closeModal through as that callback whenever the button was rendered inside a stat-count modal (closeAfter true) -- the plain Orders tab (not a modal) is unaffected, still passes null. Covered by a new regression block in test_order_ops_firestore_client.js (static checks on all 4 functions + bindOrderRowActions' wiring, plus a functional vm-executed test of the real markOrderPacked/undoMarkOrderPacked confirming onDone actually fires, exactly once, only when passed) -- full suite green. CRASH/REGRESSION/STRESS SWEEP (2026-09-02), user request: "ab zra Iska End to end Regression, Stress and Site Crash Ki Full testing krdo. only order form and order ops ki. koi Bug aye to hand to hand fix kr dena." -- full offline-mocked Playwright regression+stress+crash pass, scoped to order-ops-firestore.html and order-form-firestore.html only, every bug found fixed immediately in the same pass. ORDER-OPS (5 fixes): (1) doLogout() left a stale .modal-overlay/#appAlertOverlay sibling node behind on a shared-tablet logout (they're deliberately rendered as DOM siblings of #root, not inside it, so render()'s innerHTML rebuild never touches them mid-animation -- but that also means a LOGOUT never cleared them) plus never reset the phone-back-button dummy-history bookkeeping (__backDepth/__suppressNextPopstate), both now explicitly cleared before the post-logout render(). (2) bindTasks()'s data-mark-filling/data-mark-packaging click handlers threw if the referenced order had been deleted (e.g. by another device) between render and tap -- both now null-guard and bail out silently. (3) safeSet() for notificationPrefs/attendanceSettings could fail writing to Firestore while the UI had already optimistically updated + shown a success toast, silently diverging local state from what's actually saved -- both call sites (saveNotifKindBtn, confirmTwBtn) now await the write, catch a failure, roll the in-memory value back to its previous value, and skip the success toast/close. (4)+(5) PERFORMANCE, found only via interactive stress-testing on a synthetic 4,000-order dataset (Orders tab render time: 1.2-4.5s vs <20ms for every other tab at the same volume) -- renderOrderTile() was calling computeFifoShortages() (an O(all-orders) full order-book walk) once PER TILE instead of once per render (computeFifoShortages already carries a comment about staying "linear instead of quadratic" for autoAdvanceOrders, a fix that was never carried over to renderOrderTile) -- fixed by hoisting the computation into both callers (renderOrdersSegregated/renderOrderTilesGrouped) and passing it through as a parameter; liveCustomerFor() did a plain S.customers.find() linear scan on every call (up to 2x per tile, 8 call sites file-wide) -- fixed with a self-invalidating Map cache keyed on S.customers reference identity (safe: verified via grep that every real update path reassigns S.customers wholesale, never mutates it in place). Both confirmed via before/after instrumented call-counting (fifoShortages calls: ~2668-3333 down to 1 per render; liveCustomerFor's underlying scan: 5336 linear scans down to 1 index build per render). ORDER-FORM: see that file's own header comment for its 7 fixes from this same sweep. Full regression test suite (34 files) green. ARCHITECTURAL FINDING, not fixed this round (flagged for the user, needs an explicit UX-scope decision, not a "hand to hand" bug fix): even after both perf fixes, a single Orders-tab render against 4,000 orders still costs roughly ~500ms baseline (renderShell ~320ms + innerHTML assign ~120ms + bindShell ~70ms for ~2,668 tiles / ~47,000 DOM nodes / ~3.3MB of HTML), because renderOrdersSegregated(0) is fully unpaginated -- this is now a clean, linear cost proportional to real data volume (not an algorithmic bug), but will keep growing as the order book grows; pagination/virtualization would need a deliberate follow-up decision. ROUND 15 FOLLOW-UP #2 (2026-09-02), 2 explicit user bug reports fixed together ("ye b krdo thik sath sath" -- "fix this too, along with [the blink fix]"): (1) "tile par click krne par jo window khul rhi hai vo smooth nhi hai blink kr rhi hain" -- the tile FLIP-open (added in preview27) blinked/restarted ~320ms after visually settling. Root cause: showModal()'s transitionend cleanup used to reset modalEl.style.animation back to '' once the grow-in transition finished -- that un-suppressed the base .modal{animation:sheetUp...} CSS rule, which the browser then treated as a BRAND NEW animation starting from its own 0% keyframe (translateY(28px) scale(0.98) opacity:0.5), producing a visible jump/re-animate well after the FLIP had already smoothly finished. Fixed by leaving style.animation permanently pinned to 'none' on a FLIP-opened modal instance (a fresh DOM node every showModal() call, so there's nothing to "restore" it for), with a matching explicit clear in closeModal() (right before adding .closing) so the CSS-driven sheetDown/paperPlaneFly exit animations still play correctly on a FLIP-opened modal despite that pin. Also dropped the perspective()/rotateX() 3D-tilt transform components as a secondary robustness fix (some Android WebViews render the perspective() transform FUNCTION inconsistently, a plausible contributor to janky visuals on the actual staff tablets this app runs on) -- simplified to a plain, well-supported translate()+scale(). Verified via grep that this exact "set then clear an inline animation override" pattern existed nowhere else in the file, and re-verified interactively with a real Playwright harness: captured the modal's live computed transform/opacity/animationName at 0/50/120/200/260/320/340/400/500/700/1000ms after a real tap -- confirms the transform settles to identity by ~260-320ms and animationName stays 'none' with no restart all the way through 1000ms (previously it would have jumped back to the 0% keyframe state right around 320ms); also re-verified the paper-airplane flyaway close still plays correctly (overlay+plane present through ~550ms, gone by ~700ms, matching the 520ms removal timer) on a FLIP-opened modal, confirming closeModal()'s matching fix works. (2) "home ke alawa hum agar kahi b hn (jese orders ya stock) waha back dabane par app bnd ho rhi hai. me chahta hu Home page par aayen. app close jb hi ho jb home pr hon or back press kren" -- from any non-Home tab (Orders, Stock, etc.), the phone/gesture back button used to close/background the whole app instead of navigating anywhere, because computeWantedBackDepth() only ever accounted for whether a modal/side-sheet/alert was open, never for which tab was active -- so switching tabs never pushed a dummy history entry, leaving nothing of the app's own for a back press to intercept once nothing else was open. Fixed by adding a 4th factor (S.currentUser && S.view!=='home') to computeWantedBackDepth()'s summed depth, and a new terminal else-if branch in the popstate handler (after the existing alert/modal/side-sheet branches) that switches S.view to 'home' and re-renders when nothing else of ours was open but the view isn't home already -- so the app now only ever actually closes/exits on a real back press taken while already on Home with nothing else open. No new syncBackStack() call sites were needed: render() already calls it unconditionally at its own tail, and every tab switch already goes through render(). Verified with new functional tests exercising the real extracted computeWantedBackDepth() against a mocked S/document across every S.view/S.currentUser combination, plus static checks confirming the popstate handler's new branch is correctly ordered as the last resort and gated identically to computeWantedBackDepth(). Both fixes covered by an expanded test_order_ops_firestore_client.js (the now-stale rotateX-presence assertion from preview27 was replaced with regression guards for the actual bug: no perspective()/rotateX() in code, the FLIP-open cleanup never resets style.animation to '', and closeModal() explicitly clears it before adding .closing) -- full suite green. ROUND 15 FOLLOW-UP (2026-09-02), 4 explicit user requests built together after a plan was shared and confirmed ("ok krdo"): (1) "Jis tile pr bhi hum click kre, vo wala tile flip ho kr bada ho jaye or window khol de jo khulna hai" -- a genuine container-transform ("FLIP") open: the pointerdown listener now also records the tapped TILE's real on-screen rect (not just the tap point) whenever the tap lands on .order-tile/.stat-card-v2/.alert-tile/.qa-tile/.more-item/.overview-col (__lastTapRect). showModal() -- the single choke point ~50+ call sites already share -- uses that rect (when fresh, same 800ms freshness window as the existing tap-origin ox/oy) to open the modal GROWING OUT of that exact tile instead of sliding up from the bottom: suppresses the default sheetUp keyframe, measures the modal's true resting rect, then animates translate+scale+a slight rotateX tilt (the "flip" feel) from the tile's rect to identity via a real CSS transition, cleaning up all the inline styles on transitionend. Falls back to the existing sheetUp slide-up when there's no fresh tile rect (a modal opened by code, not a tap). (2) "quick access wli chize hain unpr click kre to wahi se ik window shoot honi chahiye or khulni chahiye (agar quick action ke kisi page par hum hain or back dabate hn to wapas homepage par ana chahiye)" -- the "shoot open" half is already covered by (1), since .qa-tile is in the tile-selector list and every quick action opens a modal via showModal(). The back-to-Home half: bindQuickActionIcons sets a new __modalOpenedViaQuickAction flag right before opening a quick action's modal; showModal() stamps that onto the new overlay's dataset (inherited across a same-instant showModal() REPLACE within the same flow, e.g. Messages' thread-list-to-thread navigation, and reset after being consumed so a later unrelated modal never inherits a stale flag); the phone-back popstate handler reads that stamp and, once the modal finishes its normal close, switches S.view to 'home' -- regardless of which tab the quick action was opened from (Quick Actions appear on both Home and the Tasks tab). (3) "koi bhi entry hum daale to Us page ko ik paper airplane ki trah bana do or fly krwa do, uske baad green color ka dialoge ajaye (ye entry successfully save ho chuki hai)" -- new closeModal('flyaway') mode plays a paperPlaneFly exit (the modal card tumbles/shrinks/fades up-and-right) plus a decorative ✈️ element flying the same trajectory on its own layer, instead of the default shrink-down; a new celebrateEntrySaved(msg) helper pairs that with a new centered green success dialog (showSuccessDialog(), auto-dismissing after ~1.7s, distinct from the plain dark showToast() pill) timed to appear just as the plane finishes flying off. Scoped to exactly the 5 places that call it -- Purchase/Filling/Packaging/new-Expense-or-Settlement/new-Retail-Sale-or-Sample, i.e. the same flows already gated by blockIfOutsideEntryWindow() (Round 14), matching "Daily Work entries" precisely -- every edit/delete/undo/other save in the app is UNCHANGED, still the plain closeModal()+showToast(). (4) "stock wale me low ka bada tile usme har item ke chote chote tiles, aese hi short ka bada tile uske andr chote chote har item ke tiles" -- alertBanner() (used on the Raw/Filled/Ready stock pages and the Home "Alerts for you" card, for every role) rewritten from a plain divider-separated list into nested tiles: one BIG .alert-banner-tile per severity group (red "N item(s) short" / amber "N item(s) running low", matching the app's existing tile-card language -- box-shadow:var(--tile-shadow) etc, same family as .alert-tile) containing a SMALL .alert-item-tile per item, which also picks up the existing Round 15 stagger-in entrance automatically (added to that shared selector list). Verified this whole round with: extended test_order_ops_firestore_client.js (static checks on every CSS/JS piece plus functional tests -- showSuccessDialog's own timer via a mocked render/setTimeout, and alertBanner's real extracted output against a sample mixed short+low list, both counts and content); a real interactive Playwright harness (not just a static style-injected preview like earlier rounds) built from the actual extracted showModal/closeModal/celebrateEntrySaved/showSuccessDialog/alertBanner source plus the real pointerdown listener, clicking a real tile and screenshotting the FLIP-open growing from it, triggering celebrateEntrySaved() and screenshotting the ✈️ mid-flight plus the green dialog, and rendering alertBanner()'s real output to confirm the nested-tile look -- before delivering. ROUND 15 (2026-09-02): "Suggest More & More Animations i want to make this so beautiful" -- two clarifying questions asked and answered before starting: approach = "Subtle & professional" (tap feedback everywhere, list stagger-in, number count-up, status color-morph -- fast even on old tablets -- NOT "Rich & lively": directional tab-slide, ripple, bell shake, checkmark burst, idle empty-state bobbing, none of which were added), scope = "Poore app mein ek saath" (whole app in one pass, not staged by screen). Audited the file's existing animation infra first (loginCardIn/postloginSpin/skelShimmer/welcomeFadeIn/syncPulse/bellBadgePulse/navPop/contentFadeIn/overlayFadeIn+Out/toastSlideUp/appAlertPop/sheetUp+Down/successPop/modalGrowIn+Out, plus existing :active tap-feedback on .btn/.stat/.qa-tile/.navitem/.thread-row/.contact-row) and layered four things on top without touching any of it: (1) tap-feedback gaps closed -- .order-tile[data-select-team]/[data-select-notif-kind] (Team-select and Notification-kind tiles, the only two places a whole order-tile itself is directly clickable) and .more-item (the "More" sheet grid) now scale down on press, matching the existing pattern elsewhere; deliberately scoped rather than a blanket .order-tile:active so a plain non-clickable order tile never shrinks on an incidental touch and falsely implies it's tappable. (2) List stagger-in -- pure CSS, targets .order-tile-grid/.alert-tile-grid/.stat-grid-v2/.more-grid directly so zero render-function changes were needed; each tile fades+slides up with a short nth-child delay staircase capped at 8 items (240ms max) so a long order list finishes appearing quickly. (3) Number count-up -- animateStatNumbers() (new function, just above render()) animates .stat/.stat-card-v2 numbers from their previous value to the new one over 450ms (ease-out cubic) via requestAnimationFrame, but ONLY when the value actually changed since that same tile's last render (cached by a stable data-stat/data-more-tab/label key, not by DOM node, since render() recreates every node) -- a tile seen for the first time (screen just opened) snaps straight to its value, no count-up-from-zero; correctly handles a leading minus sign (e.g. a negative expense balance, "₹-500") so a sign flip between renders doesn't misdraw. (4) Status flash -- flashChangedBadges() (new function, next to animateStatNumbers) adds a brief currentColor glow pulse (.status-flash, 0.6s) to an order's status badge the moment that SAME order's status actually differs from its own last-seen status (order identity via new data-order-id on .order-tile, added to renderOrderTile) -- implemented as a glow/pulse rather than a literal old-color-to-new-color interpolation, since render()'s root.innerHTML=newHtml fully replaces the DOM on every change, so there's no persisting "old" badge node left to smoothly recolor across (the .badge rule's pre-existing background-color/color transition stays in place for the rare case something mutates a live badge in place, unaffected). All four pieces use only transform/opacity/box-shadow (GPU-cheap, no layout thrash), stay under 650ms end-to-end, and are disabled under prefers-reduced-motion via one shared media query. UI FOLLOW-UP (2026-09-02): "Quick Actions ke icon ke sizes Increase kro. inke Tile Size bhi thik kro perfect Square. or perfect fill bhi." -- .qa-tile used to be flex:0 1 auto with a fixed 60-78px min/max-width range, which capped every tile at a small size even when a row (especially the 8-wide desktop row) had plenty of spare width -- and its icon-badge was a fixed 38px/18px-font, looking lost inside the tile. Now .qa-tile is flex:1 1 0 (equal-share growth, min-width:0) with aspect-ratio:1/1, so every tile in a row genuinely fills its equal share of the available width as a true square (capped at 104px so it doesn't grow absurdly huge on a very wide window) instead of leaving unused space as dead gaps; content is centered via flexbox column layout. The icon-badge itself is up from 38px/18px-font to 52px/26px-font, and the tile's own inner layout was simplified (padding/gap tightened) so the bigger icon+label combo actually fills the square instead of floating in a sea of margin. Verified visually with rendered screenshots at both mobile (4+4 split) and desktop (single 8-wide row) widths before delivering. BUGFIX (2026-09-02, live user report): "packing, filling, managers koi bhi message seen nhi kr pa rhe h, not saved likha aa raha h bar bar, na hi msg bhej pa rhe h" -- messaging (Messages / chatMessages) was broken for every NON-ADMIN role. Root cause: markAllAnnouncementsRead (the function actually wired up everywhere -- on open, on tab-switch, on every single live refresh while the default Announcements tab is open) still did a FULL non-merge Firestore .set() of the whole message doc just to flip one person's readBy entry. firestore.rules only allows a non-admin to touch the readBy field alone (a scoped diff/hasOnly check) -- a full-object write is fragile against that rule, so it kept failing with permission-denied for every non-admin, popping a fresh "Save failed" toast on every refresh (the reported "bar bar not saved") and never actually persisting the read state (the reported "seen nahi ho pa raha"). A CORRECTLY-written sibling function (markAnnouncementRead, using a scoped merge + arrayUnion, exactly matching the rule) already existed in the file but was dead code -- never actually called from anywhere. Admin's own writes always bypass this rule entirely via isAdmin(), which is exactly why this was invisible unless tested as a non-admin role. Fixed by routing markAllAnnouncementsRead through the already-correct markAnnouncementRead for each unread announcement instead of duplicating (and diverging from) that logic. Personal-chat "seen" (markThreadRead) was already using the correct scoped-merge pattern and needed no change; sending messages (create) was not gated by this rule at all and should already have worked, but the constant toast/error storm on the default tab likely made the whole feature feel broken. ROUND 14 FOLLOW-UP (2026-09-02): "tiles ko dome shaped 3d dikhna chahiye" -- the first pass's subtle flat-shadow tile treatment wasn't convex enough, made it clearly domed instead. --tile-highlight is now a 2-layer gradient (a glossy top-center highlight arc + an overall top-light/bottom-slightly-darker vertical shade) layered under EVERY tile background -- .card/.stat/.order-tile (incl. its 3 status-color variants)/.alert-tile (incl. mild/recommended)/.stat-card-v2 (incl. all 4 rotating colors)/.qa-tile (its own matching version, since it sits on a dark banner) -- so each tile's surface itself reads as a curved, lit dome, not just a flat card with a shadow under it. --tile-shadow was also strengthened: a brighter inset rim along the top (the dome's crest catching light), a stronger inset shadow hugging the bottom-inside edge (where the curve rolls away from the light), plus firmer outer contact + ambient shadows for real lift. Every tile class also got a few more px of border-radius -- rounder corners read as more dome-like than sharp ones. ROUND 14 (2026-09-01), user-dictated backlog implemented together, ALL 6 ITEMS COMPLETE: (1) no duplicate users -- Username is now readonly when editing an EXISTING user (the doc id/Auth uid/custom claim all stay pinned to the original username forever, so allowing it to be edited only broke that person's login while opening a duplicate-username loophole; NEW user creation was already fully protected -- client check + createStaffUser's server-side dupSnap query + Firebase Auth's own uid-uniqueness constraint). (2) Attendance self-marking now only works inside an admin-configurable window (preset 10am-12pm, non-admin only) -- new "⏰ Marking window" button in the Attendance section. (3) Admin's attendance view (renderAttendanceMap) now shows a Time column alongside Location for self-marked entries. (4) BUG FIX: the "Data Log" tab existed in name only since before this rewrite even started (nav label/icon/Permission-Manager toggle all declared it, but neither renderView() nor bindView() had a 'log' case) -- implemented for the first time as a read-only 7-day activity+login audit trail. (5) Every tile/card class (.card/.stat/.order-tile/.alert-tile/.stat-card-v2/.qa-tile) now shares one consistent subtle 3D-look + soft-shadow treatment (--tile-shadow custom property) instead of each carrying its own one-off shadow. (6) FINISHED THIS BUILD: the general Daily Work entry window (preset 10:30am-8pm, admin-editable via "⏰ Entry window" in Daily Work) is now actually enforced -- withinEntryWindow() (already wired into every non-admin new-entry submit: Purchase, Filling, Packaging, Expenses, Retail Sale/Samples -- this scope pre-dates this round and was left unchanged, it's exactly what "Daily Work" already aggregates) previously had its own HARDCODED 10:30-20:00 literal, entirely disconnected from the new admin setting -- it now reads getAttendanceSettings().entryStart/entryEnd so changing the admin control actually takes effect; the alert/button text is dynamic too, not a stale hardcoded time string. Also caught and fixed during this round's own testing: a genuine fmtHHMM naming collision (a pre-existing Domino Printing duration formatter and this round's new time-of-day display helper briefly shared the same function name, which would have silently broken the attendance-window message with "NaN:NaN") -- renamed the new one to fmtHHMMOfDay. ROUND 13.1 (2026-09-01), 2 explicit user questions: (1) "stock photo me to LR No ki zrurt nhi h na" -- a Stock Photo (loose-goods pickup) has no real Lorry Receipt document behind it, so the LR Number field is now hidden (and never saved) whenever Stock Photo is the selected type, in both the standalone Upload Photo modal and the inline dispatch-flow upload -- see wirePhotoTypeToggle's new onChange callback, and the "LR Photo (optional)" file-input label in the dispatch modal was also generalized to "Photo (optional)" since it can now be either kind. (2) "ye chiz wha b to update hogi na jaha order track hota hai" -- the customer-facing tracking page (order-form-firestore.html) was NOT actually type-aware before this: it always said "LR" (View/Download LR, LR Number, alt="LR photo") no matter which type staff picked -- now it reads order.photoType and shows "Stock Photo" wording for a stock photo. ROUND 13 (2026-08-31), 2 explicit user requests: (1) "Manager wala Checkpoint khud hi ban jaye, 30 Days ke Expenses rakho, usse pehle ke, usse pehle ke apne aap hi previous balance ke naam se save karte raho" -- the Expenses page now only ever shows the last 30 days (computeVisibleExpenses); everything before that is summarized live into an automatic "📌 Previous Balance" line (previousBalanceRowHtml) needing zero manual action -- safe because S.expenseBalances is a durable running total, never re-derived from history (see expenseBalanceFor's comment). The old monthly reminder banner (nagging admin to manually set a checkpoint) is gone; the manual "📌 Opening Balance" button itself stays, for genuine corrections. Entries older than 90 days are now deleted automatically server-side (functions/index.js's new cleanupOldExpenses scheduled function) -- the Firestore fetch window narrowed from 365 to 90 days to match. (2) "Order finalization me LR ya Stock photo 2 options rakho ... Ye Photo Automatically deleted hojaye after 30 days" -- LR photo upload (openUploadLRModal + the dispatch flow) now offers a Stock Photo option too (for loose-goods pickups needing a verification photo), and BOTH new uploads go through Firebase Storage (fsUploadOrderPhoto/fsDeleteOrderPhoto) instead of Google Drive -- an explicit, informed reversal of Round 12's Drive-only choice, made specifically because Storage can auto-delete a photo 30 days after upload via a plain bucket lifecycle rule (see storage.rules + lifecycle.json), no scheduled code needed. Legacy (pre-Round-13) Drive-based photos are unaffected and still deletable via apiDeleteLR. Also this round: the Sheet backup scheme (order-ops-backend.gs's dailyBackup) changed from one file per WEEK (refreshed in place daily, so never more than one real snapshot per week) kept for 8 weeks, to one real, distinct snapshot per DAY kept for 7 days (BACKUP_RETENTION_DAYS) -- explicit user request ("7 din ka backup rakho bas, usse pehle ka backup auto delete ho jana chahiye"). ROUND 12 (2026-08-31), 3 explicit user requests: (1) LR photo "Upload Failed" every single time -- root cause was that apiUploadLR/apiDeleteLR sent this app's OWN unrelated single-device-login token (S.authToken) as `sessionToken`, which order-ops-backend.gs's requireSession_ could never recognize (it only knows tokens from that script's own OLD Sheets-based login action, which this app never calls anymore) -- every upload/delete rejected with session_required, no matter what. FIXED WITHOUT changing storage backend (explicit user request: keep the same Google Drive space, not Firebase Storage) -- apiUploadLR/apiDeleteLR now also send a real, live Firebase Auth ID token, and order-ops-backend.gs verifies THAT instead (verifyFirebaseIdToken_, via Google's Identity Toolkit REST API) -- see the Round 12 deploy guide, this needs a fresh Apps Script deployment (order-ops-backend.gs changed for the first time this whole engagement -- surgically, only the uploadLR/deleteLR auth check, nothing else). (2) A photo over 2MB is now actually guaranteed compressed under that cap (resizeImageFileMaxBytes, byte-size-checked via dataUrlByteLength, not just pixel-dimension-capped like before) before every LR upload, independent of storage backend. (3) Orders entered directly in OMS ("+ New order" / chat "Quick order") are now created ALREADY ACCEPTED (status:'processing', stock reserved immediately via the new shared reserveStockForAcceptedOrder helper) instead of sitting in the pending/"New" queue needing a separate Accept click -- only orders from the public customer-facing order form (buildOrderDocFromPayload, untouched, still status:'pending') still need that Approval step. ROUND 11 (2026-08-31), new "Opening Balance" expense checkpoint feature -- admin (for ANY manager) can now set the manager's running expense/settlement balance to a known-correct absolute figure via a dedicated 📌 Opening Balance entry (Expenses tab, admin view), instead of the balance being trusted to stay correct purely from every historical add/subtract. All OLD expense/settlement entries are untouched -- only the derived running total is corrected going forward. The new entry type stores BOTH the signed delta actually applied (so the existing balance math needs no changes at all -- see applyExpenseBalanceDelta's comment) AND the plain target figure (so every screen can always show "Balance set to ₹X", never a confusing raw delta) -- see expenseEntryAmountText/expenseEntryBadgeHtml, the one shared place all of Expenses/Daily Work/print/monthly-report/Home-activity read from, so the totaling stays consistent everywhere at once. Opening Balance entries are excluded from "total expense" sums (they're a correction, not spending), support create+delete only (no edit -- delete and re-add instead, to limit risk), and a new in-app banner (no push notification) on the admin Expenses page flags any manager still missing this month's checkpoint. ROUND 10 (2026-08-31), "sab ek sath shuru karo, saare bugs thik karo" full fix pass -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md's Round 10 section for the complete list. Highlights: messaging seen/read-write permissions now work for every role, not just admin (the specific bug reported this round -- see firestore.rules' new dedicated chatMessages block); the canEntry() default-fallback bug that silently permission-denied every entry-gated write for any newly-added/uncustomized role; the stock-ledger clobber race (fsSetStockField now does a scoped dot-path update, not a whole-field overwrite); FIFO-covered orders no longer stuck (orderIsFullyStocked/autoAdvanceOrders); cancelled order items no longer double-deducted on edit; concurrent expense edits no longer double-count balances (fsEditExpenseAtomic); offboarded staff Auth accounts + live sessions now actually get revoked (deleteStaffUser/forceLogoutStaffUser/resetStaffPassword); Retail Sale/Sample booked-entry lock + double-submit guard; double-submit guards on the dispatch, attendance, and post-login "Tap to Continue" buttons; a magnitude/typo cap on Bulk stock edit (matching the single-item Adjust modal); and the shared-tablet push-notification bug where a second person logging in on the same device/session stopped receiving push until a full page reload. (Round 9: Enter-to-send. Round 8: the login-skip/duplicate-notification/stray-welcome race fix. Rounds 1-7: session-token adoption, FIFO stock allocation, Daily Work resync, System Health panel removal, modal animations, live-listener reconnect, the real bar-bar-password root cause, chat ordering/read-receipts, admin-only password reset, phone back button, the first (incomplete) login-race fix -- see ORDER_OPS_FIRESTORE_REWRITE_STATUS.md for full history.)
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -1213,17 +1270,22 @@ const S = {
   chatModalOpen:false, chatView:'announcements', chatActiveThread:null, chatSearch:'',
   postLoginPhase:null, pendingUser:null, postLoginLoadingStep:0,
   search:{}, // per-view search text
-  // LANGUAGE SAMPLE (2026-09-03, explicit user request: "App ko Urdu &
-  // Hindi language me bhi kre to kya sahi translation milega" -- a working
-  // sample on ONE-TWO real screens before committing to the whole app).
-  // Per-DEVICE preference (like the offline queue/session token, this is
-  // read straight from localStorage, not synced through Firestore -- each
-  // staff member on a shared tablet can pick their own language without
-  // affecting anyone else's login on the same or a different device).
-  // Self-contained IIFE (not APP_LANG_KEY, defined further down) since this
-  // whole S object literal runs immediately at parse time, before later
-  // top-level consts exist yet.
+  // LANGUAGE + FONT SIZE (2026-09-03). Originally a per-DEVICE-only sample
+  // (localStorage, not synced) -- upgraded this round (explicit user
+  // request: "users ke hisab se unki language settings & font size ko bhi
+  // save rkhna hai") to a PER-USER preference: applyUserPreferences() (see
+  // below, called right after every S.currentUser = u) overwrites these
+  // from the logged-in user's own Firestore users/{uid} doc the moment
+  // they log in, on ANY device -- so a person's choice follows them, not
+  // just the tablet they made it on. These IIFE defaults below are only
+  // what's shown BEFORE that happens: the very first paint (login screen,
+  // or the instant after a page reload before Firestore responds) and the
+  // fallback for a user who's never set a preference in their Firestore
+  // profile yet. Self-contained IIFEs (not APP_LANG_KEY/APP_FONT_SIZE_KEY,
+  // defined further down) since this whole S object literal runs
+  // immediately at parse time, before later top-level consts exist yet.
   language: (function(){ try{ return localStorage.getItem('orderops_app_lang') || 'en'; }catch(e){ return 'en'; } })(),
+  fontSize: (function(){ try{ return localStorage.getItem('orderops_app_fontsize') || 'normal'; }catch(e){ return 'normal'; } })(),
 };
 
 // Per-entry caps
@@ -1425,11 +1487,19 @@ const TAB_SHORT = {
 // wiring for a sample, and any string with no translation yet just falls
 // back to English unchanged rather than breaking anything.
 const APP_LANG_KEY = 'orderops_app_lang';
+const APP_FONT_SIZE_KEY = 'orderops_app_fontsize';
 const LANG_OPTIONS = [ {code:'en', label:'English'}, {code:'hi', label:'हिंदी'}, {code:'ur', label:'اردو'} ];
+// FEATURE (2026-09-03, explicit user request): "Normal, XL, XXL ye 3
+// option" -- px is just documentation here (the real scale lives in the
+// html.fs-* CSS rules, see the <style> block); it's repeated as a plain
+// number only so a future 4th size can be added in exactly one place.
+const FONT_SIZE_OPTIONS = [ {code:'normal', label:'Normal', px:16}, {code:'xl', label:'XL', px:18}, {code:'xxl', label:'XXL', px:20} ];
 const I18N = {
   hi: {
-    // Profile / language switcher
+    // Profile / language switcher / preferences
     'EMPLOYEE ID CARD':'कर्मचारी पहचान पत्र', 'Designation':'पद', 'Username':'यूज़रनेम', 'Contact No.':'फ़ोन नंबर', 'Address':'पता', 'Log out':'लॉग आउट', 'Language':'भाषा',
+    'Preferences':'सेटिंग्स', 'Font Size':'फ़ॉन्ट साइज़', 'Normal':'सामान्य', 'XL':'बड़ा (XL)', 'XXL':'सबसे बड़ा (XXL)',
+    'Change app language to':'ऐप की भाषा बदलें', 'Yes, change it':'हाँ, बदल दें', 'Cancel':'रद्द करें',
     // Nav tab labels
     'Home':'होम', 'Orders':'ऑर्डर', 'Customers':'ग्राहक', 'Attendance':'हाज़िरी', 'Users':'स्टाफ़', 'Tasks':'काम', 'Mark Attendance':'हाज़िरी लगाएं', 'Stock':'स्टॉक', 'Expenses':'खर्चा', 'Data Log':'डेटा लॉग', 'Domino Printing':'डोमिनो प्रिंटिंग', 'Daily Work':'रोज़ का काम',
     // Home tab
@@ -1445,6 +1515,8 @@ const I18N = {
   },
   ur: {
     'EMPLOYEE ID CARD':'ملازم شناختی کارڈ', 'Designation':'عہدہ', 'Username':'یوزرنیم', 'Contact No.':'فون نمبر', 'Address':'پتہ', 'Log out':'لاگ آؤٹ', 'Language':'زبان',
+    'Preferences':'ترتیبات', 'Font Size':'فونٹ سائز', 'Normal':'عام', 'XL':'بڑا (XL)', 'XXL':'سب سے بڑا (XXL)',
+    'Change app language to':'ایپ کی زبان تبدیل کریں', 'Yes, change it':'ہاں، تبدیل کریں', 'Cancel':'منسوخ کریں',
     'Home':'ہوم', 'Orders':'آرڈر', 'Customers':'گاہک', 'Attendance':'حاضری', 'Users':'عملہ', 'Tasks':'کام', 'Mark Attendance':'حاضری لگائیں', 'Stock':'اسٹاک', 'Expenses':'خرچہ', 'Data Log':'ڈیٹا لاگ', 'Domino Printing':'ڈومینو پرنٹنگ', 'Daily Work':'روزانہ کا کام',
     'Welcome back':'واپسی پر خوش آمدید', 'New Orders':'نئے آرڈر', 'Pending orders':'رکے ہوئے آرڈر', 'Under Packing':'پیکنگ میں', 'Items ready, not yet packed':'سامان تیار ہے، پیک نہیں ہوا', 'Ready to Dispatch':'بھیجنے کے لیے تیار', 'Packed & ready to ship':'پیک ہو گیا، بھیجنے کے لیے تیار', 'Recent orders':'حالیہ آرڈر', 'Your recent activity':'آپ کا حالیہ کام', 'Quick access':'آسان رسائی',
     'Accept':'منظور کریں', 'Reject':'نامنظور کریں', 'Mark Ready':'تیار کریں', '🚚 Mark Ready to Dispatch':'🚚 بھیجنے کے لیے تیار کریں', 'Processed & Dispatched':'بھیج دیا گیا', 'Edit':'تبدیل کریں', 'Delete':'ہٹا دیں',
@@ -1463,11 +1535,98 @@ function t(enText){
 }
 function tabLabel(key){ return t(TAB_LABEL[key]||key); }
 function stageLabel(status){ return t(ORDER_STAGE_LABEL[status]||status); }
-function setAppLanguage(lang){
-  if(!LANG_OPTIONS.some(o=>o.code===lang)) return;
+// Applies S.language/S.fontSize to the actual document -- <html dir="rtl">
+// for Urdu (the browser's own bidi/logical-CSS engine mirrors flex/grid
+// direction, flex-start/end, text alignment on its own for free -- see the
+// RTL CSS block in <style> for the handful of literal left/right rules
+// that still needed an explicit mirror) and one html.fs-* class for the
+// font-size scale. Called once at boot and every time either preference
+// changes -- deliberately NOT part of render() itself, since <html> is a
+// DOM ANCESTOR of #root, not something render()'s root.innerHTML rebuild
+// ever touches (same reasoning as showModal's overlay being a sibling of
+// #root -- see that function's own comment).
+function applyDocumentPrefAttrs(){
+  const root = document.documentElement;
+  root.lang = S.language;
+  root.dir = S.language==='ur' ? 'rtl' : 'ltr';
+  root.classList.remove('fs-normal','fs-xl','fs-xxl');
+  root.classList.add('fs-'+(FONT_SIZE_OPTIONS.some(o=>o.code===S.fontSize)?S.fontSize:'normal'));
+}
+// FEATURE (2026-09-03, explicit user request: "users ke hisab se unki
+// language settings & font size ko bhi save rkhna hai"): called right
+// after every S.currentUser = u (finalizeLogin, restoreSession, and the
+// onAuthStateChanged auto-restore branch -- the 3 places a login actually
+// sets S.currentUser) to load THIS PERSON's own saved preference,
+// wherever they happen to log in from. u.language/u.fontSize live in
+// their Firestore users/{uid} doc (see fsSaveUserPreferences) -- Firestore
+// is the real per-user source of truth once logged in, not localStorage.
+// Falls back to whatever's already in S.language/S.fontSize (this
+// device's localStorage-seeded default) for a user who has never set a
+// preference before this feature existed, so an existing user's first
+// login after this rollout doesn't silently reset to English/Normal.
+function applyUserPreferences(u){
+  const lang = (u && LANG_OPTIONS.some(o=>o.code===u.language)) ? u.language : S.language;
+  const fontSize = (u && FONT_SIZE_OPTIONS.some(o=>o.code===u.fontSize)) ? u.fontSize : S.fontSize;
   S.language = lang;
-  try{ localStorage.setItem(APP_LANG_KEY, lang); }catch(e){}
+  S.fontSize = fontSize;
+  try{ localStorage.setItem(APP_LANG_KEY, lang); localStorage.setItem(APP_FONT_SIZE_KEY, fontSize); }catch(e){}
+  applyDocumentPrefAttrs();
+}
+// FEATURE (2026-09-03, explicit user request: "Language change krte waqt
+// warning bhi do ... confirmation k bd impliment krdo") -- switching
+// language now asks for confirmation first; nothing changes until the
+// person taps Yes. Optimistic update + awaited Firestore write + rollback
+// on failure, same discipline as every other per-user setting in this
+// file (see saveNotifKindBtn/confirmTwBtn's own BUGFIX comments) -- so a
+// save that fails offline can't silently leave this device showing a
+// language the person's OWN Firestore profile doesn't actually have.
+function setAppLanguage(lang){
+  const opt = LANG_OPTIONS.find(o=>o.code===lang);
+  if(!opt || lang===S.language) return;
+  showConfirm(`${t('Change app language to')} ${opt.label}?`, async ()=>{
+    const previous = S.language;
+    S.language = lang;
+    try{ localStorage.setItem(APP_LANG_KEY, lang); }catch(e){}
+    applyDocumentPrefAttrs();
+    render();
+    if(!S.currentUser) return; // login screen itself -- nothing to persist per-user yet
+    try{
+      await fsSaveUserPreferences(S.currentUser.id, { language: lang });
+    }catch(err){
+      S.language = previous;
+      try{ localStorage.setItem(APP_LANG_KEY, previous); }catch(e){}
+      applyDocumentPrefAttrs();
+      render(); // fsReportWriteError (inside fsSaveUserPreferences) already showed the "Save failed" toast
+    }
+  }, { confirmLabel: t('Yes, change it'), cancelLabel: t('Cancel'), danger:false }, ()=>{
+    // Cancelled -- the <select> DOM element's own selectedIndex was already
+    // moved to the new (rejected) option by enhanceDropdowns' click handler
+    // (see its own comment: the real <select> stays fully live under the
+    // custom overlay), so without this the dropdown would keep VISUALLY
+    // showing the language the person just said no to. render() rebuilds
+    // #langSelect fresh with `selected` back on S.language's own <option>.
+    render();
+  });
+}
+// Font size, deliberately WITHOUT a confirmation dialog -- only the
+// language switch was asked to warn first; a bigger/smaller text size is
+// instantly visible and trivially reversible, so a confirm prompt here
+// would just be an extra tap for no real protection.
+function setFontSize(size){
+  const opt = FONT_SIZE_OPTIONS.find(o=>o.code===size);
+  if(!opt || size===S.fontSize) return;
+  const previous = S.fontSize;
+  S.fontSize = size;
+  try{ localStorage.setItem(APP_FONT_SIZE_KEY, size); }catch(e){}
+  applyDocumentPrefAttrs();
   render();
+  if(!S.currentUser) return;
+  fsSaveUserPreferences(S.currentUser.id, { fontSize: size }).catch(()=>{
+    S.fontSize = previous;
+    try{ localStorage.setItem(APP_FONT_SIZE_KEY, previous); }catch(e){}
+    applyDocumentPrefAttrs();
+    render();
+  });
 }
 const NAV_MAX = 6; // 5 primary tabs + the "More" button, once a role has more than this many tabs
 const DESKTOP_SIDEBAR_MIN_WIDTH = 900; // keep in sync with the CSS @media (min-width:900px) sidebar breakpoint
@@ -1601,7 +1760,7 @@ function groupByDate(list, atFn){
   return sections;
 }
 function dateGroupHeaderHtml(h){
-  return `<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;color:var(--ink-soft);margin:14px 0 6px;padding-left:2px;">${esc(h)}</div>`;
+  return `<div style="font-size:0.6875rem;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;color:var(--ink-soft);margin:14px 0 6px;padding-left:2px;">${esc(h)}</div>`;
 }
 function isSundayDateKey(dk){
   return new Date(dk+'T12:00:00').getDay() === 0; // noon avoids any DST/timezone edge landing on the wrong day
@@ -2841,6 +3000,22 @@ function fsSaveOrderStatusFields(o){
     { merge: true }
   ).catch(err=>{ fsReportWriteError(err, 'orders (status)'); throw err; });
 }
+// FEATURE (2026-09-03, explicit user request: per-user language & font-size
+// settings). A scoped merge write, same pattern/reasoning as
+// fsSaveOrderStatusFields just above -- touches ONLY the fields passed in
+// `fields` (e.g. {language:'hi'} or {fontSize:'xl'}), never the rest of
+// the user's own profile doc (role/permissions/name/etc, all still
+// admin-only -- see firestore.rules' users/{uid} rule: a signed-in user
+// may update ONLY the language/fontSize keys on their OWN doc, nothing
+// else about their account). Deliberately does its own uid-presence guard
+// rather than reading S.currentUser itself, so setAppLanguage/setFontSize
+// can call this identically whether or not someone's actually logged in
+// yet (the login screen itself has nowhere per-user to persist to).
+function fsSaveUserPreferences(uid, fields){
+  if(!uid) return Promise.resolve();
+  return fsDb.collection('users').doc(String(uid)).set(fields, { merge: true })
+    .catch(err=>{ fsReportWriteError(err, 'users (preferences)'); throw err; });
+}
 // expenseBalances — a genuine atomic delta, same guarantee
 // applyKeyedNumberDelta_'s LockService gave server-side, but now scoped to
 // just this one document instead of one global lock for every write
@@ -3213,6 +3388,7 @@ function fsBootstrapAuth(){
           if(userSnap.exists){
             const u = Object.assign({ id: fbUser.uid }, userSnap.data());
             S.currentUser = u;
+            applyUserPreferences(u); // per-user language/font-size -- see its own header comment
             S.view = ROLES[u.role] ? ROLES[u.role].tabs[0] : S.view;
             primeDevicePermissions();
             initPushNotifications();
@@ -3382,7 +3558,7 @@ function openUploadLRModal(orderId){
     ${photoTypeToggleHtml(photoType)}
     <div class="field"><label>Photo (optional)</label><input id="lrFileInput" type="file" accept="image/*" capture="environment" /></div>
     <div class="field" id="lrNumberField"><label>LR Number (optional)</label><input id="lrNumberInput" value="${esc(o.lrNumber||'')}" placeholder="e.g. LR-4821" /></div>
-    <div id="lrUploadStatus" style="font-size:12.5px;color:var(--ink-soft);margin-top:6px;"></div>
+    <div id="lrUploadStatus" style="font-size:0.78125rem;color:var(--ink-soft);margin-top:6px;"></div>
     <div class="modal-actions">
       <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
       <button type="button" class="btn btn-primary" id="confirmUploadLRBtn">Save</button>
@@ -3469,7 +3645,7 @@ function openViewLRModal(orderId){
       <p class="desc" style="margin-top:-6px;">Uploaded by ${esc(o.lrUploadedBy||'—')} on ${fmtDate(o.lrUploadedAt)} · photo auto-removed in ${daysLeft} day${daysLeft===1?'':'s'}.</p>
       <a href="${esc(o.lrPhotoUrl)}" target="_blank" rel="noopener"><img src="${esc(lrEmbedUrl(o))}" id="lrModalImg" style="width:100%;border-radius:10px;border:1px solid var(--border);margin:10px 0;" /></a>
     ` : `<div class="empty" style="margin:10px 0;">No photo on file.</div>`}
-    ${o.lrNumber ? `<div class="field"><label>LR Number</label><div style="font-weight:700;font-size:15px;">${esc(o.lrNumber)}</div></div>` : ''}
+    ${o.lrNumber ? `<div class="field"><label>LR Number</label><div style="font-weight:700;font-size:0.9375rem;">${esc(o.lrNumber)}</div></div>` : ''}
     <div class="modal-actions">
       ${hasFreshPhoto?`<button type="button" class="btn btn-danger" id="removeLRBtn">Remove photo</button>`:''}
       <button type="button" class="btn btn-outline" id="editLRBtn">Edit</button>
@@ -3967,6 +4143,7 @@ function restoreSession(){
     const u = S.users.find(x=>x.id===id);
     if(u){
       S.currentUser = u;
+      applyUserPreferences(u); // per-user language/font-size -- see its own header comment
       S.view = ROLES[u.role].tabs[0];
       // The real server session token (if any) survives an app restart too
       // -- if it's stale/expired, requireSession_ will reject the first
@@ -4152,6 +4329,7 @@ async function findMatchingUser(username, password){
 }
 function finalizeLogin(u){
   S.currentUser = u;
+  applyUserPreferences(u); // per-user language/font-size -- see its own header comment
   S.view = ROLES[u.role].tabs[0];
   persistSession(u);
   // FIXED (2026-08-28, "bar bar password mang raha hai"): a regular login
@@ -4652,7 +4830,7 @@ function renderAlertTiles(alerts, kind, stacked){
       const badgeText = a.level==='recommended' ? 'Recommended' : a.level==='low' ? 'Low' : 'Short';
       return `<div class="alert-tile ${a.level==='low'?'mild':''}${a.level==='recommended'?' recommended':''}">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;margin-bottom:2px;">
-          <span class="mono" style="text-transform:uppercase;letter-spacing:0.03em;font-size:11px;">${esc(STOCK_KIND_LABEL[kind])}</span>
+          <span class="mono" style="text-transform:uppercase;letter-spacing:0.03em;font-size:0.6875rem;">${esc(STOCK_KIND_LABEL[kind])}</span>
           <span class="badge badge-${badgeCls}">${badgeText}</span>
         </div>
         <div class="at-label">${esc(a.label)}</div>
@@ -4668,7 +4846,7 @@ function renderAlertSection(kind, list, stacked){
   const titleMap = {raw:'🛢️ Purchase (Raw material)', filled:'🧴 Filling', ready:'📦 Packaging'};
   return `<div style="margin-bottom:16px;">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
-      <div style="font-weight:800;font-size:13.5px;">${titleMap[kind]} <span class="mono" style="font-weight:400;">(${list.length})</span></div>
+      <div style="font-weight:800;font-size:0.84375rem;">${titleMap[kind]} <span class="mono" style="font-weight:400;">(${list.length})</span></div>
     </div>
     ${renderAlertTiles(list, kind, stacked)}
   </div>`;
@@ -4868,7 +5046,7 @@ function renderBrandedLoadingScreen(){
     <div class="welcome-screen">
       <img src="${COMPANY_LOGO}" alt="M A Products India" class="welcome-logo" style="margin-bottom:22px;" />
       <div class="postlogin-spinner"></div>
-      <div class="loading-msg-fade" style="margin-top:18px;font-size:14px;font-weight:700;letter-spacing:0.02em;">Loading Order Management System<br/>by M A Products INDIA</div>
+      <div class="loading-msg-fade" style="margin-top:18px;font-size:0.875rem;font-weight:700;letter-spacing:0.02em;">Loading Order Management System<br/>by M A Products INDIA</div>
       <div class="skel-nav">${[1,2,3,4].map(()=>`<div class="skel-block"></div>`).join('')}</div>
       <div class="skel-cards">${[1,2,3,4].map(()=>`<div class="skel-block"></div>`).join('')}</div>
     </div>
@@ -4878,9 +5056,9 @@ function renderConnectionFailedScreen(){
   return `<div class="login-wrap">
     <div class="welcome-screen">
       <img src="${COMPANY_LOGO}" alt="M A Products India" class="welcome-logo" style="margin-bottom:20px;" />
-      <div style="font-size:38px;margin-bottom:10px;">📡</div>
-      <div style="font-size:15px;font-weight:800;margin-bottom:8px;">Couldn't connect</div>
-      <div style="font-size:13px;opacity:0.8;line-height:1.5;margin-bottom:22px;max-width:280px;">Please check your internet connection and try again.</div>
+      <div style="font-size:2.375rem;margin-bottom:10px;">📡</div>
+      <div style="font-size:0.9375rem;font-weight:800;margin-bottom:8px;">Couldn't connect</div>
+      <div style="font-size:0.8125rem;opacity:0.8;line-height:1.5;margin-bottom:22px;max-width:280px;">Please check your internet connection and try again.</div>
       <button class="btn btn-primary" id="retryLoadBtn" style="width:auto;padding:12px 30px;">↻ Retry</button>
     </div>
   </div>`;
@@ -5032,7 +5210,7 @@ function renderLogin(){
         <button class="btn btn-primary" type="submit">Sign in</button>
       </form>
     </div>
-    <p class="mono" style="text-align:center;margin-top:16px;opacity:0.5;font-size:11px;">build ${APP_BUILD}</p>
+    <p class="mono" style="text-align:center;margin-top:16px;opacity:0.5;font-size:0.6875rem;">build ${APP_BUILD}</p>
   </div>`;
 }
 let loginSubmitting = false;
@@ -5241,7 +5419,7 @@ function renderPostLoginSequence(){
     return `<div class="login-wrap">
       <div class="welcome-screen">
         <div class="welcome-fade d1">Hello, ${esc(name)}</div>
-        <div class="welcome-fade d2" style="opacity:0.75;font-size:14px;margin-top:10px;">Welcome to</div>
+        <div class="welcome-fade d2" style="opacity:0.75;font-size:0.875rem;margin-top:10px;">Welcome to</div>
         <div class="welcome-fade d3 welcome-brand">M A Products INDIA</div>
         <div class="welcome-fade d4"><img src="${COMPANY_LOGO}" alt="M A Products India" class="welcome-logo" /></div>
         <button class="btn btn-primary welcome-fade d4" id="continueBtn" style="width:auto;padding:13px 30px;margin-top:8px;">Tap to Continue ›</button>
@@ -5255,7 +5433,7 @@ function renderPostLoginSequence(){
     <div class="welcome-screen">
       <img src="${COMPANY_LOGO}" alt="M A Products India" class="welcome-logo" style="margin-bottom:22px;" />
       <div class="postlogin-spinner ${S.postLoginPhase==='wrongLogin'?'spinner-alert':''}"></div>
-      <div class="loading-msg-fade" style="margin-top:18px;font-size:14px;font-weight:700;letter-spacing:0.02em;">${esc(msg)}</div>
+      <div class="loading-msg-fade" style="margin-top:18px;font-size:0.875rem;font-weight:700;letter-spacing:0.02em;">${esc(msg)}</div>
     </div>
   </div>`;
 }
@@ -5348,7 +5526,7 @@ function renderShell(){
     ${S.alertPanelOpen ? renderSheet(renderAlertTierPanel(S.alertPanelOpen, tiers), 'closeAlertPanel') : ''}
     ${S.moreOpen ? renderSheet(renderMorePanel(overflow), 'closeMore') : ''}
     ${S.profileOpen ? renderSheet(renderProfilePanel(role), 'closeProfile') : ''}
-    ${S.toast ? `<div class="app-toast" style="position:absolute;bottom:calc(var(--navbar-h) + var(--sab) + 14px);left:50%;background:${S.toast.isErr?'var(--danger)':'var(--ink)'};color:#fff;padding:9px 16px;border-radius:30px;font-size:12.5px;z-index:200;max-width:88%;text-align:center;">${esc(S.toast.msg)}</div>` : ''}
+    ${S.toast ? `<div class="app-toast" style="position:absolute;bottom:calc(var(--navbar-h) + var(--sab) + 14px);left:50%;background:${S.toast.isErr?'var(--danger)':'var(--ink)'};color:#fff;padding:9px 16px;border-radius:30px;font-size:0.78125rem;z-index:200;max-width:88%;text-align:center;">${esc(S.toast.msg)}</div>` : ''}
     ${S.successDialog ? `<div class="success-dialog-overlay"><div class="success-dialog-box"><div class="success-dialog-check">✔</div><div class="success-dialog-msg">${esc(S.successDialog.msg)}</div></div></div>` : ''}
   `;
 }
@@ -5387,11 +5565,33 @@ function renderMorePanel(overflow){
 // script (not translated into the currently-active language), so a user
 // who can't read the current language can still find their way back --
 // standard convention for language pickers everywhere.
-function renderLanguageSwitcher(){
+// FEATURE (2026-09-03, explicit user request: "Language or font size dono
+// ko selector k bajaaye ik Dropdown me krdo") -- was a row of buttons
+// (btn-primary on whichever was active); now 2 real <select> dropdowns
+// (enhanceFormControls, called on every render(), automatically upgrades
+// them into the same in-app dropdown look used everywhere else in the app
+// -- see its own header comment -- so this is a plain, boring <select>
+// markup-wise). Kept as 2 separate dropdowns rather than 1 combined
+// 9-option list (language x font-size) -- clearer to scan, and each
+// preference can be changed independently without re-picking the other.
+// Each <option>'s own label stays in ITS OWN script (English/हिंदी/اردو
+// for language) -- never run through t() -- same reasoning as before: a
+// user who can't currently read the active language must still be able to
+// find their way to a language they DO read.
+function renderPreferencesPanel(){
   return `<div class="card" style="margin-top:10px;padding:12px 14px;">
-    <div style="font-size:12px;font-weight:700;color:var(--ink-soft);margin-bottom:8px;">${esc(t('Language'))}</div>
-    <div class="row-actions" style="flex-wrap:wrap;">
-      ${LANG_OPTIONS.map(o=>`<button type="button" class="btn btn-sm ${S.language===o.code?'btn-primary':'btn-outline'}" data-set-lang="${o.code}">${esc(o.label)}</button>`).join('')}
+    <div style="font-size:0.75rem;font-weight:700;color:var(--ink-soft);margin-bottom:10px;">${esc(t('Preferences'))}</div>
+    <div style="margin-bottom:10px;">
+      <label for="langSelect" style="display:block;font-size:0.6875rem;color:var(--ink-soft);margin-bottom:4px;">${esc(t('Language'))}</label>
+      <select id="langSelect">
+        ${LANG_OPTIONS.map(o=>`<option value="${o.code}" ${S.language===o.code?'selected':''}>${esc(o.label)}</option>`).join('')}
+      </select>
+    </div>
+    <div>
+      <label for="fontSizeSelect" style="display:block;font-size:0.6875rem;color:var(--ink-soft);margin-bottom:4px;">${esc(t('Font Size'))}</label>
+      <select id="fontSizeSelect">
+        ${FONT_SIZE_OPTIONS.map(o=>`<option value="${o.code}" ${S.fontSize===o.code?'selected':''}>${esc(t(o.label))}</option>`).join('')}
+      </select>
     </div>
   </div>`;
 }
@@ -5419,7 +5619,7 @@ function renderProfilePanel(role){
       </div>
     </div>
   </div>
-  ${renderLanguageSwitcher()}
+  ${renderPreferencesPanel()}
   <button class="btn btn-danger" style="width:100%;margin-top:10px;" id="logoutBtn">${esc(t('Log out'))}</button>
   <p class="mono" style="text-align:center;margin-top:14px;opacity:0.5;">build ${APP_BUILD}</p>`;
 }
@@ -5529,7 +5729,7 @@ function renderNotifPanel(stockAlerts){
     ${pendingOrders.length===0 && packedOrders.length===0 && reviewTasks.length===0 && myWork.length===0 ? `<div class="empty">Nothing waiting on you right now.</div>` : ''}
     ${pendingOrders.map(o=>`
       <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);gap:10px;flex-wrap:wrap;">
-        <div style="font-size:13px;"><b>${esc(o.customerName)}</b> — ${o.items.map(i=>`${esc(i.name)} ${esc(i.size)} ×${i.qty}`).join(', ')} <span class="mono">(by ${esc(o.createdBy)})</span></div>
+        <div style="font-size:0.8125rem;"><b>${esc(o.customerName)}</b> — ${o.items.map(i=>`${esc(i.name)} ${esc(i.size)} ×${i.qty}`).join(', ')} <span class="mono">(by ${esc(o.createdBy)})</span></div>
         <div class="row-actions">
           <button class="btn btn-sm btn-success" data-approve-order="${o.id}">Accept</button>
           <button class="btn btn-sm btn-danger" data-reject-order="${o.id}">Reject</button>
@@ -5537,17 +5737,17 @@ function renderNotifPanel(stockAlerts){
       </div>`).join('')}
     ${packedOrders.map(o=>`
       <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);gap:10px;flex-wrap:wrap;">
-        <div style="font-size:13px;"><b>${esc(o.customerName)}</b> — packed, ready to dispatch</div>
+        <div style="font-size:0.8125rem;"><b>${esc(o.customerName)}</b> — packed, ready to dispatch</div>
         <div class="row-actions"><button class="btn btn-sm btn-success" data-notif-dispatch="${o.id}">Dispatch</button></div>
       </div>`).join('')}
     ${reviewTasks.map(o=>`
       <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);flex-wrap:wrap;gap:8px;">
-        <div style="font-size:13px;"><b>${esc(o.customerName)}</b> — ${o.fillingStatus==='review'?'Filling':'Packaging'} marked done, needs sign-off</div>
+        <div style="font-size:0.8125rem;"><b>${esc(o.customerName)}</b> — ${o.fillingStatus==='review'?'Filling':'Packaging'} marked done, needs sign-off</div>
         <div class="row-actions">
           <button class="btn btn-sm btn-success" data-ack-task="${o.id}|${o.fillingStatus==='review'?'filling':'packaging'}">Confirm done</button>
         </div>
       </div>`).join('')}
-    ${!isAdmin && myWork.length ? `<div style="font-size:12.5px;margin:6px 0;"><b>${myWork.length}</b> order(s) waiting on your work — check Tasks.</div>` : ''}`;
+    ${!isAdmin && myWork.length ? `<div style="font-size:0.78125rem;margin:6px 0;"><b>${myWork.length}</b> order(s) waiting on your work — check Tasks.</div>` : ''}`;
 }
 
 function bindShell(){
@@ -5557,8 +5757,17 @@ function bindShell(){
   if(logoutBtn) logoutBtn.addEventListener('click', doLogout);
   // NOTE: self-service Change Password button intentionally removed here
   // (2026-08-29) -- see openChangePasswordModal's header comment above.
-  // LANGUAGE SAMPLE (2026-09-03): renderLanguageSwitcher's own buttons.
-  document.querySelectorAll('[data-set-lang]').forEach(b=>b.addEventListener('click', ()=>setAppLanguage(b.dataset.setLang)));
+  // FEATURE (2026-09-03): renderPreferencesPanel's language/font-size
+  // dropdowns. Plain 'change' listeners on the real <select> elements --
+  // enhanceFormControls' custom in-app dropdown overlay (see its own
+  // comment) dispatches a real bubbling 'change' event on the underlying
+  // <select> whenever an option is picked, so this fires identically
+  // whether the person used the visual overlay or (rare, e.g. a
+  // screen-reader/keyboard user) the native <select> directly.
+  const langSelect = document.getElementById('langSelect');
+  if(langSelect) langSelect.addEventListener('change', ()=>setAppLanguage(langSelect.value));
+  const fontSizeSelect = document.getElementById('fontSizeSelect');
+  if(fontSizeSelect) fontSizeSelect.addEventListener('change', ()=>setFontSize(fontSizeSelect.value));
 
   const bell = document.getElementById('bellBtn');
   if(bell) bell.addEventListener('click', ()=>{ S.notifOpen = !S.notifOpen; S.moreOpen=false; S.profileOpen=false; S.alertPanelOpen=null; render(); });
@@ -5760,7 +5969,7 @@ function openDispatchModal(orderId){
     ${photoTypeToggleHtml('lr')}
     <div class="field"><label>Photo (optional)</label><input id="dispatchLRFile" type="file" accept="image/*" capture="environment" /></div>
     <div class="field" id="dispatchLRNumberField"><label>LR Number (optional)</label><input id="dispatchLRNumber" placeholder="e.g. LR-4821" /></div>
-    <div id="dispatchLRStatus" style="font-size:12px;color:var(--ink-soft);margin:-6px 0 4px;"></div>
+    <div id="dispatchLRStatus" style="font-size:0.75rem;color:var(--ink-soft);margin:-6px 0 4px;"></div>
     <div class="modal-actions" style="flex-wrap:wrap;">
       <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
       <button type="button" class="btn" id="dispatchSubmitBtn" style="background:var(--warning);color:#fff;">Submit Without LR</button>
@@ -6030,7 +6239,7 @@ function renderDailyWork(){
           ${canDelete?`<button type="button" class="btn btn-sm btn-danger" data-del-entry="${source}|${e.id}">Delete</button>`:''}
         </div>`;
     }
-    return e.booked ? `<span class="mono" style="font-size:11px;opacity:0.7;">✅ Booked</span>` : '';
+    return e.booked ? `<span class="mono" style="font-size:0.6875rem;opacity:0.7;">✅ Booked</span>` : '';
   };
 
   const purchaseHtml = `<div class="card">
@@ -6123,7 +6332,7 @@ function renderDailyWork(){
       ? 'Filling &amp; Packing entries for the day, from everyone on the team. You can edit or delete your own entry until it\'s booked — once booked, it\'s locked.'
       : 'Every entry for the day, in one place — book each as you update your accounting software.'+(isManager?' View only.':' Editing or deleting stays available until it\'s booked.')}</p>
     <div class="field"><label>Date</label><input type="date" id="dwDateSel" value="${date}" max="${localDateKey(Date.now())}" /></div>
-    ${prevUnbookedDates.length ? `<div style="background:#FCE2DF;border:1.5px solid #E8938B;border-radius:10px;padding:10px 12px;margin:10px 0;font-size:12.5px;">
+    ${prevUnbookedDates.length ? `<div style="background:#FCE2DF;border:1.5px solid #E8938B;border-radius:10px;padding:10px 12px;margin:10px 0;font-size:0.78125rem;">
       <div style="font-weight:800;color:#D8483B;margin-bottom:6px;">⚠️ Previous Entry Not Booked${prevUnbookedDates.length>1?` (${prevUnbookedDates.length} days)`:''}</div>
       <div style="display:flex;flex-wrap:wrap;gap:6px;">
         ${prevUnbookedDates.map(d=>`<button type="button" class="btn btn-sm btn-outline" style="border-color:#E8938B;color:#D8483B;" data-goto-dw-date="${d}">${fmtDateOnly(dateKeyToTs(d))}</button>`).join('')}
@@ -6131,7 +6340,7 @@ function renderDailyWork(){
     </div>` : ''}
     <button type="button" class="btn btn-outline" id="dwPrintBtn" style="width:100%;margin-bottom:6px;">🖨️ Print this day</button>
     ${isAdmin ? `<button type="button" class="btn btn-outline" id="dwEntryWindowBtn" style="width:100%;margin-bottom:6px;">⏰ Entry window (${fmtHHMMOfDay(getAttendanceSettings().entryStart)}–${fmtHHMMOfDay(getAttendanceSettings().entryEnd)})</button>` : ''}
-    ${totalCount>0 ? `<div style="background:${bookedCount===totalCount?'var(--success-bg)':'var(--bg)'};border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin:10px 0;font-size:12.5px;font-weight:700;">${bookedCount===totalCount?'✅':'📋'} ${bookedCount} of ${totalCount} entries booked</div>` : ''}
+    ${totalCount>0 ? `<div style="background:${bookedCount===totalCount?'var(--success-bg)':'var(--bg)'};border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin:10px 0;font-size:0.78125rem;font-weight:700;">${bookedCount===totalCount?'✅':'📋'} ${bookedCount} of ${totalCount} entries booked</div>` : ''}
     ${(isAdmin && totalCount>0 && bookedCount<totalCount) ? `<button type="button" class="btn btn-outline" id="dwBookAllBtn" style="width:100%;">✅ Book all remaining (${totalCount-bookedCount})</button>` : ''}
   </div>
   ${sections.map(s=>s.html).join('')}`;
@@ -6211,10 +6420,10 @@ function printDailyWork(){
   const newOrderEntries = S.orders.filter(o=>localDateKey(o.createdAt)===date).sort((a,b)=>a.createdAt-b.createdAt);
   const totalOrderValue = newOrderEntries.reduce((s,o)=>s+orderMrpValue(o),0);
 
-  const table = (headers, rows) => rows.length===0 ? `<p style="font-size:11px;color:#777;">None</p>` :
+  const table = (headers, rows) => rows.length===0 ? `<p style="font-size:0.6875rem;color:#777;">None</p>` :
     `<table><thead><tr>${headers.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>`;
 
-  let html = `<h1>${esc(COMPANY_NAME)}</h1><div style="font-size:11px;color:#555;margin-bottom:10px;">Daily Work — ${esc(fmtDateOnly(dateKeyToTs(date)))}</div>`;
+  let html = `<h1>${esc(COMPANY_NAME)}</h1><div style="font-size:0.6875rem;color:#555;margin-bottom:10px;">Daily Work — ${esc(fmtDateOnly(dateKeyToTs(date)))}</div>`;
 
   if(!restrictedToProduction){
     html += `<h2>🛢️ Purchase</h2>` + table(['Category','Qty','By','Time'],
@@ -6381,10 +6590,10 @@ function renderStock(){
   return `
   <div class="card">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px;">
-      <label style="display:block;font-size:11px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.03em;">View stock</label>
+      <label style="display:block;font-size:0.6875rem;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.03em;">View stock</label>
       ${isAdmin?`<button class="btn btn-outline btn-sm" id="manageCatalogBtn" style="flex:0 0 auto;">🗂️ Manage catalog</button>`:''}
     </div>
-    <select id="stockViewSel" style="width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:11px;font-size:14px;background:#FBFBFD;" ${allowedSubs.length===1?'disabled':''}>
+    <select id="stockViewSel" style="width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:11px;font-size:0.875rem;background:#FBFBFD;" ${allowedSubs.length===1?'disabled':''}>
       ${allowedSubs.map(s=>subOptionHtml[s]).join('')}
     </select>
     ${isAdmin?`<p class="desc" style="margin:8px 0 0;">Tap "Low alert" to get notified early.</p>`:''}
@@ -6422,7 +6631,7 @@ function renderCatalogListBody(searchQ){
       ${items.length===0?`<div class="empty">No items match.</div>`:items.map(it=>`
       <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);">
         <div style="flex:1;min-width:0;">
-          <div style="font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(it.name)} <span class="mono" style="font-weight:400;">${esc(it.size)}</span></div>
+          <div style="font-size:0.8125rem;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(it.name)} <span class="mono" style="font-weight:400;">${esc(it.size)}</span></div>
           <div class="mono" style="margin-top:2px;">₹${it.mrp} · ${it.caseSize?it.caseSize+'/case':'no case'} · ${esc(it.cat)}</div>
         </div>
         <button type="button" class="btn btn-sm btn-outline" data-edit-catalog="${esc(it.key)}">Edit</button>
@@ -6671,7 +6880,7 @@ function computeVisibleExpenses(allForUser, durableBalance){
 }
 function previousBalanceRowHtml(previousBalance){
   if(previousBalance===0) return ''; // nothing to summarize -- e.g. a brand-new manager, or a window with no prior history
-  return `<div class="stat" style="margin:10px 0 4px;background:var(--bg-soft,#F5F5F7);"><div class="n" style="font-size:16px;">₹${previousBalance.toLocaleString('en-IN')}</div><div class="l">📌 Previous Balance (30 din se pehle tak)</div></div>`;
+  return `<div class="stat" style="margin:10px 0 4px;background:var(--bg-soft,#F5F5F7);"><div class="n" style="font-size:1rem;">₹${previousBalance.toLocaleString('en-IN')}</div><div class="l">📌 Previous Balance (30 din se pehle tak)</div></div>`;
 }
 // 'YYYY-MM' key for whichever month `ts` (default now) falls in -- reuses
 // localDateKey (already the app's one source of truth for local-timezone
@@ -6707,10 +6916,10 @@ function openOpeningBalanceModal(forUsername){
     <p class="desc" style="margin-top:-6px;">Isse aap manager ka balance ek sahi, jaani-hui figure par set kar dete ho -- ek checkpoint. Purani expense entries waisi ki waisi rehti hain, sirf running total yahan se aage sahi hota hai.</p>
     <form id="openingBalForm">
       <div class="field"><label>Manager</label><select id="obManager">${managers.map(u=>`<option value="${esc(u.username)}" ${u.username===selUsername?'selected':''}>${esc(u.name)}</option>`).join('')}</select></div>
-      <div class="field"><div class="mono" id="obCurrentBalance" style="font-size:13px;color:var(--ink-soft);">Current balance on record: ₹${currentBalance.toLocaleString('en-IN')}</div></div>
+      <div class="field"><div class="mono" id="obCurrentBalance" style="font-size:0.8125rem;color:var(--ink-soft);">Current balance on record: ₹${currentBalance.toLocaleString('en-IN')}</div></div>
       <div class="field"><label>Ye checkpoint kis mahine ka hai</label><input id="obMonthLabel" value="${esc(prevMonthLabel())}" required /></div>
       <div class="field"><label>Sahi balance (₹)</label><input id="obTarget" type="number" step="0.01" required placeholder="jaise 45000" /></div>
-      <div class="field"><div class="mono" id="obDeltaPreview" style="font-size:13px;color:var(--ink-soft);">Upar figure daalo to yahan pata chalega kitna badlega.</div></div>
+      <div class="field"><div class="mono" id="obDeltaPreview" style="font-size:0.8125rem;color:var(--ink-soft);">Upar figure daalo to yahan pata chalega kitna badlega.</div></div>
       <div class="modal-actions">
         <button type="button" class="btn btn-outline" id="cancelModal">Cancel</button>
         <button type="submit" class="btn btn-primary">Save checkpoint</button>
@@ -6830,7 +7039,7 @@ function renderExpenses(){
       </div>
     </div>
     ${managers.length===0?`<div class="empty">No managers yet.</div>`:`
-    <select id="expManagerSel" style="width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:11px;font-size:14px;background:#FBFBFD;margin-bottom:12px;">
+    <select id="expManagerSel" style="width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:11px;font-size:0.875rem;background:#FBFBFD;margin-bottom:12px;">
       ${managers.map(u=>`<option value="${esc(u.username)}" ${u.username===selUsername?'selected':''}>${esc(u.name)}</option>`).join('')}
     </select>
     <div class="stat" style="margin-bottom:12px;"><div class="n">₹${balance.toLocaleString('en-IN')}</div><div class="l">${balance>=0?'Still owed to this manager':'Overpaid / advance given'}</div></div>
@@ -7019,9 +7228,9 @@ function renderHomeGeneric(role){
   const todayLabel = new Date().toLocaleDateString(undefined,{day:'2-digit', month:'short', year:'numeric'});
   return `
   <div class="card" style="text-align:center;padding:20px 18px;">
-    ${S.currentUser.photo?`<img src="${esc(S.currentUser.photo)}" style="width:56px;height:56px;border-radius:50%;object-fit:cover;margin:0 auto 8px;display:block;" />`:`<span style="width:56px;height:56px;border-radius:50%;background:var(--bg);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:20px;color:var(--primary);margin:0 auto 8px;">${esc((S.currentUser.name||'?').charAt(0).toUpperCase())}</span>`}
-    <div style="font-size:13px;color:var(--ink-soft);">${esc(t('Welcome back'))}</div>
-    <div style="font-family:var(--font-mono);font-size:19px;font-weight:800;color:var(--primary-dark);margin-top:2px;">${esc(S.currentUser.name)}</div>
+    ${S.currentUser.photo?`<img src="${esc(S.currentUser.photo)}" style="width:56px;height:56px;border-radius:50%;object-fit:cover;margin:0 auto 8px;display:block;" />`:`<span style="width:56px;height:56px;border-radius:50%;background:var(--bg);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1.25rem;color:var(--primary);margin:0 auto 8px;">${esc((S.currentUser.name||'?').charAt(0).toUpperCase())}</span>`}
+    <div style="font-size:0.8125rem;color:var(--ink-soft);">${esc(t('Welcome back'))}</div>
+    <div style="font-family:var(--font-mono);font-size:1.1875rem;font-weight:800;color:var(--primary-dark);margin-top:2px;">${esc(S.currentUser.name)}</div>
     <span class="role-pill" style="background:var(--success-bg);color:var(--primary-dark);margin-top:8px;display:inline-block;">${esc(ROLES[role].label)}</span>
   </div>
   ${quickActionIcons(role)}
@@ -7149,7 +7358,7 @@ function renderHomeAdmin(){
   ${isAdmin ? `<div class="card">
     <h2>Data export</h2>
     <p class="desc">Download a month's data as PDF.</p>
-    <input type="month" id="exportMonthSel" value="${new Date().toISOString().slice(0,7)}" style="width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:11px;font-size:14px;background:#FBFBFD;margin-bottom:10px;" />
+    <input type="month" id="exportMonthSel" value="${new Date().toISOString().slice(0,7)}" style="width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:11px;font-size:0.875rem;background:#FBFBFD;margin-bottom:10px;" />
     <button class="btn btn-primary btn-sm" id="exportPdfBtn">⬇ Export month as PDF</button>
   </div>` : ''}
   <div class="card">
@@ -7557,7 +7766,7 @@ function renderOrdersSegregated(limit){
   // comment for the full story on why this must never be computed per-tile.
   const fifoShortages = computeFifoShortages();
   const section = (title, icon, list)=> list.length ? `<div style="margin-bottom:14px;">
-    <div style="font-weight:800;font-size:11.5px;text-transform:uppercase;letter-spacing:0.03em;margin-bottom:8px;color:var(--ink-soft);">${icon} ${esc(title)} (${list.length})</div>
+    <div style="font-weight:800;font-size:0.71875rem;text-transform:uppercase;letter-spacing:0.03em;margin-bottom:8px;color:var(--ink-soft);">${icon} ${esc(title)} (${list.length})</div>
     <div class="order-tile-grid">${list.map(o=>renderOrderTile(o, false, fifoShortages)).join('')}</div>
   </div>` : '';
   const html = section('New', '🛍️', pending) + section('Under packing', '📦', ready) + section('Ready to dispatch', '🚚', packed) + section('Processing', '🔧', processing);
@@ -7588,7 +7797,7 @@ function renderRetailSalesCard(){
     </div>
     ${entries.length===0?`<div class="empty">No retail sales or samples in the last 7 days.</div>`:`
     <table><thead><tr><th>Items</th><th>Type</th><th>Total</th><th>Time</th><th></th></tr></thead><tbody>
-    ${entries.map(e=>`<tr${e.booked?' style="opacity:0.55;"':''}><td>${(e.items||[]).map(i=>`${esc(i.itemLabel)} <span class="mono">×${i.qty}</span>`).join('<br/>')}</td><td>${e.type==='sale'?'<span class="badge badge-approved">Sale</span>':'<span class="badge badge-pending">Sample</span>'}</td><td class="mono">${e.type==='sale'?'₹'+(e.totalAmount||0).toLocaleString('en-IN'):'—'}</td><td class="mono">${fmtDate(e.at)}</td><td>${(S.currentUser.role==='admin' && !e.booked)?`<button type="button" class="btn btn-sm btn-outline" data-edit-retail="${e.id}">Edit</button>`:(e.booked?'<span class="mono" style="font-size:11px;opacity:0.7;">✅ Booked</span>':'')}</td></tr>`).join('')}
+    ${entries.map(e=>`<tr${e.booked?' style="opacity:0.55;"':''}><td>${(e.items||[]).map(i=>`${esc(i.itemLabel)} <span class="mono">×${i.qty}</span>`).join('<br/>')}</td><td>${e.type==='sale'?'<span class="badge badge-approved">Sale</span>':'<span class="badge badge-pending">Sample</span>'}</td><td class="mono">${e.type==='sale'?'₹'+(e.totalAmount||0).toLocaleString('en-IN'):'—'}</td><td class="mono">${fmtDate(e.at)}</td><td>${(S.currentUser.role==='admin' && !e.booked)?`<button type="button" class="btn btn-sm btn-outline" data-edit-retail="${e.id}">Edit</button>`:(e.booked?'<span class="mono" style="font-size:0.6875rem;opacity:0.7;">✅ Booked</span>':'')}</td></tr>`).join('')}
     </tbody></table>
     <p class="desc" style="margin-top:8px;">Total cash sales (7 days): <b>₹${totalAmount.toLocaleString('en-IN')}</b></p>`}
   </div>`;
@@ -7606,11 +7815,11 @@ function renderOrders(){
       ${canCreate?`<div class="row-actions"><button class="btn btn-outline btn-sm" id="chatOrderBtn">💬 Quick order</button><button class="btn btn-primary btn-sm" id="newOrderBtn">+ New order</button></div>`:''}
     </div>
     <div class="row-actions" style="margin-top:10px;flex-wrap:wrap;gap:8px;">
-      <span class="badge badge-processing" style="font-size:11.5px;padding:5px 10px;">🔧 Processing: ${processingCount}</span>
-      <span class="badge badge-approved" style="font-size:11.5px;padding:5px 10px;">📦 Under Packing: ${readyCount}</span>
-      <button type="button" class="btn btn-sm btn-outline" data-stat="packed" style="padding:4px 10px;font-size:11.5px;">🚚 Ready to Dispatch: ${packedCount}</button>
-      <button type="button" class="btn btn-sm btn-outline" data-stat="processed" style="padding:4px 10px;font-size:11.5px;">✅ Processed: ${processedCount}</button>
-      ${S.currentUser.role==='admin' ? `<button type="button" class="btn btn-sm btn-outline" id="siteVisitLogsBtn" style="padding:4px 10px;font-size:11.5px;">🌐 Order Form Logs (${S.siteVisitLogs.length})</button>` : ''}
+      <span class="badge badge-processing" style="font-size:0.71875rem;padding:5px 10px;">🔧 Processing: ${processingCount}</span>
+      <span class="badge badge-approved" style="font-size:0.71875rem;padding:5px 10px;">📦 Under Packing: ${readyCount}</span>
+      <button type="button" class="btn btn-sm btn-outline" data-stat="packed" style="padding:4px 10px;font-size:0.71875rem;">🚚 Ready to Dispatch: ${packedCount}</button>
+      <button type="button" class="btn btn-sm btn-outline" data-stat="processed" style="padding:4px 10px;font-size:0.71875rem;">✅ Processed: ${processedCount}</button>
+      ${S.currentUser.role==='admin' ? `<button type="button" class="btn btn-sm btn-outline" id="siteVisitLogsBtn" style="padding:4px 10px;font-size:0.71875rem;">🌐 Order Form Logs (${S.siteVisitLogs.length})</button>` : ''}
     </div>
     ${renderOrdersSegregated(0)}
   </div>
@@ -7935,7 +8144,7 @@ let editingDraftIndex = null;
 function renderDraftList(){
   const el = document.getElementById('draftList');
   if(!el) return;
-  if(orderDraft.length===0){ el.innerHTML = `<div style="font-size:12.5px;color:var(--ink-soft);">No items added yet.</div>`; return; }
+  if(orderDraft.length===0){ el.innerHTML = `<div style="font-size:0.78125rem;color:var(--ink-soft);">No items added yet.</div>`; return; }
   el.innerHTML = orderDraft.map((d,i)=>{
     const it = findItem(d.key);
     const caseSize = it ? it.caseSize : null;
@@ -7943,17 +8152,17 @@ function renderDraftList(){
       const cases = caseSize ? Math.floor(d.qty/caseSize) : 0;
       const pcs = caseSize ? d.qty % caseSize : d.qty;
       return `<div style="padding:8px 0;border-bottom:1px solid var(--border);">
-        <div style="font-size:13px;font-weight:700;margin-bottom:6px;">${esc(d.name)} ${esc(d.size)}${caseSize?` <span class="mono" style="font-weight:400;">(${caseSize} pc/case)</span>`:''}</div>
+        <div style="font-size:0.8125rem;font-weight:700;margin-bottom:6px;">${esc(d.name)} ${esc(d.size)}${caseSize?` <span class="mono" style="font-weight:400;">(${caseSize} pc/case)</span>`:''}</div>
         <div style="display:flex;gap:6px;align-items:center;">
-          ${caseSize?`<input type="number" min="0" id="editDraftCases" value="${cases}" placeholder="Cases" style="flex:1;padding:8px;border:1.5px solid var(--border);border-radius:8px;font-size:12.5px;" />`:''}
-          <input type="number" min="0" id="editDraftPcs" value="${pcs}" placeholder="Pcs" style="flex:1;padding:8px;border:1.5px solid var(--border);border-radius:8px;font-size:12.5px;" />
+          ${caseSize?`<input type="number" min="0" id="editDraftCases" value="${cases}" placeholder="Cases" style="flex:1;padding:8px;border:1.5px solid var(--border);border-radius:8px;font-size:0.78125rem;" />`:''}
+          <input type="number" min="0" id="editDraftPcs" value="${pcs}" placeholder="Pcs" style="flex:1;padding:8px;border:1.5px solid var(--border);border-radius:8px;font-size:0.78125rem;" />
           <button type="button" class="btn btn-sm btn-accent" data-save-draft-edit="${i}">Save</button>
           <button type="button" class="btn btn-sm btn-outline" data-cancel-draft-edit="${i}">✕</button>
         </div>
       </div>`;
     }
     return `
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:13.5px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:0.84375rem;">
       <span>${esc(d.name)} ${esc(d.size)} <span class="mono">×${fmtQtyPreferCase(d.qty, caseSize)}</span></span>
       <div class="row-actions">
         <button type="button" class="btn btn-sm btn-outline" data-edit-draft="${i}">Edit</button>
@@ -8082,9 +8291,9 @@ function openChatOrderModal(){
         <input id="chatCustInput" list="chatCustList" value="${esc(p.customerName||'')}" placeholder="Type party name…" autocomplete="off" />
         <datalist id="chatCustList">${S.customers.map(c=>`<option value="${esc(c.name)}"></option>`).join('')}</datalist>
       </div>
-      <div style="font-size:12.5px;font-weight:700;margin:8px 0 4px;">Draft items</div>
+      <div style="font-size:0.78125rem;font-weight:700;margin:8px 0 4px;">Draft items</div>
       ${p.items.length===0?`<div class="empty" style="padding:14px;">No items recognized — edit the text and try again.</div>`:
-        p.items.map((d,i)=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:13.5px;"><span>${esc(d.name)} ${esc(d.size)} <span class="mono">×${d.qty}</span></span><button type="button" class="btn btn-sm btn-outline" data-rm-chat-item="${i}">✕</button></div>`).join('')}
+        p.items.map((d,i)=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:0.84375rem;"><span>${esc(d.name)} ${esc(d.size)} <span class="mono">×${d.qty}</span></span><button type="button" class="btn btn-sm btn-outline" data-rm-chat-item="${i}">✕</button></div>`).join('')}
       ${p.unmatched.length?`<div class="err" style="margin-top:8px;">Couldn't match: ${esc(p.unmatched.join(', '))}</div>`:''}
     `;
     const confirmBtn = document.getElementById('chatConfirmBtn');
@@ -8172,10 +8381,10 @@ function renderCustomers(){
     <div class="tile-grid-3">
       ${S.customers.slice().sort((a,b)=>b.addedAt-a.addedAt).map(c=>`
         <div style="background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:14px 12px;text-align:center;">
-          <span style="width:44px;height:44px;border-radius:50%;background:var(--surface);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;color:var(--primary);margin:0 auto 8px;">${esc((c.name||'?').charAt(0).toUpperCase())}</span>
-          <div style="font-weight:800;font-size:13.5px;">${esc(c.name)}</div>
+          <span style="width:44px;height:44px;border-radius:50%;background:var(--surface);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1rem;color:var(--primary);margin:0 auto 8px;">${esc((c.name||'?').charAt(0).toUpperCase())}</span>
+          <div style="font-weight:800;font-size:0.84375rem;">${esc(c.name)}</div>
           <div class="mono" style="margin-top:2px;">${esc(c.phone||'—')}</div>
-          ${c.address?`<div style="font-size:11.5px;color:var(--ink-soft);margin-top:4px;">${esc(c.address)}</div>`:''}
+          ${c.address?`<div style="font-size:0.71875rem;color:var(--ink-soft);margin-top:4px;">${esc(c.address)}</div>`:''}
           <div class="mono" style="margin-top:6px;">added by ${esc(c.addedBy)}</div>
           ${isAdmin?`<div class="row-actions" style="justify-content:center;margin-top:10px;">
             <button class="btn btn-sm btn-outline" data-edit-cust="${c.id}">Edit</button>
@@ -8194,7 +8403,7 @@ function renderTransportsCard(){
     ${S.transports.length===0?`<div class="empty">No transporters yet — they get added automatically the first time one is typed on an order.</div>`:
     S.transports.slice().sort((a,b)=>a.localeCompare(b)).map(t=>`
       <div class="row-actions" style="justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);">
-        <div style="font-weight:600;font-size:13px;">${esc(t)}</div>
+        <div style="font-weight:600;font-size:0.8125rem;">${esc(t)}</div>
         <div class="row-actions">
           <button class="btn btn-sm btn-outline" data-edit-transport="${esc(t)}">Edit</button>
           <button class="btn btn-sm btn-danger" data-del-transport="${esc(t)}">Delete</button>
@@ -8329,11 +8538,11 @@ function renderUsers(){
     <div class="tile-grid-3">
       ${S.users.map(u=>`
         <div style="background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:14px 12px;text-align:center;">
-          ${u.photo?`<img src="${esc(u.photo)}" style="width:52px;height:52px;border-radius:50%;object-fit:cover;margin:0 auto 8px;display:block;" />`:`<span style="width:52px;height:52px;border-radius:50%;background:var(--surface);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;color:var(--primary);margin:0 auto 8px;">${esc((u.name||'?').charAt(0).toUpperCase())}</span>`}
-          <div style="font-weight:800;font-size:13.5px;">${esc(u.name)}</div>
+          ${u.photo?`<img src="${esc(u.photo)}" style="width:52px;height:52px;border-radius:50%;object-fit:cover;margin:0 auto 8px;display:block;" />`:`<span style="width:52px;height:52px;border-radius:50%;background:var(--surface);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1.125rem;color:var(--primary);margin:0 auto 8px;">${esc((u.name||'?').charAt(0).toUpperCase())}</span>`}
+          <div style="font-weight:800;font-size:0.84375rem;">${esc(u.name)}</div>
           <div class="mono" style="margin:2px 0 4px;">${esc(u.username)}</div>
           <span class="role-pill" style="background:var(--surface);color:var(--primary-dark);border:1px solid var(--border);">${esc(ROLES[u.role].label)}</span>
-          ${u.post?`<div style="font-size:11px;color:var(--ink-soft);margin-top:4px;font-style:italic;">${esc(u.post)}</div>`:''}
+          ${u.post?`<div style="font-size:0.6875rem;color:var(--ink-soft);margin-top:4px;font-style:italic;">${esc(u.post)}</div>`:''}
           ${u.phone?`<div class="mono" style="margin-top:6px;">${esc(u.phone)}</div>`:''}
           <div class="row-actions" style="justify-content:center;margin-top:10px;flex-wrap:wrap;">
             <button class="btn btn-sm btn-outline" data-edit-user="${u.id}">Edit</button>
@@ -8390,7 +8599,7 @@ function renderTeamListBody(){
       return `<div class="order-tile" data-select-team="${role}" style="cursor:pointer;">
         <div class="ot-top">
           <span class="ot-name">${esc(ROLES[role].label)}${isCustom?' <span class="mono" style="font-weight:400;">(custom)</span>':''}</span>
-          <span style="color:var(--ink-soft);font-size:16px;">›</span>
+          <span style="color:var(--ink-soft);font-size:1rem;">›</span>
         </div>
         <div class="ot-meta">${viewCount} view · ${entryCount} entry right${entryCount===1?'':'s'} · ${memberCount} member${memberCount===1?'':'s'}</div>
         ${isCustom?`<div class="row-actions" style="margin-top:6px;"><button type="button" class="btn btn-sm btn-danger" data-del-team="${role}">Delete team</button></div>`:''}
@@ -8464,21 +8673,21 @@ function openTeamPermissionDialog(role){
   showModal(`
     <h3>${esc(ROLES[role].label)}</h3>
     <p class="desc" style="margin-top:-6px;">Choose exactly what this team can view and enter.</p>
-    <div style="font-size:11.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.03em;font-weight:700;margin-bottom:6px;">Can view</div>
+    <div style="font-size:0.71875rem;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.03em;font-weight:700;margin-bottom:6px;">Can view</div>
     <div class="checkbox-grid" style="margin-bottom:14px;">
-    ${CHECKLIST_MODULES.map(m=>`<label style="display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:9px 10px;font-size:12.5px;cursor:pointer;">
+    ${CHECKLIST_MODULES.map(m=>`<label style="display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:9px 10px;font-size:0.78125rem;cursor:pointer;">
       <input type="checkbox" data-teamperm-view="${m.key}" ${perm[m.key]?'checked':''} style="width:16px;height:16px;flex:0 0 auto;" /> ${esc(m.label)}
     </label>`).join('')}
     </div>
-    <div style="font-size:11.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.03em;font-weight:700;margin-bottom:6px;">Home page tiles</div>
+    <div style="font-size:0.71875rem;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.03em;font-weight:700;margin-bottom:6px;">Home page tiles</div>
     <div class="checkbox-grid" style="margin-bottom:14px;">
-    ${TILE_MODULES.map(m=>`<label style="display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:9px 10px;font-size:12.5px;cursor:pointer;">
+    ${TILE_MODULES.map(m=>`<label style="display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:9px 10px;font-size:0.78125rem;cursor:pointer;">
       <input type="checkbox" data-teamperm-view="${m.key}" ${perm[m.key]?'checked':''} style="width:16px;height:16px;flex:0 0 auto;" /> ${esc(m.label)}
     </label>`).join('')}
     </div>
-    <div style="font-size:11.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.03em;font-weight:700;margin-bottom:6px;">Can enter / record data</div>
+    <div style="font-size:0.71875rem;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.03em;font-weight:700;margin-bottom:6px;">Can enter / record data</div>
     <div class="checkbox-grid">
-    ${ENTRY_MODULES.map(m=>`<label style="display:flex;align-items:center;gap:8px;background:var(--success-bg);border:1px solid var(--border);border-radius:10px;padding:9px 10px;font-size:12.5px;cursor:pointer;">
+    ${ENTRY_MODULES.map(m=>`<label style="display:flex;align-items:center;gap:8px;background:var(--success-bg);border:1px solid var(--border);border-radius:10px;padding:9px 10px;font-size:0.78125rem;cursor:pointer;">
       <input type="checkbox" data-teamperm-entry="${m.key}" ${(S.rolePermissions[role] ? !!S.rolePermissions[role][m.key] : !!entryDefaults[m.key])?'checked':''} style="width:16px;height:16px;flex:0 0 auto;" /> ${esc(m.label)}
     </label>`).join('')}
     </div>
@@ -8501,13 +8710,13 @@ function openPermissionConfirm(role, viewChecked, entryChecked){
   showModal(`
     <h3>Confirm — ${esc(ROLES[role].label)}</h3>
     <p class="desc" style="margin-top:-6px;">You're about to give this team:</p>
-    <div style="font-size:11px;font-weight:800;text-transform:uppercase;color:var(--ink-soft);margin-bottom:4px;">Can view</div>
+    <div style="font-size:0.6875rem;font-weight:800;text-transform:uppercase;color:var(--ink-soft);margin-bottom:4px;">Can view</div>
     <div style="margin-bottom:12px;">
-      ${viewChecked.length? viewChecked.map(m=>`<div style="padding:4px 0;font-size:13px;">✅ ${esc(m.label)}</div>`).join('') : `<div class="desc" style="margin:0;">Nothing beyond Home.</div>`}
+      ${viewChecked.length? viewChecked.map(m=>`<div style="padding:4px 0;font-size:0.8125rem;">✅ ${esc(m.label)}</div>`).join('') : `<div class="desc" style="margin:0;">Nothing beyond Home.</div>`}
     </div>
-    <div style="font-size:11px;font-weight:800;text-transform:uppercase;color:var(--ink-soft);margin-bottom:4px;">Can enter / record</div>
+    <div style="font-size:0.6875rem;font-weight:800;text-transform:uppercase;color:var(--ink-soft);margin-bottom:4px;">Can enter / record</div>
     <div>
-      ${entryChecked.length? entryChecked.map(m=>`<div style="padding:4px 0;font-size:13px;">✅ ${esc(m.label)}</div>`).join('') : `<div class="desc" style="margin:0;">No data-entry rights.</div>`}
+      ${entryChecked.length? entryChecked.map(m=>`<div style="padding:4px 0;font-size:0.8125rem;">✅ ${esc(m.label)}</div>`).join('') : `<div class="desc" style="margin:0;">No data-entry rights.</div>`}
     </div>
     <p class="desc" style="margin-top:14px;font-weight:700;color:var(--ink);">Are you sure you want to apply this?</p>
     <div class="modal-actions">
@@ -8561,7 +8770,7 @@ function renderNotifKindListBody(){
       return `<div class="order-tile" data-select-notif-kind="${k.key}" style="cursor:pointer;">
         <div class="ot-top">
           <span class="ot-name">${esc(k.label)}</span>
-          <span style="color:var(--ink-soft);font-size:16px;">›</span>
+          <span style="color:var(--ink-soft);font-size:1rem;">›</span>
         </div>
         <div class="ot-meta">${esc(k.desc)}</div>
         <div class="ot-meta">${recipients.length} of ${S.users.length} staff will get this</div>
@@ -8594,8 +8803,8 @@ function openNotifKindDialog(kind){
       <button type="button" class="btn btn-sm btn-outline" id="notifSelectNoneBtn">Select none</button>
     </div>
     <div class="checkbox-grid">
-    ${S.users.map(u=>`<label style="display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:9px 10px;font-size:12.5px;cursor:pointer;">
-      <input type="checkbox" data-notif-recipient="${esc(u.username)}" ${recipients.has(u.username)?'checked':''} style="width:16px;height:16px;flex:0 0 auto;" /> ${esc(u.name)} <span class="mono" style="font-size:10.5px;color:var(--ink-soft);">(${esc(ROLES[u.role].label)})</span>
+    ${S.users.map(u=>`<label style="display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:9px 10px;font-size:0.78125rem;cursor:pointer;">
+      <input type="checkbox" data-notif-recipient="${esc(u.username)}" ${recipients.has(u.username)?'checked':''} style="width:16px;height:16px;flex:0 0 auto;" /> ${esc(u.name)} <span class="mono" style="font-size:0.65625rem;color:var(--ink-soft);">(${esc(ROLES[u.role].label)})</span>
     </label>`).join('')}
     </div>
     <p class="desc" style="margin-top:10px;">Note: jo khud is event ka action kare (order accept/pack kare, message bheje, stock update kare), usko apna khud ka notification kabhi nahi aayega — chahe upar wo checked ho.</p>
@@ -9149,10 +9358,10 @@ function renderAnnouncementsTab(){
         const unread = !(m.readBy||[]).includes(myUsername);
         return `<div style="position:relative;display:flex;gap:10px;background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:10px 12px;margin-bottom:8px;">
           ${unread?`<span class="notif-dot notif-pulse" style="top:-6px;right:-6px;">●</span>`:''}
-          <div class="chat-avatar" style="width:34px;height:34px;font-size:15px;background:var(--accent);flex:0 0 auto;">📢</div>
+          <div class="chat-avatar" style="width:34px;height:34px;font-size:0.9375rem;background:var(--accent);flex:0 0 auto;">📢</div>
           <div style="min-width:0;flex:1;">
-            <div style="font-size:11px;color:var(--ink-soft);margin-bottom:3px;"><b>${esc(m.fromName)}</b> · ${fmtDate(chatSortKey(m))}</div>
-            <div style="font-size:13.5px;white-space:pre-wrap;word-break:break-word;">${esc(m.text)}</div>
+            <div style="font-size:0.6875rem;color:var(--ink-soft);margin-bottom:3px;"><b>${esc(m.fromName)}</b> · ${fmtDate(chatSortKey(m))}</div>
+            <div style="font-size:0.84375rem;white-space:pre-wrap;word-break:break-word;">${esc(m.text)}</div>
           </div>
         </div>`;
       }).join('')}
@@ -9191,7 +9400,7 @@ function renderChatsListTab(){
       ${eligibleUsers.length===0?`<div class="desc" style="margin:6px 0;">No one available to message.</div>`:eligibleUsers.map(u=>`
       <div class="contact-row" data-start-chat="${esc(u.username)}">
         ${chatAvatarHtml(u, 36)}
-        <div style="min-width:0;"><div style="font-weight:700;font-size:13px;">${esc(u.name)}</div><div style="font-size:11px;color:var(--ink-soft);">${esc(ROLES[u.role]?ROLES[u.role].label:u.role)}</div></div>
+        <div style="min-width:0;"><div style="font-weight:700;font-size:0.8125rem;">${esc(u.name)}</div><div style="font-size:0.6875rem;color:var(--ink-soft);">${esc(ROLES[u.role]?ROLES[u.role].label:u.role)}</div></div>
       </div>`).join('')}
     </div>
     <div class="chat-scroll">
@@ -9202,11 +9411,11 @@ function renderChatsListTab(){
         ${chatAvatarHtml(t.user, 44)}
         <div style="min-width:0;flex:1;">
           <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;">
-            <div style="font-weight:700;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(t.name)}</div>
-            <div style="font-size:10.5px;color:var(--ink-soft);flex:0 0 auto;">${fmtDateOnly(chatSortKey(t.last))}</div>
+            <div style="font-weight:700;font-size:0.84375rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(t.name)}</div>
+            <div style="font-size:0.65625rem;color:var(--ink-soft);flex:0 0 auto;">${fmtDateOnly(chatSortKey(t.last))}</div>
           </div>
           <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;">
-            <div style="font-size:12px;color:var(--ink-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${t.last.fromUsername===myUsername?'You: ':''}${esc(t.last.text)}</div>
+            <div style="font-size:0.75rem;color:var(--ink-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${t.last.fromUsername===myUsername?'You: ':''}${esc(t.last.text)}</div>
             ${t.unread>0?`<span class="notif-dot" style="position:static;flex:0 0 auto;">${t.unread}</span>`:''}
           </div>
         </div>
@@ -9221,7 +9430,7 @@ function renderThreadView(otherUsername){
   const sections = groupByDate(msgs, chatSortKey);
   let bubblesHtml = '';
   sections.forEach(sec=>{
-    bubblesHtml += `<div style="text-align:center;margin:10px 0 8px;"><span style="background:var(--bg);color:var(--ink-soft);font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;">${esc(sec.heading)}</span></div>`;
+    bubblesHtml += `<div style="text-align:center;margin:10px 0 8px;"><span style="background:var(--bg);color:var(--ink-soft);font-size:0.75rem;font-weight:700;padding:3px 10px;border-radius:20px;">${esc(sec.heading)}</span></div>`;
     sec.items.forEach((m,i)=>{
       const mine = m.fromUsername===myUsername;
       // Consecutive messages from the same sender sit closer together, and
@@ -9242,8 +9451,8 @@ function renderThreadView(otherUsername){
       <button type="button" class="thread-back-btn" id="backToThreadsBtn" title="Back" aria-label="Back">‹</button>
       ${chatAvatarHtml(other, 38)}
       <div style="min-width:0;">
-        <div style="font-weight:800;font-size:14px;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(other?other.name:otherUsername)}</div>
-        <div style="font-size:11px;color:var(--ink-soft);">${esc(other&&ROLES[other.role]?ROLES[other.role].label:'')}</div>
+        <div style="font-weight:800;font-size:0.875rem;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(other?other.name:otherUsername)}</div>
+        <div style="font-size:0.6875rem;color:var(--ink-soft);">${esc(other&&ROLES[other.role]?ROLES[other.role].label:'')}</div>
       </div>
     </div>
     <div id="threadMsgList" class="chat-scroll">
@@ -9574,7 +9783,7 @@ function renderTasks(){
 
   const generalTaskRow = (t, showAssignee)=>`
     <tr>
-      <td><b>${esc(t.title)}</b>${t.description?`<div style="font-size:12px;color:var(--ink-soft);margin-top:2px;">${esc(t.description)}</div>`:''}</td>
+      <td><b>${esc(t.title)}</b>${t.description?`<div style="font-size:0.75rem;color:var(--ink-soft);margin-top:2px;">${esc(t.description)}</div>`:''}</td>
       ${showAssignee?`<td class="mono">${t.assignedTo?esc(t.assignedToName):'— unassigned —'}</td>`:''}
       <td class="mono">${t.dueDate?esc(t.dueDate):'—'}</td>
       <td><span class="badge badge-${t.status==='done'?'done':'pending'}">${t.status}</span></td>
@@ -10008,8 +10217,8 @@ function renderBatchResult(){
   if(batchNo){
     const sizesForCat = CATALOG_FLAT.filter(it=>it.cat===cat);
     box.innerHTML = `<div style="background:var(--bg);border-radius:12px;padding:16px;text-align:center;">
-      <div style="font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;">${esc(cat)}</div>
-      <div style="font-size:26px;font-weight:900;color:var(--primary);">${batchNo}/${currentMonthLabel()}</div>
+      <div style="font-size:0.6875rem;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;">${esc(cat)}</div>
+      <div style="font-size:1.625rem;font-weight:900;color:var(--primary);">${batchNo}/${currentMonthLabel()}</div>
     </div>
     ${sizesForCat.length>0?`<div class="field" style="margin-top:10px;"><label>Size</label>
       <select id="batchSizeSel"><option value="">Select a size…</option>${sizesForCat.map(it=>`<option value="${it.key}">${esc(it.size)}</option>`).join('')}</select>
@@ -10158,9 +10367,9 @@ function openRetailModal(type, existingEntry){
 function renderRetailDraftList(){
   const el = document.getElementById('retailDraftList');
   if(!el) return;
-  if(retailDraft.length===0){ el.innerHTML = `<div style="font-size:12.5px;color:var(--ink-soft);">No items added yet.</div>`; return; }
+  if(retailDraft.length===0){ el.innerHTML = `<div style="font-size:0.78125rem;color:var(--ink-soft);">No items added yet.</div>`; return; }
   el.innerHTML = retailDraft.map((d,i)=>`
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:13.5px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:0.84375rem;">
       <span>${esc(d.name)} ${esc(d.size)} <span class="mono">×${d.qty}</span></span>
       <button type="button" class="btn btn-sm btn-outline" data-rm-retail-draft="${i}">✕</button>
     </div>`).join('');
@@ -10255,15 +10464,15 @@ function openBulkStockModal(kind){
   showModal(`
     <h3>Bulk edit — ${title}</h3>
     <p class="desc" style="margin-top:-6px;">Update quantity and/or low-stock alert for as many items as you like, then save once. Leave a box blank to skip that field.</p>
-    <div style="display:flex;gap:8px;padding:0 0 6px;font-size:11.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.03em;font-weight:700;">
+    <div style="display:flex;gap:8px;padding:0 0 6px;font-size:0.71875rem;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.03em;font-weight:700;">
       <div style="flex:1;">Item</div><div style="width:82px;">Qty (${unit})</div><div style="width:74px;">Alert (${unit})</div>
     </div>
     <div style="max-height:48vh;overflow-y:auto;margin-bottom:10px;">
     ${items.map(it=>`
       <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border);">
-        <div style="flex:1;min-width:0;font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(it.label)}</div>
-        <input type="number" ${kind==='raw'?'step="0.01"':''} data-bulk-qty="${esc(it.id)}" value="${it.val}" onfocus="this.select()" style="width:82px;padding:7px 8px;border:1.5px solid var(--border);border-radius:8px;font-size:12.5px;" />
-        <input type="number" min="0" ${kind==='raw'?'step="0.01"':''} data-bulk-low="${esc(it.id)}" value="${it.low}" onfocus="this.select()" style="width:74px;padding:7px 8px;border:1.5px solid var(--border);border-radius:8px;font-size:12.5px;" />
+        <div style="flex:1;min-width:0;font-size:0.78125rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(it.label)}</div>
+        <input type="number" ${kind==='raw'?'step="0.01"':''} data-bulk-qty="${esc(it.id)}" value="${it.val}" onfocus="this.select()" style="width:82px;padding:7px 8px;border:1.5px solid var(--border);border-radius:8px;font-size:0.78125rem;" />
+        <input type="number" min="0" ${kind==='raw'?'step="0.01"':''} data-bulk-low="${esc(it.id)}" value="${it.low}" onfocus="this.select()" style="width:74px;padding:7px 8px;border:1.5px solid var(--border);border-radius:8px;font-size:0.78125rem;" />
       </div>`).join('')}
     </div>
     <div class="modal-actions">
@@ -10419,20 +10628,20 @@ function renderCheckin(){
   ${isFileProtocol ? `<div class="alert-banner" style="margin-bottom:12px;"><b>⚠ Location can never work this way</b>This file was opened directly from your phone's storage (a <b>file://</b> link). Browsers permanently block GPS access for files opened like this — no setting or fix inside the app can change that. It has to be opened as a normal website link (<b>https://…</b>) instead. Ask whoever set this up to host it online (e.g. free hosting like GitHub Pages/Netlify) and open that link instead of the downloaded file.</div>`
     : insecure ? `<div class="alert-banner" style="margin-bottom:12px;"><b>⚠ Location won't work here</b>This page needs to be opened over <b>https://</b> for GPS to work. Ask whoever hosts this app to switch it to HTTPS.</div>` : ''}
   <div class="card" style="text-align:center;padding:30px 18px;">
-    <div style="font-size:13px;color:var(--ink-soft);margin-bottom:10px;">Today</div>
+    <div style="font-size:0.8125rem;color:var(--ink-soft);margin-bottom:10px;">Today</div>
     ${(isSunday || holidayLabel) ? `
-      <div style="font-size:20px;font-weight:800;color:var(--ink-soft);margin-bottom:4px;">🏖️ ${holidayLabel ? `Holiday — ${esc(holidayLabel)}` : 'Week Off (Sunday)'}</div>
+      <div style="font-size:1.25rem;font-weight:800;color:var(--ink-soft);margin-bottom:4px;">🏖️ ${holidayLabel ? `Holiday — ${esc(holidayLabel)}` : 'Week Off (Sunday)'}</div>
       <p class="desc" style="margin:6px 0 0;">No attendance needed today.</p>
     ` : already ? `
-      <div style="font-size:20px;font-weight:800;color:var(--success);margin-bottom:4px;">✅ Marked present today</div>
+      <div style="font-size:1.25rem;font-weight:800;color:var(--success);margin-bottom:4px;">✅ Marked present today</div>
       <p class="desc" style="margin:6px 0 0;">You can mark attendance again tomorrow.</p>
     ` : outsideMarkWindow ? `
-      <div style="font-size:18px;font-weight:800;color:var(--ink-soft);margin-bottom:4px;">⏰ Outside marking window</div>
+      <div style="font-size:1.125rem;font-weight:800;color:var(--ink-soft);margin-bottom:4px;">⏰ Outside marking window</div>
       <p class="desc" style="margin:6px 0 0;">Attendance can only be self-marked between ${fmtHHMMOfDay(attSettings.selfMarkStart)} and ${fmtHHMMOfDay(attSettings.selfMarkEnd)}. Ask an admin to mark it for you if you missed this window.</p>
     ` : `
       ${S.currentUser.role==='sales' ? `<div class="field" style="text-align:left;margin-bottom:12px;"><label>Field Location — where are you going for marketing today?</label><input id="fieldLocationInput" placeholder="e.g. Karol Bagh market, Chandni Chowk" required /></div>` : ''}
-      <button class="btn btn-primary" id="checkBtn" style="padding:14px 30px;font-size:15px;width:auto;" ${isFileProtocol?'disabled':''}>📍 Mark present</button>
-      <div id="geoMsg" class="mono" style="font-size:11.5px;color:var(--ink-soft);margin-top:10px;"></div>
+      <button class="btn btn-primary" id="checkBtn" style="padding:14px 30px;font-size:0.9375rem;width:auto;" ${isFileProtocol?'disabled':''}>📍 Mark present</button>
+      <div id="geoMsg" class="mono" style="font-size:0.71875rem;color:var(--ink-soft);margin-top:10px;"></div>
     `}
   </div>
   <div class="card">
@@ -10640,7 +10849,7 @@ function renderAttendanceMap(){
         ${p.entries.map(e=>{
           let statusCell, locCell, timeCell;
           if(e.status==='present'){
-            statusCell = `<span class="badge badge-approved">Present</span>${e.record.markedByAdmin?' <span class="mono" style="font-size:11px;">(by admin)</span>':''}`;
+            statusCell = `<span class="badge badge-approved">Present</span>${e.record.markedByAdmin?' <span class="mono" style="font-size:0.6875rem;">(by admin)</span>':''}`;
             // Round 14 (user request): "admin ko Self marked attendance me
             // location k sath time of marking b dikhni chahiye" -- only a
             // genuine self-mark has a real "moment they tapped the button"
@@ -10654,7 +10863,7 @@ function renderAttendanceMap(){
             const geoLatE = safeGeoCoord(e.record.lat), geoLngE = safeGeoCoord(e.record.lng);
             const hasLoc = geoLatE!=null && geoLngE!=null;
             const gpsLine = e.record.markedByAdmin ? `<span class="mono">Marked by Admin</span>` : (hasLoc ? `<a href="https://www.google.com/maps?q=${encodeURIComponent(geoLatE)},${encodeURIComponent(geoLngE)}" target="_blank" rel="noopener" class="mono" style="color:var(--primary);">📍 view</a>` : `<span class="mono">no location</span>`);
-            const flLine = e.record.fieldLocation ? `<div class="mono" style="font-size:12px;color:var(--ink-soft);margin-top:2px;">Field Location - ${esc(e.record.fieldLocation)}</div>` : '';
+            const flLine = e.record.fieldLocation ? `<div class="mono" style="font-size:0.75rem;color:var(--ink-soft);margin-top:2px;">Field Location - ${esc(e.record.fieldLocation)}</div>` : '';
             locCell = gpsLine + flLine;
           } else if(e.status==='absent'){
             statusCell = `<span class="badge badge-rejected">Absent</span>`;
@@ -10903,7 +11112,7 @@ function renderMonthlySummary(year, month1based){
   box.innerHTML = workingDaysCount===0 ? `<div class="empty">No working days yet this month.</div>` : `
     <table><thead><tr><th>Employee</th><th>Working days</th><th>Present</th><th>Absent</th></tr></thead><tbody>
     ${rows.map(r=>`<tr><td>${esc(r.name)}</td><td class="mono">${workingDaysCount}</td><td class="mono" style="color:var(--success);font-weight:700;">${r.present}</td><td class="mono" style="color:var(--danger);font-weight:700;">${r.absent}</td></tr>
-    ${r.absentDates.length?`<tr><td colspan="4" style="font-size:12px;color:var(--ink-soft);padding-top:0;padding-bottom:10px;">Absent: ${r.absentDates.map(dk=>fmtDateOnly(dateKeyToTs(dk))).join(', ')}</td></tr>`:''}`).join('')}
+    ${r.absentDates.length?`<tr><td colspan="4" style="font-size:0.75rem;color:var(--ink-soft);padding-top:0;padding-bottom:10px;">Absent: ${r.absentDates.map(dk=>fmtDateOnly(dateKeyToTs(dk))).join(', ')}</td></tr>`:''}`).join('')}
     </tbody></table>`;
 }
 
@@ -10923,7 +11132,7 @@ function showCopyableText(message, text){
     <div class="app-alert-box">
       <div class="app-alert-icon">📋</div>
       <div class="app-alert-message">${esc(message)}</div>
-      <textarea readonly style="width:100%;box-sizing:border-box;padding:11px 12px;border-radius:11px;border:1.5px solid var(--border);font-size:13px;margin-bottom:12px;min-height:120px;font-family:inherit;">${esc(text)}</textarea>
+      <textarea readonly style="width:100%;box-sizing:border-box;padding:11px 12px;border-radius:11px;border:1.5px solid var(--border);font-size:0.8125rem;margin-bottom:12px;min-height:120px;font-family:inherit;">${esc(text)}</textarea>
       <button type="button" class="app-alert-ok-btn" id="appAlertOkBtn">Close</button>
     </div>`;
   const host = document.querySelector('.device-screen') || document.body;
@@ -10998,7 +11207,7 @@ function showPrompt(message, defaultValue, onSubmit, opts, onCancel){
     <div class="app-alert-box">
       <div class="app-alert-icon">✏️</div>
       <div class="app-alert-message">${esc(message)}</div>
-      <input type="${isPassword?'password':'text'}" id="appPromptInput" value="${esc(defaultValue||'')}" style="width:100%;box-sizing:border-box;padding:11px 12px;border-radius:11px;border:1.5px solid var(--border);font-size:14px;margin-bottom:12px;" />
+      <input type="${isPassword?'password':'text'}" id="appPromptInput" value="${esc(defaultValue||'')}" style="width:100%;box-sizing:border-box;padding:11px 12px;border-radius:11px;border:1.5px solid var(--border);font-size:0.875rem;margin-bottom:12px;" />
       <div style="display:flex;gap:8px;">
         <button type="button" class="app-alert-ok-btn" id="appPromptCancelBtn" style="background:var(--bg);color:var(--ink);border:1.5px solid var(--border);">Cancel</button>
         <button type="button" class="app-alert-ok-btn" id="appPromptOkBtn" style="background:var(--primary);">OK</button>
@@ -11355,6 +11564,7 @@ function checkForNewNotifRing(){
 /* ============================= INIT ============================= */
 let loadAllPromise = null;
 (async function init(){
+  applyDocumentPrefAttrs(); // sets <html dir>/lang/fs-* BEFORE the first paint, off this device's localStorage-seeded default -- applyUserPreferences() (called once a session/login resolves, below) re-applies it against the actual logged-in user's own saved preference once that's known
   loadOfflineQueue(); // now-dead queue (nothing populates it any more -- Firestore's own offline persistence replaces it, see the plumbing block's header comment); loading it is a harmless no-op, kept only so a leftover queue from a pre-Task-#54 session isn't silently lost
   loadPendingExpenseDeltas();
   render();
