@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <link rel="manifest" href="manifest.json">
+<!-- ROUND 60: the build number, repeated here ON PURPOSE. The real one is
+     the APP_BUILD constant, but that sits ~119 KB into this file, and the
+     update check has to be able to read the DEPLOYED build without pulling
+     the whole 1.35 MB down again on a phone. Up here it lands inside the
+     first kilobyte, so the check costs a few KB instead of the entire app.
+     The two can never be allowed to drift -- test_round60 fails if they do. -->
+<meta name="app-build" content="2026-10-02-firestore-preview89">
 <meta name="theme-color" content="#1E3F1B">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1553,6 +1560,33 @@
   .id-card-value{text-align:right;font-weight:600;}
 
   /* ---------- Bottom sheet (modals + more menu + notifications) ---------- */
+  /* ROUND 60 -- the "new version is live" bar. z-index 60 puts it above the
+     topbar (20) and below the modal overlay (100): it must be impossible to
+     miss while someone is working, and equally impossible for it to sit on
+     top of a dialog they are in the middle of filling in. */
+  .update-bar{
+    position:fixed;left:0;right:0;top:0;z-index:60;
+    display:flex;align-items:center;gap:10px;
+    padding:calc(env(safe-area-inset-top, 0px) + 9px) 12px 9px;
+    background:var(--primary);color:#fff;
+    font-size:0.8125rem;font-weight:700;
+    box-shadow:0 2px 10px rgba(0,0,0,0.25);
+    animation:updateBarIn .28s cubic-bezier(.2,.9,.3,1);
+  }
+  @keyframes updateBarIn{from{transform:translateY(-100%);}to{transform:translateY(0);}}
+  .update-bar .ub-text{flex:1 1 auto;line-height:1.3;}
+  .update-bar .ub-go{
+    flex:0 0 auto;border:none;border-radius:999px;cursor:pointer;
+    background:#fff;color:var(--primary);
+    padding:7px 14px;font-size:0.8125rem;font-weight:800;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .update-bar .ub-x{
+    flex:0 0 auto;border:none;border-radius:50%;cursor:pointer;
+    background:rgba(255,255,255,0.18);color:#fff;
+    width:26px;height:26px;font-size:0.9375rem;line-height:1;
+    -webkit-tap-highlight-color:transparent;
+  }
   .modal-overlay{
     position:absolute;inset:0;background:rgba(10,16,32,0.5);display:flex;align-items:flex-end;justify-content:center;
     z-index:100;animation:overlayFadeIn .15s ease;
@@ -2081,7 +2115,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-10-02-firestore-preview88"; // ROUND 59 (2026-10-02). Owner, on the day-type picker shipped hours earlier: "why 3 options?" -- plus "kisi b window me jisme cross hai phone me cross piche chla jata hai or content age ajata h thik kro. or cross jaha b h usmese transparent nature hata do." THE THIRD OPTION WAS A MECHANISM PRETENDING TO BE A QUESTION. The picker offered Normal / Holiday / Working day, and on a Tuesday "Normal" and "Working day" are the same sentence twice. The only thing the third option really did was carry the CLEAR. The question is binary -- is the plant running that day -- so there are two answers now, and the clear happens by itself: choosing the answer that already matches the date's own default removes the override instead of storing one. Picking "Working day" on an ordinary Tuesday, or "Holiday" on a Sunday, IS the undo, and nobody has to learn the word "normal". The reason field now appears only on a day that differs from its default, because on a default day there is nothing to explain. ONE DEFECT, NOT TWO, BEHIND THE CROSS. The X was never actually behind anything -- elementFromPoint at the button's own centre returned the button, before and after scrolling. Its background was rgba(220,38,38,0.10): ninety percent see-through, on a position:sticky button floating over a scrolling card list. Every card passed underneath and was plainly visible THROUGH the glyph, so it read as the content being in front. Reproduced at phone width first (the screenshot the owner sent came back pixel for pixel), then fixed where it actually was: an opaque surface fill, a solid danger ring and a shadow so it reads as floating ABOVE the list, and z-index off 5. Both builders -- showModal for every dialog and renderSheet for the notification/alert/More/profile sheets -- share the one .modal-x rule, so this is one fix for every window in the app, which the suite now asserts rather than assumes. TWO TESTING LESSONS, BOTH RECORDED BECAUSE THEY COST TIME. A dialog does NOT close synchronously: closeModal() adds .closing and lets the exit animation run before removing the node, so reading for the overlay in the same tick reports "still open" and makes a working X look dead -- the first version of this test said exactly that. And the z-index assertion was first written as "higher than every z-index in the stylesheet", which fails against the desktop phone-frame notch, a decoration that can never appear inside a window; whether anything covers the button is a question about the rendered page and is now answered by reading what is painted at its centre. MUTATION TESTING EARNED ITS KEEP AGAIN: a picker hard-wired to answer "working" for every date survived the whole suite, because every other check happened to use a working day. It would have told the admin a declared holiday was a working day, and saving would have silently wiped the holiday. The picker is now opened on a plain Sunday and on a declared holiday too. 10 mutants, every one caught after that gap was closed. 565 assertions green. firestore.rules UNCHANGED.
+const APP_BUILD = "2026-10-02-firestore-preview89"; // ROUND 60-61 (2026-10-02). Owner: "kuch logo ke refresh krne k bd kbi kbi purana portal dikh rha h. koi glitch h ya device ki cache problem" -- and then "Today wla jo banner hai vo yesterday same time se compare krrha hai. usko sirf yesterday krdo... same time nhi." IT WAS NEITHER A GLITCH NOR THE DEVICE. The whole portal is ONE 1.35 MB HTML file, and GitHub Pages serves HTML with a ten-minute Cache-Control AND keeps a copy on its own CDN -- so for a while after every deploy some phones are handed the previous file and that person is simply running the old app. Intermittent, different per person, heals itself: exactly as reported. Checked first rather than guessed: the app has no service worker of its own (the only one is OneSignal's, which handles push and does not cache pages), writes nothing to localStorage (safeSet goes to Firestore), and carries no cache-control meta and no version check at all. GitHub Pages does not allow custom response headers, so the server side cannot be fixed; what was fixable is that the app had no idea and told nobody. THREE THINGS MAKE THE CHECK SAFE ON A SHOP FLOOR. (1) It must never download the app again: APP_BUILD sits ~119 KB deep, so the build number is ALSO a <meta> in the head, inside the first kilobyte, and the check asks for a byte range -- measured at 4 KB per check against 1.35 MB for the app. (2) It must get past the very CDN causing the problem, so every request carries a unique query string; the same trick is what makes the reload trustworthy. (3) It must never break the app: offline, file://, a blocked fetch, a missing meta -- all end as silent no-ops, and "I could not tell" is never treated as "there is an update". TWO DEFECTS FOUND WHILE BUILDING IT, AND THE FIRST WOULD HAVE SHIPPED THE FEATURE DEAD. startUpdateChecks() was called from inside init(), an async bootstrap that awaits Firestore, and execution never reached the line -- the bar appeared in early tests only because the TEST called checkForUpdate() itself. It now starts at top level, and the suite proves it by opening the page with ?_v=1 and checking the parameter is stripped by nobody but the app. Second: the range was first a hint, with a cancelled stream as the guard -- measured against a server that ignores Range, the whole 1.35 MB still went on the wire, because cancelling stops US reading and not a response already being sent. The range is now a CONDITION: anything but 206 is abandoned before the body is touched, so a host that will not serve ranges simply gets no update check and costs nobody their data. TODAY vs YESTERDAY. The card passed today's elapsed milliseconds as the cutoff for BOTH days, so at 10am it compared against a third of yesterday. Yesterday is now counted in full; today stays capped at this moment, because the day is not over. Yesterday's length is measured between the two midnights rather than as a flat 24 hours, so a DST change cannot cut an hour off it or let it reach across into today. Round 49 asserted the OLD contract and has been rewritten with the reason recorded, so a later reader does not "restore" it. MUTATION TESTING EARNED ITS KEEP TWICE: it caught that a one-hour-too-long yesterday window changed nothing, because the fixture had no order near midnight -- a night shift books orders at exactly that hour, and 00:30 is now in the fixture. 13 mutants, every one caught. 587 assertions green. firestore.rules UNCHANGED.
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -2910,8 +2944,7 @@ const I18N = {
     'Promised more than there is. Low stock is on the bells above.':'जितना है उससे ज़्यादा वादा हो गया है। कम स्टॉक ऊपर घंटी में है।',
     'Short right now. Everything else is on the bells above.':'अभी कम पड़ रहा है। बाक़ी सब ऊपर घंटी में है।',
     'Marked attendance':'हाज़िरी लगाई',
-    'Balance':'बैलेंस', 'Total Expense':'कुल खर्च', 'as on today':'आज तक', 'this month':'इस महीने', 'today':'आज का', 'Tap to open Expenses':'खर्च खोलने के लिए टैप करें', 'Assalam Alaykum':'अस्सलामु अलैकुम', 'Today':'आज', 'Today — your work':'आज — आपका काम', 'vs yesterday, same time':'कल इसी समय तक से',
-    'Orders taken':'ऑर्डर लिए', 'Dispatched':'भेजे गए', 'Filled pc':'भरे pc', 'Packed pc':'पैक pc',
+    'Balance':'बैलेंस', 'Total Expense':'कुल खर्च', 'as on today':'आज तक', 'this month':'इस महीने', 'today':'आज का', 'Tap to open Expenses':'खर्च खोलने के लिए टैप करें', 'Assalam Alaykum':'अस्सलामु अलैकुम', 'Today':'आज', 'Today — your work':'आज — आपका काम', 'Orders taken':'ऑर्डर लिए', 'Dispatched':'भेजे गए', 'Filled pc':'भरे pc', 'Packed pc':'पैक pc',
     'Entries logged':'एंट्री कीं', 'Tasks open':'टास्क बाक़ी', 'Check-in':'चेक-इन', 'assigned':'सौंपे गए', 'not yet':'अभी नहीं', 'same':'बराबर',
     'Orders waiting for you':'आपके लिए रुके ऑर्डर', 'Assigned to you':'आपको सौंपे गए', 'Open tasks':'खुले टास्क',
     'Done today':'आज हो गया', 'Your entries':'आपकी एंट्री', 'Low filled stock':'भरा स्टॉक कम', 'Needs filling soon':'जल्द भरना है',
@@ -2928,7 +2961,7 @@ const I18N = {
     // Nav tab labels
     'Home':'होम', 'Orders':'ऑर्डर', 'Customers':'ग्राहक', 'Attendance':'हाज़िरी', 'Users':'स्टाफ़', 'Tasks':'काम', 'Mark Attendance':'हाज़िरी लगाएं', 'Stock':'स्टॉक', 'Expenses':'खर्चा', 'Data Log':'डेटा लॉग', 'Domino Printing':'डोमिनो प्रिंटिंग', 'Daily Work':'रोज़ का काम',
     // Home tab
-    'Welcome back':'वापसी पर स्वागत है', 'New Orders':'नए ऑर्डर', 'Pending orders':'रुके हुए ऑर्डर', '— Pick who it is for —':'— किसको देना है —', 'Reason (optional)':'वजह (ज़रूरी नहीं)', 'This is already a normal working day — saving removes any change made to it.':'यह पहले से सामान्य कार्य दिवस है — सेव करने पर इस पर किया गया कोई भी बदलाव हट जाएगा।', 'This is already a week off — saving removes any change made to it.':'यह पहले से साप्ताहिक अवकाश है — सेव करने पर इस पर किया गया कोई भी बदलाव हट जाएगा।', 'This week-off will count as a working day — attendance and entries both apply.':'यह अवकाश कार्य दिवस गिना जाएगा — हाज़िरी और एंट्री दोनों लागू होंगी।', 'This is already a normal working day — nothing to change.':'यह पहले से सामान्य कार्य दिवस है — बदलने को कुछ नहीं।', 'This is already a week off — nothing to change.':'यह पहले से साप्ताहिक अवकाश है — बदलने को कुछ नहीं।', 'Changed back to normal':'सामान्य पर वापस किया गया', 'Set day type':'दिन का प्रकार सेट करें', '🗓️ Set day type':'🗓️ दिन का प्रकार सेट करें', 'Applies to everyone for that date.':'उस तारीख़ के लिए सभी पर लागू होगा।', 'This day is':'यह दिन है', 'Normal':'सामान्य', 'week off (Sunday)':'साप्ताहिक अवकाश (रविवार)', 'a working day':'कार्य दिवस', 'Holiday — nobody works':'छुट्टी — कोई काम नहीं', 'Working day — everyone works':'कार्य दिवस — सब काम करेंगे', 'e.g. Diwali, or Month-end stock taking':'जैसे दिवाली, या महीने के अंत की स्टॉक गिनती', 'Any override is removed — this date goes back to being a week off.':'बदलाव हट जाएगा — यह तारीख़ फिर से साप्ताहिक अवकाश होगी।', 'Any override is removed — this date goes back to being a working day.':'बदलाव हट जाएगा — यह तारीख़ फिर से कार्य दिवस होगी।', 'This Sunday will count as a working day — attendance and entries both apply.':'यह रविवार कार्य दिवस गिना जाएगा — हाज़िरी और एंट्री दोनों लागू होंगी।', 'This date is already a working day by default; this also clears any holiday on it.':'यह तारीख़ वैसे भी कार्य दिवस है; इससे उस दिन की छुट्टी भी हट जाएगी।', 'Nobody works. Attendance is not needed and entries are blocked.':'कोई काम नहीं। हाज़िरी ज़रूरी नहीं और एंट्री बंद रहेंगी।', 'This date has no override to remove.':'इस तारीख़ पर कोई बदलाव नहीं है जिसे हटाया जाए।', 'Day type cleared':'दिन का प्रकार हटाया गया', 'Marked as a working day':'कार्य दिवस के रूप में सेट किया गया', 'Working day — set by admin':'कार्य दिवस — एडमिन द्वारा सेट', '— Pick the employee —':'— कर्मचारी चुनें —', 'Pick the employee first.':'पहले कर्मचारी चुनें।', '— Pick the oil —':'— कौन सा तेल, चुनें —', 'Pick which oil this purchase is for.':'यह खरीद किस तेल की है, चुनें।', 'Pick who this task is for.':'पहले चुनें कि यह टास्क किसके लिए है।', 'Short stock':'स्टॉक कम पड़ गया', 'Low stock':'स्टॉक कम हो रहा', 'Promised more than there is':'जितना है उससे ज्यादा वादा हो चुका', 'Running out soon':'जल्द खत्म होगा', 'Fill now':'अभी भरना है', 'Pack now':'अभी पैक करना है', 'Waiting for you':'आपका इंतज़ार है', 'Items ready, being packed':'सामान तैयार, पैकिंग चल रही है', 'Nothing logged yet today.':'आज अभी कुछ दर्ज नहीं हुआ।', 'Everything you have logged since midnight.':'आज रात 12 बजे से अब तक का सब काम।', 'Detail':'विवरण', 'Show more orders':'और ऑर्डर दिखाएं', 'Showing the newest':'सबसे नए', 'Showing the last':'पिछले', 'day(s)':'दिन', 'people per day.':'लोग रोज़।', 'Show 30 days':'30 दिन दिखाएं', 'Showing':'दिखा रहे हैं', 'Show all':'सभी दिखाएं', 'In packing':'पैकिंग में', 'Items ready, not yet packed':'सामान तैयार है, पैक नहीं हुआ', 'Ready to Dispatch':'भेजने के लिए तैयार', 'Packed & ready to ship':'पैक हो गया, भेजने के लिए तैयार', 'Recent orders':'हाल के ऑर्डर', 'Your recent activity':'आपका हाल का काम', 'Quick access':'आसान पहुंच',
+    'Welcome back':'वापसी पर स्वागत है', 'New Orders':'नए ऑर्डर', 'Pending orders':'रुके हुए ऑर्डर', '— Pick who it is for —':'— किसको देना है —', 'vs all of yesterday':'कल पूरे दिन से तुलना', 'A newer version is ready.':'नया वर्ज़न तैयार है।', 'Update':'अपडेट करें', 'Not now':'अभी नहीं', 'Reason (optional)':'वजह (ज़रूरी नहीं)', 'This is already a normal working day — saving removes any change made to it.':'यह पहले से सामान्य कार्य दिवस है — सेव करने पर इस पर किया गया कोई भी बदलाव हट जाएगा।', 'This is already a week off — saving removes any change made to it.':'यह पहले से साप्ताहिक अवकाश है — सेव करने पर इस पर किया गया कोई भी बदलाव हट जाएगा।', 'This week-off will count as a working day — attendance and entries both apply.':'यह अवकाश कार्य दिवस गिना जाएगा — हाज़िरी और एंट्री दोनों लागू होंगी।', 'This is already a normal working day — nothing to change.':'यह पहले से सामान्य कार्य दिवस है — बदलने को कुछ नहीं।', 'This is already a week off — nothing to change.':'यह पहले से साप्ताहिक अवकाश है — बदलने को कुछ नहीं।', 'Changed back to normal':'सामान्य पर वापस किया गया', 'Set day type':'दिन का प्रकार सेट करें', '🗓️ Set day type':'🗓️ दिन का प्रकार सेट करें', 'Applies to everyone for that date.':'उस तारीख़ के लिए सभी पर लागू होगा।', 'This day is':'यह दिन है', 'Normal':'सामान्य', 'week off (Sunday)':'साप्ताहिक अवकाश (रविवार)', 'a working day':'कार्य दिवस', 'Holiday — nobody works':'छुट्टी — कोई काम नहीं', 'Working day — everyone works':'कार्य दिवस — सब काम करेंगे', 'e.g. Diwali, or Month-end stock taking':'जैसे दिवाली, या महीने के अंत की स्टॉक गिनती', 'Any override is removed — this date goes back to being a week off.':'बदलाव हट जाएगा — यह तारीख़ फिर से साप्ताहिक अवकाश होगी।', 'Any override is removed — this date goes back to being a working day.':'बदलाव हट जाएगा — यह तारीख़ फिर से कार्य दिवस होगी।', 'This Sunday will count as a working day — attendance and entries both apply.':'यह रविवार कार्य दिवस गिना जाएगा — हाज़िरी और एंट्री दोनों लागू होंगी।', 'This date is already a working day by default; this also clears any holiday on it.':'यह तारीख़ वैसे भी कार्य दिवस है; इससे उस दिन की छुट्टी भी हट जाएगी।', 'Nobody works. Attendance is not needed and entries are blocked.':'कोई काम नहीं। हाज़िरी ज़रूरी नहीं और एंट्री बंद रहेंगी।', 'This date has no override to remove.':'इस तारीख़ पर कोई बदलाव नहीं है जिसे हटाया जाए।', 'Day type cleared':'दिन का प्रकार हटाया गया', 'Marked as a working day':'कार्य दिवस के रूप में सेट किया गया', 'Working day — set by admin':'कार्य दिवस — एडमिन द्वारा सेट', '— Pick the employee —':'— कर्मचारी चुनें —', 'Pick the employee first.':'पहले कर्मचारी चुनें।', '— Pick the oil —':'— कौन सा तेल, चुनें —', 'Pick which oil this purchase is for.':'यह खरीद किस तेल की है, चुनें।', 'Pick who this task is for.':'पहले चुनें कि यह टास्क किसके लिए है।', 'Short stock':'स्टॉक कम पड़ गया', 'Low stock':'स्टॉक कम हो रहा', 'Promised more than there is':'जितना है उससे ज्यादा वादा हो चुका', 'Running out soon':'जल्द खत्म होगा', 'Fill now':'अभी भरना है', 'Pack now':'अभी पैक करना है', 'Waiting for you':'आपका इंतज़ार है', 'Items ready, being packed':'सामान तैयार, पैकिंग चल रही है', 'Nothing logged yet today.':'आज अभी कुछ दर्ज नहीं हुआ।', 'Everything you have logged since midnight.':'आज रात 12 बजे से अब तक का सब काम।', 'Detail':'विवरण', 'Show more orders':'और ऑर्डर दिखाएं', 'Showing the newest':'सबसे नए', 'Showing the last':'पिछले', 'day(s)':'दिन', 'people per day.':'लोग रोज़।', 'Show 30 days':'30 दिन दिखाएं', 'Showing':'दिखा रहे हैं', 'Show all':'सभी दिखाएं', 'In packing':'पैकिंग में', 'Items ready, not yet packed':'सामान तैयार है, पैक नहीं हुआ', 'Ready to Dispatch':'भेजने के लिए तैयार', 'Packed & ready to ship':'पैक हो गया, भेजने के लिए तैयार', 'Recent orders':'हाल के ऑर्डर', 'Your recent activity':'आपका हाल का काम', 'Quick access':'आसान पहुंच',
     // Order tile actions + status badges
     'Accept':'मंज़ूर करें', 'Reject':'नामंज़ूर करें', 'Mark Ready':'तैयार करें', '🚚 Mark Ready to Dispatch':'🚚 भेजने के लिए तैयार करें', 'Processed & Dispatched':'भेज दिया गया', 'Edit':'बदलें', 'Delete':'हटाएं',
     'New':'नया', 'Processing':'काम चल रहा है', 'Rejected':'नामंज़ूर',
@@ -3408,8 +3441,7 @@ const I18N = {
     'Promised more than there is. Low stock is on the bells above.':'جتنا ہے اس سے زیادہ وعدہ ہو گیا ہے۔ کم اسٹاک اوپر گھنٹی میں ہے۔',
     'Short right now. Everything else is on the bells above.':'ابھی کم پڑ رہا ہے۔ باقی سب اوپر گھنٹی میں ہے۔',
     'Marked attendance':'حاضری لگائی',
-    'Balance':'بیلنس', 'Total Expense':'کل خرچ', 'as on today':'آج تک', 'this month':'اس مہینے', 'today':'آج کا', 'Tap to open Expenses':'اخراجات کھولنے کے لیے ٹیپ کریں', 'Assalam Alaykum':'السلام علیکم', 'Today':'آج', 'Today — your work':'آج — آپ کا کام', 'vs yesterday, same time':'کل اسی وقت تک سے',
-    'Orders taken':'آرڈر لیے', 'Dispatched':'بھیجے گئے', 'Filled pc':'بھرے pc', 'Packed pc':'پیک pc',
+    'Balance':'بیلنس', 'Total Expense':'کل خرچ', 'as on today':'آج تک', 'this month':'اس مہینے', 'today':'آج کا', 'Tap to open Expenses':'اخراجات کھولنے کے لیے ٹیپ کریں', 'Assalam Alaykum':'السلام علیکم', 'Today':'آج', 'Today — your work':'آج — آپ کا کام', 'Orders taken':'آرڈر لیے', 'Dispatched':'بھیجے گئے', 'Filled pc':'بھرے pc', 'Packed pc':'پیک pc',
     'Entries logged':'انٹری کیں', 'Tasks open':'ٹاسک باقی', 'Check-in':'چیک اِن', 'assigned':'سونپے گئے', 'not yet':'ابھی نہیں', 'same':'برابر',
     'Orders waiting for you':'آپ کے لیے رکے آرڈر', 'Assigned to you':'آپ کو سونپے گئے', 'Open tasks':'کھلے ٹاسک',
     'Done today':'آج ہو گیا', 'Your entries':'آپ کی انٹری', 'Low filled stock':'بھرا اسٹاک کم', 'Needs filling soon':'جلد بھرنا ہے',
@@ -3424,7 +3456,7 @@ const I18N = {
     'Pick a product to see every size at once — packed, filled, and how much oil is left.':'کسی پروڈکٹ پر ٹیپ کریں — اس کے تمام سائز ایک ساتھ: پیک، بھرا ہوا، اور تیل کتنا بچا ہے۔',
     'Change app language to':'ایپ کی زبان تبدیل کریں', 'Yes, change it':'ہاں، تبدیل کریں', 'Cancel':'منسوخ کریں',
     'Home':'ہوم', 'Orders':'آرڈر', 'Customers':'گاہک', 'Attendance':'حاضری', 'Users':'عملہ', 'Tasks':'کام', 'Mark Attendance':'حاضری لگائیں', 'Stock':'اسٹاک', 'Expenses':'خرچہ', 'Data Log':'ڈیٹا لاگ', 'Domino Printing':'ڈومینو پرنٹنگ', 'Daily Work':'روزانہ کا کام',
-    'Welcome back':'واپسی پر خوش آمدید', 'New Orders':'نئے آرڈر', 'Pending orders':'رکے ہوئے آرڈر', '— Pick who it is for —':'— کس کو دینا ہے —', 'Reason (optional)':'وجہ (اختیاری)', 'This is already a normal working day — saving removes any change made to it.':'یہ پہلے سے عام کام کا دن ہے — محفوظ کرنے پر اس پر کی گئی کوئی بھی تبدیلی ہٹ جائے گی۔', 'This is already a week off — saving removes any change made to it.':'یہ پہلے سے ہفتہ وار چھٹی ہے — محفوظ کرنے پر اس پر کی گئی کوئی بھی تبدیلی ہٹ جائے گی۔', 'This week-off will count as a working day — attendance and entries both apply.':'یہ چھٹی کام کا دن شمار ہوگی — حاضری اور انٹری دونوں لاگو ہوں گی۔', 'This is already a normal working day — nothing to change.':'یہ پہلے سے عام کام کا دن ہے — بدلنے کو کچھ نہیں۔', 'This is already a week off — nothing to change.':'یہ پہلے سے ہفتہ وار چھٹی ہے — بدلنے کو کچھ نہیں۔', 'Changed back to normal':'عام پر واپس کیا گیا', 'Set day type':'دن کی قسم مقرر کریں', '🗓️ Set day type':'🗓️ دن کی قسم مقرر کریں', 'Applies to everyone for that date.':'اس تاریخ کے لیے سب پر لاگو ہوگا۔', 'This day is':'یہ دن ہے', 'Normal':'عام', 'week off (Sunday)':'ہفتہ وار چھٹی (اتوار)', 'a working day':'کام کا دن', 'Holiday — nobody works':'چھٹی — کوئی کام نہیں', 'Working day — everyone works':'کام کا دن — سب کام کریں گے', 'e.g. Diwali, or Month-end stock taking':'جیسے دیوالی، یا مہینے کے آخر کی اسٹاک گنتی', 'Any override is removed — this date goes back to being a week off.':'تبدیلی ہٹ جائے گی — یہ تاریخ دوبارہ ہفتہ وار چھٹی ہوگی۔', 'Any override is removed — this date goes back to being a working day.':'تبدیلی ہٹ جائے گی — یہ تاریخ دوبارہ کام کا دن ہوگی۔', 'This Sunday will count as a working day — attendance and entries both apply.':'یہ اتوار کام کا دن شمار ہوگا — حاضری اور انٹری دونوں لاگو ہوں گی۔', 'This date is already a working day by default; this also clears any holiday on it.':'یہ تاریخ ویسے بھی کام کا دن ہے؛ اس سے اس دن کی چھٹی بھی ہٹ جائے گی۔', 'Nobody works. Attendance is not needed and entries are blocked.':'کوئی کام نہیں۔ حاضری ضروری نہیں اور انٹری بند رہیں گی۔', 'This date has no override to remove.':'اس تاریخ پر کوئی تبدیلی نہیں جسے ہٹایا جائے۔', 'Day type cleared':'دن کی قسم ہٹا دی گئی', 'Marked as a working day':'کام کے دن کے طور پر مقرر کیا گیا', 'Working day — set by admin':'کام کا دن — ایڈمن کی طرف سے', '— Pick the employee —':'— ملازم منتخب کریں —', 'Pick the employee first.':'پہلے ملازم منتخب کریں۔', '— Pick the oil —':'— کون سا تیل، منتخب کریں —', 'Pick which oil this purchase is for.':'یہ خریداری کس تیل کی ہے، منتخب کریں۔', 'Pick who this task is for.':'پہلے منتخب کریں کہ یہ ٹاسک کس کے لیے ہے۔', 'Short stock':'اسٹاک کم پڑ گیا', 'Low stock':'اسٹاک کم ہو رہا', 'Promised more than there is':'جتنا ہے اس سے زیادہ وعدہ ہو چکا', 'Running out soon':'جلد ختم ہو گا', 'Fill now':'ابھی بھرنا ہے', 'Pack now':'ابھی پیک کرنا ہے', 'Waiting for you':'آپ کا انتظار ہے', 'Items ready, being packed':'سامان تیار، پیکنگ جاری ہے', 'Nothing logged yet today.':'آج ابڈک کچھ درج نہیں ہوا۔', 'Everything you have logged since midnight.':'آج رات 12 بجے سے اب تک کا سب کام۔', 'Detail':'تفصیل', 'Show more orders':'مزید آرڈر دکھائیں', 'Showing the newest':'سب سے نئے', 'Showing the last':'پچھلے', 'day(s)':'دن', 'people per day.':'لوگ روزانہ۔', 'Show 30 days':'30 دن دکھائیں', 'Showing':'دکھا رہے ہیں', 'Show all':'سب دکھائیں', 'In packing':'پیکنگ میں', 'Items ready, not yet packed':'سامان تیار ہے، پیک نہیں ہوا', 'Ready to Dispatch':'بھیجنے کے لیے تیار', 'Packed & ready to ship':'پیک ہو گیا، بھیجنے کے لیے تیار', 'Recent orders':'حالیہ آرڈر', 'Your recent activity':'آپ کا حالیہ کام', 'Quick access':'آسان رسائی',
+    'Welcome back':'واپسی پر خوش آمدید', 'New Orders':'نئے آرڈر', 'Pending orders':'رکے ہوئے آرڈر', '— Pick who it is for —':'— کس کو دینا ہے —', 'vs all of yesterday':'کل کے پورے دن سے موازنہ', 'A newer version is ready.':'نیا ورژن تیار ہے۔', 'Update':'اپ ڈیٹ کریں', 'Not now':'ابھی نہیں', 'Reason (optional)':'وجہ (اختیاری)', 'This is already a normal working day — saving removes any change made to it.':'یہ پہلے سے عام کام کا دن ہے — محفوظ کرنے پر اس پر کی گئی کوئی بھی تبدیلی ہٹ جائے گی۔', 'This is already a week off — saving removes any change made to it.':'یہ پہلے سے ہفتہ وار چھٹی ہے — محفوظ کرنے پر اس پر کی گئی کوئی بھی تبدیلی ہٹ جائے گی۔', 'This week-off will count as a working day — attendance and entries both apply.':'یہ چھٹی کام کا دن شمار ہوگی — حاضری اور انٹری دونوں لاگو ہوں گی۔', 'This is already a normal working day — nothing to change.':'یہ پہلے سے عام کام کا دن ہے — بدلنے کو کچھ نہیں۔', 'This is already a week off — nothing to change.':'یہ پہلے سے ہفتہ وار چھٹی ہے — بدلنے کو کچھ نہیں۔', 'Changed back to normal':'عام پر واپس کیا گیا', 'Set day type':'دن کی قسم مقرر کریں', '🗓️ Set day type':'🗓️ دن کی قسم مقرر کریں', 'Applies to everyone for that date.':'اس تاریخ کے لیے سب پر لاگو ہوگا۔', 'This day is':'یہ دن ہے', 'Normal':'عام', 'week off (Sunday)':'ہفتہ وار چھٹی (اتوار)', 'a working day':'کام کا دن', 'Holiday — nobody works':'چھٹی — کوئی کام نہیں', 'Working day — everyone works':'کام کا دن — سب کام کریں گے', 'e.g. Diwali, or Month-end stock taking':'جیسے دیوالی، یا مہینے کے آخر کی اسٹاک گنتی', 'Any override is removed — this date goes back to being a week off.':'تبدیلی ہٹ جائے گی — یہ تاریخ دوبارہ ہفتہ وار چھٹی ہوگی۔', 'Any override is removed — this date goes back to being a working day.':'تبدیلی ہٹ جائے گی — یہ تاریخ دوبارہ کام کا دن ہوگی۔', 'This Sunday will count as a working day — attendance and entries both apply.':'یہ اتوار کام کا دن شمار ہوگا — حاضری اور انٹری دونوں لاگو ہوں گی۔', 'This date is already a working day by default; this also clears any holiday on it.':'یہ تاریخ ویسے بھی کام کا دن ہے؛ اس سے اس دن کی چھٹی بھی ہٹ جائے گی۔', 'Nobody works. Attendance is not needed and entries are blocked.':'کوئی کام نہیں۔ حاضری ضروری نہیں اور انٹری بند رہیں گی۔', 'This date has no override to remove.':'اس تاریخ پر کوئی تبدیلی نہیں جسے ہٹایا جائے۔', 'Day type cleared':'دن کی قسم ہٹا دی گئی', 'Marked as a working day':'کام کے دن کے طور پر مقرر کیا گیا', 'Working day — set by admin':'کام کا دن — ایڈمن کی طرف سے', '— Pick the employee —':'— ملازم منتخب کریں —', 'Pick the employee first.':'پہلے ملازم منتخب کریں۔', '— Pick the oil —':'— کون سا تیل، منتخب کریں —', 'Pick which oil this purchase is for.':'یہ خریداری کس تیل کی ہے، منتخب کریں۔', 'Pick who this task is for.':'پہلے منتخب کریں کہ یہ ٹاسک کس کے لیے ہے۔', 'Short stock':'اسٹاک کم پڑ گیا', 'Low stock':'اسٹاک کم ہو رہا', 'Promised more than there is':'جتنا ہے اس سے زیادہ وعدہ ہو چکا', 'Running out soon':'جلد ختم ہو گا', 'Fill now':'ابھی بھرنا ہے', 'Pack now':'ابھی پیک کرنا ہے', 'Waiting for you':'آپ کا انتظار ہے', 'Items ready, being packed':'سامان تیار، پیکنگ جاری ہے', 'Nothing logged yet today.':'آج ابڈک کچھ درج نہیں ہوا۔', 'Everything you have logged since midnight.':'آج رات 12 بجے سے اب تک کا سب کام۔', 'Detail':'تفصیل', 'Show more orders':'مزید آرڈر دکھائیں', 'Showing the newest':'سب سے نئے', 'Showing the last':'پچھلے', 'day(s)':'دن', 'people per day.':'لوگ روزانہ۔', 'Show 30 days':'30 دن دکھائیں', 'Showing':'دکھا رہے ہیں', 'Show all':'سب دکھائیں', 'In packing':'پیکنگ میں', 'Items ready, not yet packed':'سامان تیار ہے، پیک نہیں ہوا', 'Ready to Dispatch':'بھیجنے کے لیے تیار', 'Packed & ready to ship':'پیک ہو گیا، بھیجنے کے لیے تیار', 'Recent orders':'حالیہ آرڈر', 'Your recent activity':'آپ کا حالیہ کام', 'Quick access':'آسان رسائی',
     'Accept':'منظور کریں', 'Reject':'نامنظور کریں', 'Mark Ready':'تیار کریں', '🚚 Mark Ready to Dispatch':'🚚 بھیجنے کے لیے تیار کریں', 'Processed & Dispatched':'بھیج دیا گیا', 'Edit':'تبدیل کریں', 'Delete':'ہٹا دیں',
     'New':'نیا', 'Processing':'کام ہو رہا ہے', 'Rejected':'نامنظور',
     'Clients':'گاہک', 'Attend':'حاضری', 'Team':'ٹیم', 'Log':'لاگ', 'Domino':'ڈومینو', 'Daily':'روزانہ', 'More':'مزید',
@@ -12750,8 +12782,13 @@ function homePrevDayStart(){
   const d = new Date(); d.setHours(12,0,0,0); d.setDate(d.getDate()-1); d.setHours(0,0,0,0);
   return d.getTime();
 }
-// Counts for ONE day, only up to `cutoff` milliseconds into that day. Passing
-// today's elapsed milliseconds for both days is what makes the two comparable.
+// Counts for ONE day, only up to `cutoff` milliseconds into that day.
+// ROUND 61 (owner: "Today wla jo banner hai vo yesterday same time se compare
+// krrha hai. usko sirf yesterday krdo... same time nhi"). Today is still
+// capped at the current moment -- the day is not over, there is nothing else
+// it could mean -- but YESTERDAY is now counted in full, so the comparison is
+// against the whole of yesterday rather than against however far into the day
+// it happens to be right now.
 function homeDayCounts(dayStart, cutoff, username){
   const within = ts => {
     if(!ts) return false;
@@ -12777,11 +12814,16 @@ function homeDayCounts(dayStart, cutoff, username){
 function homeTodayStats(){
   const now = Date.now();
   const todayStart = homeDayStart(now);
-  const cutoff = now - todayStart;            // how far into the day we are
+  const prevStart = homePrevDayStart();
   const username = (S.currentUser && S.currentUser.username) || '';
+  // Yesterday's full length is measured as the gap between the two midnights
+  // rather than as a flat 24 hours, so a DST change cannot cut an hour off the
+  // comparison or let it bleed into today -- the same reason homePrevDayStart
+  // goes via noon instead of subtracting a day in milliseconds.
+  const prevFullDay = todayStart - prevStart - 1;
   return {
-    today: homeDayCounts(todayStart, cutoff, username),
-    prev:  homeDayCounts(homePrevDayStart(), cutoff, username),
+    today: homeDayCounts(todayStart, now - todayStart, username),  // up to this moment
+    prev:  homeDayCounts(prevStart, prevFullDay, username),        // all of yesterday
   };
 }
 // The arrow. Deliberately shows the DIFFERENCE, not a percentage: "3 more than
@@ -12825,7 +12867,7 @@ function homeTodayCardHtml(withAttendance){
     </button>`;
   }
   return `<div class="today-card">
-    <div class="today-head"><b>${esc(t('Today'))}</b><span>${esc(t('vs yesterday, same time'))}</span></div>
+    <div class="today-head"><b>${esc(t('Today'))}</b><span>${esc(t('vs all of yesterday'))}</span></div>
     <div class="today-grid${withAttendance ? ' cols-5' : ''}">
       ${homeTodayCellHtml(s.today.orders.toLocaleString('en-IN'), esc(t('Orders taken')), s.today.orders, s.prev.orders)}
       ${homeTodayCellHtml(s.today.dispatched.toLocaleString('en-IN'), esc(t('Dispatched')), s.today.dispatched, s.prev.dispatched)}
@@ -12878,7 +12920,7 @@ function homeMyTodayCardHtml(role){
   const att = attendanceRecordFor(S.currentUser.username, todayKey);
   const checkedIn = attendanceStatusFor(S.currentUser.username, todayKey).status === 'present';
   return `<div class="today-card">
-    <div class="today-head"><b>${esc(t('Today — your work'))}</b><span>${esc(t('vs yesterday, same time'))}</span></div>
+    <div class="today-head"><b>${esc(t('Today — your work'))}</b><span>${esc(t('vs all of yesterday'))}</span></div>
     <div class="today-grid">
       ${homeTodayCellHtml(s.today.myEntries, esc(t('Entries logged')), s.today.myEntries, s.prev.myEntries)}
       ${homeTodayCellHtml(mineNow.toLocaleString('en-IN'), esc(q === 'packaging' ? t('Packed pc') : t('Filled pc')), mineNow, minePrev)}
@@ -20145,6 +20187,164 @@ function checkForNewNotifRing(){
 
 /* ============================= INIT ============================= */
 let loadAllPromise = null;
+// =====================================================================
+// ROUND 60 -- "kuch logo ke refresh krne k bd kbi kbi purana portal dikh
+// rha h. koi glitch h ya device ki cache problem"
+// =====================================================================
+// It was neither a glitch nor really the device. The whole portal is ONE
+// 1.35 MB HTML file, and GitHub Pages serves HTML with a ten-minute
+// Cache-Control AND keeps a copy on its own CDN -- so for a while after
+// every deploy, some phones are handed the previous file and the person is
+// simply running the old app. It is intermittent, different per person, and
+// it heals itself, which is exactly how it was described.
+//
+// GitHub Pages does not let you set response headers, so the server side of
+// this cannot be fixed. What CAN be fixed is that the app had no idea, and
+// told nobody. It now asks the server what is deployed and offers an update.
+//
+// Three things make this safe to run on a shop floor on mobile data:
+//
+//  1. IT MUST NEVER DOWNLOAD THE APP AGAIN. The real APP_BUILD sits ~119 KB
+//     into this file, far too deep to fetch on a phone, which is why the
+//     build number is ALSO in a <meta> in the head -- inside the first
+//     kilobyte. The check asks for a byte range, and on top of that reads
+//     the response as a stream and cancels it after 32 KB, so a host that
+//     ignores Range headers still cannot cost anybody 1.35 MB.
+//  2. IT MUST GET PAST THE CDN. A plain request would be answered by the
+//     same edge cache that is causing the problem, so the check appends a
+//     unique query string: a URL the CDN has never seen must come from the
+//     origin. The same trick is what makes the reload itself trustworthy.
+//  3. IT MUST NEVER BREAK THE APP. Every path is wrapped; a failed fetch, a
+//     host that refuses HEAD, a missing meta, being offline -- all of them
+//     end as a silent no-op. A version checker that can throw is worse than
+//     no version checker.
+const UPDATE_CHECK_FIRST_MS = 25000;    // after the opening Firestore burst has settled
+const UPDATE_CHECK_EVERY_MS = 30*60*1000;
+const UPDATE_CHECK_MIN_GAP_MS = 10*60*1000; // on re-focus, don't re-ask within this
+const UPDATE_READ_CAP_BYTES = 32768;
+let _updateLastCheckAt = 0;
+let _updateBarShown = false;
+let _updateDismissedAt = 0;
+
+// Our own URL with no query and no hash -- the file itself.
+function ownPageUrl(){
+  return location.origin + location.pathname;
+}
+// Read at most UPDATE_READ_CAP_BYTES of a response, then stop pulling. This
+// is the guard that holds even when Range is ignored.
+async function readCapped(res){
+  if(!res.body || !res.body.getReader) return (await res.text()).slice(0, UPDATE_READ_CAP_BYTES);
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let out = '', got = 0;
+  while(got < UPDATE_READ_CAP_BYTES){
+    const { done, value } = await reader.read();
+    if(done) break;
+    got += value.length;
+    out += dec.decode(value, { stream:true });
+  }
+  try{ await reader.cancel(); }catch(e){}
+  return out;
+}
+function buildFromHtml(text){
+  const m = /<meta\s+name="app-build"\s+content="([^"]*)"/i.exec(text || '');
+  return m ? m[1] : null;
+}
+// Returns the build string the SERVER currently has, or null if it could not
+// be established for any reason at all.
+async function fetchDeployedBuild(){
+  const url = ownPageUrl() + '?_v=' + Date.now();
+  // FOUND IN TESTING. The first version asked for a byte range and relied on
+  // cancelling the stream to stop a host that ignored it. Measured against a
+  // server that ignores Range, that still put the whole 1.35 MB on the wire --
+  // cancelling stops US reading, it does not reliably stop the response that
+  // is already being sent. On a shop floor on mobile data that would have been
+  // a far worse bug than the one this feature exists to fix.
+  //
+  // So the range is now a CONDITION, not a hint: anything other than 206 is
+  // aborted before the body is touched and reported as "could not tell". A
+  // host that will not serve ranges simply gets no update check -- which costs
+  // nobody anything, and is the right way for this to fail.
+  const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+  const res = await fetch(url, {
+    method: 'GET',
+    cache: 'no-store',
+    credentials: 'omit',
+    headers: { 'Range': 'bytes=0-4095' },
+    signal: ctrl ? ctrl.signal : undefined,
+  });
+  if(res.status !== 206){
+    try{ if(ctrl) ctrl.abort(); else if(res.body && res.body.cancel) res.body.cancel(); }catch(e){}
+    return null;
+  }
+  return buildFromHtml(await readCapped(res));
+}
+async function checkForUpdate(){
+  try{
+    if(_updateBarShown) return;
+    if(typeof navigator !== 'undefined' && navigator.onLine === false) return;
+    if(location.protocol === 'file:') return;  // nothing to check against
+    _updateLastCheckAt = Date.now();
+    const deployed = await fetchDeployedBuild();
+    // A missing or unreadable meta means we learned nothing -- which is NOT
+    // the same as "there is an update", and must never be treated as one.
+    if(!deployed || deployed === APP_BUILD) return;
+    if(Date.now() - _updateDismissedAt < 2*60*60*1000) return; // they said not now
+    showUpdateBar(deployed);
+  }catch(e){ /* offline, blocked, CORS, anything -- stay quiet */ }
+}
+function showUpdateBar(deployed){
+  if(document.getElementById('updateBar')) return;
+  _updateBarShown = true;
+  const bar = document.createElement('div');
+  bar.className = 'update-bar';
+  bar.id = 'updateBar';
+  bar.innerHTML = '<span class="ub-text">' + esc(t('A newer version is ready.')) + '</span>'
+    + '<button type="button" class="ub-go" id="updateGoBtn">' + esc(t('Update')) + '</button>'
+    + '<button type="button" class="ub-x" id="updateDismissBtn" aria-label="' + esc(t('Not now')) + '">\u2715</button>';
+  document.body.appendChild(bar);
+  const go = document.getElementById('updateGoBtn');
+  if(go) go.addEventListener('click', reloadToLatest);
+  const no = document.getElementById('updateDismissBtn');
+  if(no) no.addEventListener('click', ()=>{
+    _updateDismissedAt = Date.now(); _updateBarShown = false;
+    const b = document.getElementById('updateBar'); if(b) b.remove();
+  });
+}
+// The reload has the same problem the check does: asking for the same URL
+// again can be answered by the very cache that is serving the old copy. A
+// URL the CDN has never seen cannot be. The parameter is stripped again on
+// the way in (see below), so it never accumulates and the installed app's
+// start_url still matches.
+function reloadToLatest(){
+  try{
+    location.replace(ownPageUrl() + '?_v=' + Date.now() + location.hash);
+  }catch(e){ location.reload(); }
+}
+function stripUpdateParamFromUrl(){
+  try{
+    if(!/[?&]_v=/.test(location.search)) return;
+    const u = new URL(location.href);
+    u.searchParams.delete('_v');
+    const clean = u.pathname + (u.searchParams.toString() ? '?'+u.searchParams.toString() : '') + u.hash;
+    history.replaceState(history.state, '', clean);
+  }catch(e){}
+}
+function startUpdateChecks(){
+  try{
+    stripUpdateParamFromUrl();
+    setTimeout(checkForUpdate, UPDATE_CHECK_FIRST_MS);
+    setInterval(checkForUpdate, UPDATE_CHECK_EVERY_MS);
+  }catch(e){}
+}
+// FOUND IN TESTING, and without it this feature would have shipped dead. The
+// start call was first placed inside init() -- an async bootstrap that awaits
+// Firestore -- and execution never reached the line. The update bar appeared
+// in the early tests only because the TEST called checkForUpdate() itself;
+// left alone the app would never have checked even once. Started here instead,
+// at top level, because it needs nothing but location, history and a timer.
+startUpdateChecks();
+
 (async function init(){
   applyDocumentPrefAttrs(); // sets <html dir>/lang/fs-* BEFORE the first paint, off this device's localStorage-seeded default -- applyUserPreferences() (called once a session/login resolves, below) re-applies it against the actual logged-in user's own saved preference once that's known
   loadOfflineQueue(); // now-dead queue (nothing populates it any more -- Firestore's own offline persistence replaces it, see the plumbing block's header comment); loading it is a harmless no-op, kept only so a leftover queue from a pre-Task-#54 session isn't silently lost
@@ -20196,14 +20396,14 @@ let loadAllPromise = null;
   // very first event is always the collection's full current state, so
   // this can never show stale/incomplete data -- it can only catch
   // things up faster) and removes the need to reload anything.
-  window.addEventListener('online', ()=>{ showToast('Back online — syncing…'); flushOfflineQueue(); flushExpenseDeltaQueue(); reverifyOneSignalLogin(); if(S.currentUser) attachFirestoreListeners(); });
+  window.addEventListener('online', ()=>{ checkForUpdate(); showToast('Back online — syncing…'); flushOfflineQueue(); flushExpenseDeltaQueue(); reverifyOneSignalLogin(); if(S.currentUser) attachFirestoreListeners(); });
   window.addEventListener('offline', ()=>{ showToast('No connection — changes will be saved and synced automatically', true); });
   // Installed PWAs can stay open (backgrounded) for days without a real page
   // reload -- if the very first OneSignal.login() attempt lost its race
   // (see ensureOneSignalLogin above), this is the other natural moment to
   // quietly retry it (and now also the moment to force-refresh live data --
   // see the BUGFIX comment above).
-  document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible'){ reverifyOneSignalLogin(); if(S.currentUser) attachFirestoreListeners(); } });
+  document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible'){ if(Date.now() - _updateLastCheckAt > UPDATE_CHECK_MIN_GAP_MS) checkForUpdate(); reverifyOneSignalLogin(); if(S.currentUser) attachFirestoreListeners(); } });
   // Re-render (debounced) when the window crosses the desktop-sidebar
   // breakpoint, so resizing a browser window updates the nav split
   // (bottom-bar "More" overflow <-> full sidebar list) without waiting
