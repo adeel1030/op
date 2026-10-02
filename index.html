@@ -1667,13 +1667,28 @@
      margins let it sit in the card's own padding without reserving a row
      of its own, and float:right keeps it out of the normal flow so the
      heading below still starts at the top. */
+  /* ROUND 59 (owner: "kisi b window me jisme cross hai phone me cross piche
+     chla jata hai or content age ajata h thik kro. or cross jaha b h usmese
+     transparent nature hata do").
+     Both halves of that were ONE defect. The background was
+     rgba(220,38,38,0.10) -- ninety percent see-through -- and this button is
+     position:sticky over a scrolling card list, so every card passed straight
+     under it and showed through the glyph. Nothing was ever actually behind
+     the X (elementFromPoint at its own centre always returned the button);
+     it only LOOKED that way because the content under it was visible through
+     it. An opaque surface fixes the appearance and the complaint together.
+     The ring and the shadow are what make it read as floating ABOVE the list
+     rather than as a flat patch sitting in it, which matters most on the
+     sheets, where the first card starts directly beneath the button.
+     z-index raised off 5 so nothing inside a sheet can get over it. */
   .modal-x{
-    position:sticky;top:0;float:right;z-index:5;
+    position:sticky;top:0;float:right;z-index:40;
     margin:-4px -10px 0 0;
     width:32px;height:32px;flex:0 0 auto;
     display:flex;align-items:center;justify-content:center;
-    border:none;border-radius:50%;cursor:pointer;
-    background:rgba(220,38,38,0.10);color:var(--danger);
+    border:1.5px solid var(--danger);border-radius:50%;cursor:pointer;
+    background:var(--surface);color:var(--danger);
+    box-shadow:0 2px 8px rgba(0,0,0,0.18);
     font-size:1.0625rem;line-height:1;font-weight:700;
     -webkit-tap-highlight-color:transparent;
   }
@@ -2066,7 +2081,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-10-02-firestore-preview87"; // ROUND 58 (2026-10-02). Owner: "Holiday ya weekend ko Working Day banane k liye Admin ko power dedo." TWO powers were missing, and the second was never asked for out loud. (a) THE PLANT RUNS ON SOME SUNDAYS -- month-end, the festival rush, a stock count -- and isWorkingDay() was `!isSunday && !holiday` with nothing able to say otherwise, so on those days nobody could mark attendance and nobody could record a single entry. The work happened; the system refused to admit it. (b) A HOLIDAY COULD NEVER BE TAKEN BACK: "Mark holiday" only ever ADDED one and there is no delete anywhere in the app, so one wrong date killed that day permanently. Declaring it a working day is the undo. The modal is now a day-type picker -- Holiday / Working day / Normal -- where Normal removes the override and the default rule applies again. ONE MAP, NOT TWO. S.holidays became a map of CALENDAR EXCEPTIONS, with type:'working' as the opposite of a holiday. Deliberately the same map: one date cannot then be both a holiday and a working day (impossible by construction rather than something two maps must be reconciled about); firestore.rules already allows admin writes to /holidays/{id} with NO field validation, so nothing has to be deployed -- a new collection would have needed a rule, and a missed rules deploy is a silent permission-denied (this project has lost a day to exactly that twice, users/theme and orders/updatedByUsername); and every existing document has no `type` at all, so it keeps reading as a holiday with no migration. That last point is tested explicitly, because `type === 'holiday'` instead of `type !== 'working'` would have turned a whole year of festival dates into workdays the moment this shipped. SIX READERS, NOT ONE. The risk in this change was never the rule -- it was that isWorkingDay, attendanceStatusFor, computePresenceByDate, the attendance map, holidayLabelFor and the check-in screen each decided "is this a day off" on their own. Flip five and the sixth still calls it a week-off, so entries are allowed on a day attendance says does not exist. All six now go through isForcedWorkingDay/isDeclaredHoliday, asserted as a set rather than case by case, and a switched-on Sunday is labelled on the admin map so he can see which ones he turned on. TWO DEFECTS FOUND WHILE BUILDING THIS, BOTH MINE. A local `const render =` inside the modal shadowed the app's global render(), so closeModal(); render() would have returned an HTML string instead of repainting -- the identifier resolves, so no undefined-scan could have caught it. And the picker did not follow its own date field: opening it on a Tuesday and switching to a Sunday already declared a working day still showed "Normal", telling the admin the date was unset when it was not and making a save a blind overwrite of his own earlier decision. The test suite's own clock dependency was fixed too: today cannot be made a Sunday, so isSundayDateKey is stubbed for one date and the stub is itself asserted, which means this test gives the same answer on every day of the week (last round shipped a hidden clock dependency that "failed" at 20:58; not twice). 25 new assertions, 10 targeted mutants, every one caught. 552 assertions green. firestore.rules UNCHANGED.
+const APP_BUILD = "2026-10-02-firestore-preview88"; // ROUND 59 (2026-10-02). Owner, on the day-type picker shipped hours earlier: "why 3 options?" -- plus "kisi b window me jisme cross hai phone me cross piche chla jata hai or content age ajata h thik kro. or cross jaha b h usmese transparent nature hata do." THE THIRD OPTION WAS A MECHANISM PRETENDING TO BE A QUESTION. The picker offered Normal / Holiday / Working day, and on a Tuesday "Normal" and "Working day" are the same sentence twice. The only thing the third option really did was carry the CLEAR. The question is binary -- is the plant running that day -- so there are two answers now, and the clear happens by itself: choosing the answer that already matches the date's own default removes the override instead of storing one. Picking "Working day" on an ordinary Tuesday, or "Holiday" on a Sunday, IS the undo, and nobody has to learn the word "normal". The reason field now appears only on a day that differs from its default, because on a default day there is nothing to explain. ONE DEFECT, NOT TWO, BEHIND THE CROSS. The X was never actually behind anything -- elementFromPoint at the button's own centre returned the button, before and after scrolling. Its background was rgba(220,38,38,0.10): ninety percent see-through, on a position:sticky button floating over a scrolling card list. Every card passed underneath and was plainly visible THROUGH the glyph, so it read as the content being in front. Reproduced at phone width first (the screenshot the owner sent came back pixel for pixel), then fixed where it actually was: an opaque surface fill, a solid danger ring and a shadow so it reads as floating ABOVE the list, and z-index off 5. Both builders -- showModal for every dialog and renderSheet for the notification/alert/More/profile sheets -- share the one .modal-x rule, so this is one fix for every window in the app, which the suite now asserts rather than assumes. TWO TESTING LESSONS, BOTH RECORDED BECAUSE THEY COST TIME. A dialog does NOT close synchronously: closeModal() adds .closing and lets the exit animation run before removing the node, so reading for the overlay in the same tick reports "still open" and makes a working X look dead -- the first version of this test said exactly that. And the z-index assertion was first written as "higher than every z-index in the stylesheet", which fails against the desktop phone-frame notch, a decoration that can never appear inside a window; whether anything covers the button is a question about the rendered page and is now answered by reading what is painted at its centre. MUTATION TESTING EARNED ITS KEEP AGAIN: a picker hard-wired to answer "working" for every date survived the whole suite, because every other check happened to use a working day. It would have told the admin a declared holiday was a working day, and saving would have silently wiped the holiday. The picker is now opened on a plain Sunday and on a declared holiday too. 10 mutants, every one caught after that gap was closed. 565 assertions green. firestore.rules UNCHANGED.
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -2913,7 +2928,7 @@ const I18N = {
     // Nav tab labels
     'Home':'होम', 'Orders':'ऑर्डर', 'Customers':'ग्राहक', 'Attendance':'हाज़िरी', 'Users':'स्टाफ़', 'Tasks':'काम', 'Mark Attendance':'हाज़िरी लगाएं', 'Stock':'स्टॉक', 'Expenses':'खर्चा', 'Data Log':'डेटा लॉग', 'Domino Printing':'डोमिनो प्रिंटिंग', 'Daily Work':'रोज़ का काम',
     // Home tab
-    'Welcome back':'वापसी पर स्वागत है', 'New Orders':'नए ऑर्डर', 'Pending orders':'रुके हुए ऑर्डर', '— Pick who it is for —':'— किसको देना है —', 'Set day type':'दिन का प्रकार सेट करें', '🗓️ Set day type':'🗓️ दिन का प्रकार सेट करें', 'Applies to everyone for that date.':'उस तारीख़ के लिए सभी पर लागू होगा।', 'This day is':'यह दिन है', 'Normal':'सामान्य', 'week off (Sunday)':'साप्ताहिक अवकाश (रविवार)', 'a working day':'कार्य दिवस', 'Holiday — nobody works':'छुट्टी — कोई काम नहीं', 'Working day — everyone works':'कार्य दिवस — सब काम करेंगे', 'e.g. Diwali, or Month-end stock taking':'जैसे दिवाली, या महीने के अंत की स्टॉक गिनती', 'Any override is removed — this date goes back to being a week off.':'बदलाव हट जाएगा — यह तारीख़ फिर से साप्ताहिक अवकाश होगी।', 'Any override is removed — this date goes back to being a working day.':'बदलाव हट जाएगा — यह तारीख़ फिर से कार्य दिवस होगी।', 'This Sunday will count as a working day — attendance and entries both apply.':'यह रविवार कार्य दिवस गिना जाएगा — हाज़िरी और एंट्री दोनों लागू होंगी।', 'This date is already a working day by default; this also clears any holiday on it.':'यह तारीख़ वैसे भी कार्य दिवस है; इससे उस दिन की छुट्टी भी हट जाएगी।', 'Nobody works. Attendance is not needed and entries are blocked.':'कोई काम नहीं। हाज़िरी ज़रूरी नहीं और एंट्री बंद रहेंगी।', 'This date has no override to remove.':'इस तारीख़ पर कोई बदलाव नहीं है जिसे हटाया जाए।', 'Day type cleared':'दिन का प्रकार हटाया गया', 'Marked as a working day':'कार्य दिवस के रूप में सेट किया गया', 'Working day — set by admin':'कार्य दिवस — एडमिन द्वारा सेट', '— Pick the employee —':'— कर्मचारी चुनें —', 'Pick the employee first.':'पहले कर्मचारी चुनें।', '— Pick the oil —':'— कौन सा तेल, चुनें —', 'Pick which oil this purchase is for.':'यह खरीद किस तेल की है, चुनें।', 'Pick who this task is for.':'पहले चुनें कि यह टास्क किसके लिए है।', 'Short stock':'स्टॉक कम पड़ गया', 'Low stock':'स्टॉक कम हो रहा', 'Promised more than there is':'जितना है उससे ज्यादा वादा हो चुका', 'Running out soon':'जल्द खत्म होगा', 'Fill now':'अभी भरना है', 'Pack now':'अभी पैक करना है', 'Waiting for you':'आपका इंतज़ार है', 'Items ready, being packed':'सामान तैयार, पैकिंग चल रही है', 'Nothing logged yet today.':'आज अभी कुछ दर्ज नहीं हुआ।', 'Everything you have logged since midnight.':'आज रात 12 बजे से अब तक का सब काम।', 'Detail':'विवरण', 'Show more orders':'और ऑर्डर दिखाएं', 'Showing the newest':'सबसे नए', 'Showing the last':'पिछले', 'day(s)':'दिन', 'people per day.':'लोग रोज़।', 'Show 30 days':'30 दिन दिखाएं', 'Showing':'दिखा रहे हैं', 'Show all':'सभी दिखाएं', 'In packing':'पैकिंग में', 'Items ready, not yet packed':'सामान तैयार है, पैक नहीं हुआ', 'Ready to Dispatch':'भेजने के लिए तैयार', 'Packed & ready to ship':'पैक हो गया, भेजने के लिए तैयार', 'Recent orders':'हाल के ऑर्डर', 'Your recent activity':'आपका हाल का काम', 'Quick access':'आसान पहुंच',
+    'Welcome back':'वापसी पर स्वागत है', 'New Orders':'नए ऑर्डर', 'Pending orders':'रुके हुए ऑर्डर', '— Pick who it is for —':'— किसको देना है —', 'Reason (optional)':'वजह (ज़रूरी नहीं)', 'This is already a normal working day — saving removes any change made to it.':'यह पहले से सामान्य कार्य दिवस है — सेव करने पर इस पर किया गया कोई भी बदलाव हट जाएगा।', 'This is already a week off — saving removes any change made to it.':'यह पहले से साप्ताहिक अवकाश है — सेव करने पर इस पर किया गया कोई भी बदलाव हट जाएगा।', 'This week-off will count as a working day — attendance and entries both apply.':'यह अवकाश कार्य दिवस गिना जाएगा — हाज़िरी और एंट्री दोनों लागू होंगी।', 'This is already a normal working day — nothing to change.':'यह पहले से सामान्य कार्य दिवस है — बदलने को कुछ नहीं।', 'This is already a week off — nothing to change.':'यह पहले से साप्ताहिक अवकाश है — बदलने को कुछ नहीं।', 'Changed back to normal':'सामान्य पर वापस किया गया', 'Set day type':'दिन का प्रकार सेट करें', '🗓️ Set day type':'🗓️ दिन का प्रकार सेट करें', 'Applies to everyone for that date.':'उस तारीख़ के लिए सभी पर लागू होगा।', 'This day is':'यह दिन है', 'Normal':'सामान्य', 'week off (Sunday)':'साप्ताहिक अवकाश (रविवार)', 'a working day':'कार्य दिवस', 'Holiday — nobody works':'छुट्टी — कोई काम नहीं', 'Working day — everyone works':'कार्य दिवस — सब काम करेंगे', 'e.g. Diwali, or Month-end stock taking':'जैसे दिवाली, या महीने के अंत की स्टॉक गिनती', 'Any override is removed — this date goes back to being a week off.':'बदलाव हट जाएगा — यह तारीख़ फिर से साप्ताहिक अवकाश होगी।', 'Any override is removed — this date goes back to being a working day.':'बदलाव हट जाएगा — यह तारीख़ फिर से कार्य दिवस होगी।', 'This Sunday will count as a working day — attendance and entries both apply.':'यह रविवार कार्य दिवस गिना जाएगा — हाज़िरी और एंट्री दोनों लागू होंगी।', 'This date is already a working day by default; this also clears any holiday on it.':'यह तारीख़ वैसे भी कार्य दिवस है; इससे उस दिन की छुट्टी भी हट जाएगी।', 'Nobody works. Attendance is not needed and entries are blocked.':'कोई काम नहीं। हाज़िरी ज़रूरी नहीं और एंट्री बंद रहेंगी।', 'This date has no override to remove.':'इस तारीख़ पर कोई बदलाव नहीं है जिसे हटाया जाए।', 'Day type cleared':'दिन का प्रकार हटाया गया', 'Marked as a working day':'कार्य दिवस के रूप में सेट किया गया', 'Working day — set by admin':'कार्य दिवस — एडमिन द्वारा सेट', '— Pick the employee —':'— कर्मचारी चुनें —', 'Pick the employee first.':'पहले कर्मचारी चुनें।', '— Pick the oil —':'— कौन सा तेल, चुनें —', 'Pick which oil this purchase is for.':'यह खरीद किस तेल की है, चुनें।', 'Pick who this task is for.':'पहले चुनें कि यह टास्क किसके लिए है।', 'Short stock':'स्टॉक कम पड़ गया', 'Low stock':'स्टॉक कम हो रहा', 'Promised more than there is':'जितना है उससे ज्यादा वादा हो चुका', 'Running out soon':'जल्द खत्म होगा', 'Fill now':'अभी भरना है', 'Pack now':'अभी पैक करना है', 'Waiting for you':'आपका इंतज़ार है', 'Items ready, being packed':'सामान तैयार, पैकिंग चल रही है', 'Nothing logged yet today.':'आज अभी कुछ दर्ज नहीं हुआ।', 'Everything you have logged since midnight.':'आज रात 12 बजे से अब तक का सब काम।', 'Detail':'विवरण', 'Show more orders':'और ऑर्डर दिखाएं', 'Showing the newest':'सबसे नए', 'Showing the last':'पिछले', 'day(s)':'दिन', 'people per day.':'लोग रोज़।', 'Show 30 days':'30 दिन दिखाएं', 'Showing':'दिखा रहे हैं', 'Show all':'सभी दिखाएं', 'In packing':'पैकिंग में', 'Items ready, not yet packed':'सामान तैयार है, पैक नहीं हुआ', 'Ready to Dispatch':'भेजने के लिए तैयार', 'Packed & ready to ship':'पैक हो गया, भेजने के लिए तैयार', 'Recent orders':'हाल के ऑर्डर', 'Your recent activity':'आपका हाल का काम', 'Quick access':'आसान पहुंच',
     // Order tile actions + status badges
     'Accept':'मंज़ूर करें', 'Reject':'नामंज़ूर करें', 'Mark Ready':'तैयार करें', '🚚 Mark Ready to Dispatch':'🚚 भेजने के लिए तैयार करें', 'Processed & Dispatched':'भेज दिया गया', 'Edit':'बदलें', 'Delete':'हटाएं',
     'New':'नया', 'Processing':'काम चल रहा है', 'Rejected':'नामंज़ूर',
@@ -3409,7 +3424,7 @@ const I18N = {
     'Pick a product to see every size at once — packed, filled, and how much oil is left.':'کسی پروڈکٹ پر ٹیپ کریں — اس کے تمام سائز ایک ساتھ: پیک، بھرا ہوا، اور تیل کتنا بچا ہے۔',
     'Change app language to':'ایپ کی زبان تبدیل کریں', 'Yes, change it':'ہاں، تبدیل کریں', 'Cancel':'منسوخ کریں',
     'Home':'ہوم', 'Orders':'آرڈر', 'Customers':'گاہک', 'Attendance':'حاضری', 'Users':'عملہ', 'Tasks':'کام', 'Mark Attendance':'حاضری لگائیں', 'Stock':'اسٹاک', 'Expenses':'خرچہ', 'Data Log':'ڈیٹا لاگ', 'Domino Printing':'ڈومینو پرنٹنگ', 'Daily Work':'روزانہ کا کام',
-    'Welcome back':'واپسی پر خوش آمدید', 'New Orders':'نئے آرڈر', 'Pending orders':'رکے ہوئے آرڈر', '— Pick who it is for —':'— کس کو دینا ہے —', 'Set day type':'دن کی قسم مقرر کریں', '🗓️ Set day type':'🗓️ دن کی قسم مقرر کریں', 'Applies to everyone for that date.':'اس تاریخ کے لیے سب پر لاگو ہوگا۔', 'This day is':'یہ دن ہے', 'Normal':'عام', 'week off (Sunday)':'ہفتہ وار چھٹی (اتوار)', 'a working day':'کام کا دن', 'Holiday — nobody works':'چھٹی — کوئی کام نہیں', 'Working day — everyone works':'کام کا دن — سب کام کریں گے', 'e.g. Diwali, or Month-end stock taking':'جیسے دیوالی، یا مہینے کے آخر کی اسٹاک گنتی', 'Any override is removed — this date goes back to being a week off.':'تبدیلی ہٹ جائے گی — یہ تاریخ دوبارہ ہفتہ وار چھٹی ہوگی۔', 'Any override is removed — this date goes back to being a working day.':'تبدیلی ہٹ جائے گی — یہ تاریخ دوبارہ کام کا دن ہوگی۔', 'This Sunday will count as a working day — attendance and entries both apply.':'یہ اتوار کام کا دن شمار ہوگا — حاضری اور انٹری دونوں لاگو ہوں گی۔', 'This date is already a working day by default; this also clears any holiday on it.':'یہ تاریخ ویسے بھی کام کا دن ہے؛ اس سے اس دن کی چھٹی بھی ہٹ جائے گی۔', 'Nobody works. Attendance is not needed and entries are blocked.':'کوئی کام نہیں۔ حاضری ضروری نہیں اور انٹری بند رہیں گی۔', 'This date has no override to remove.':'اس تاریخ پر کوئی تبدیلی نہیں جسے ہٹایا جائے۔', 'Day type cleared':'دن کی قسم ہٹا دی گئی', 'Marked as a working day':'کام کے دن کے طور پر مقرر کیا گیا', 'Working day — set by admin':'کام کا دن — ایڈمن کی طرف سے', '— Pick the employee —':'— ملازم منتخب کریں —', 'Pick the employee first.':'پہلے ملازم منتخب کریں۔', '— Pick the oil —':'— کون سا تیل، منتخب کریں —', 'Pick which oil this purchase is for.':'یہ خریداری کس تیل کی ہے، منتخب کریں۔', 'Pick who this task is for.':'پہلے منتخب کریں کہ یہ ٹاسک کس کے لیے ہے۔', 'Short stock':'اسٹاک کم پڑ گیا', 'Low stock':'اسٹاک کم ہو رہا', 'Promised more than there is':'جتنا ہے اس سے زیادہ وعدہ ہو چکا', 'Running out soon':'جلد ختم ہو گا', 'Fill now':'ابھی بھرنا ہے', 'Pack now':'ابھی پیک کرنا ہے', 'Waiting for you':'آپ کا انتظار ہے', 'Items ready, being packed':'سامان تیار، پیکنگ جاری ہے', 'Nothing logged yet today.':'آج ابڈک کچھ درج نہیں ہوا۔', 'Everything you have logged since midnight.':'آج رات 12 بجے سے اب تک کا سب کام۔', 'Detail':'تفصیل', 'Show more orders':'مزید آرڈر دکھائیں', 'Showing the newest':'سب سے نئے', 'Showing the last':'پچھلے', 'day(s)':'دن', 'people per day.':'لوگ روزانہ۔', 'Show 30 days':'30 دن دکھائیں', 'Showing':'دکھا رہے ہیں', 'Show all':'سب دکھائیں', 'In packing':'پیکنگ میں', 'Items ready, not yet packed':'سامان تیار ہے، پیک نہیں ہوا', 'Ready to Dispatch':'بھیجنے کے لیے تیار', 'Packed & ready to ship':'پیک ہو گیا، بھیجنے کے لیے تیار', 'Recent orders':'حالیہ آرڈر', 'Your recent activity':'آپ کا حالیہ کام', 'Quick access':'آسان رسائی',
+    'Welcome back':'واپسی پر خوش آمدید', 'New Orders':'نئے آرڈر', 'Pending orders':'رکے ہوئے آرڈر', '— Pick who it is for —':'— کس کو دینا ہے —', 'Reason (optional)':'وجہ (اختیاری)', 'This is already a normal working day — saving removes any change made to it.':'یہ پہلے سے عام کام کا دن ہے — محفوظ کرنے پر اس پر کی گئی کوئی بھی تبدیلی ہٹ جائے گی۔', 'This is already a week off — saving removes any change made to it.':'یہ پہلے سے ہفتہ وار چھٹی ہے — محفوظ کرنے پر اس پر کی گئی کوئی بھی تبدیلی ہٹ جائے گی۔', 'This week-off will count as a working day — attendance and entries both apply.':'یہ چھٹی کام کا دن شمار ہوگی — حاضری اور انٹری دونوں لاگو ہوں گی۔', 'This is already a normal working day — nothing to change.':'یہ پہلے سے عام کام کا دن ہے — بدلنے کو کچھ نہیں۔', 'This is already a week off — nothing to change.':'یہ پہلے سے ہفتہ وار چھٹی ہے — بدلنے کو کچھ نہیں۔', 'Changed back to normal':'عام پر واپس کیا گیا', 'Set day type':'دن کی قسم مقرر کریں', '🗓️ Set day type':'🗓️ دن کی قسم مقرر کریں', 'Applies to everyone for that date.':'اس تاریخ کے لیے سب پر لاگو ہوگا۔', 'This day is':'یہ دن ہے', 'Normal':'عام', 'week off (Sunday)':'ہفتہ وار چھٹی (اتوار)', 'a working day':'کام کا دن', 'Holiday — nobody works':'چھٹی — کوئی کام نہیں', 'Working day — everyone works':'کام کا دن — سب کام کریں گے', 'e.g. Diwali, or Month-end stock taking':'جیسے دیوالی، یا مہینے کے آخر کی اسٹاک گنتی', 'Any override is removed — this date goes back to being a week off.':'تبدیلی ہٹ جائے گی — یہ تاریخ دوبارہ ہفتہ وار چھٹی ہوگی۔', 'Any override is removed — this date goes back to being a working day.':'تبدیلی ہٹ جائے گی — یہ تاریخ دوبارہ کام کا دن ہوگی۔', 'This Sunday will count as a working day — attendance and entries both apply.':'یہ اتوار کام کا دن شمار ہوگا — حاضری اور انٹری دونوں لاگو ہوں گی۔', 'This date is already a working day by default; this also clears any holiday on it.':'یہ تاریخ ویسے بھی کام کا دن ہے؛ اس سے اس دن کی چھٹی بھی ہٹ جائے گی۔', 'Nobody works. Attendance is not needed and entries are blocked.':'کوئی کام نہیں۔ حاضری ضروری نہیں اور انٹری بند رہیں گی۔', 'This date has no override to remove.':'اس تاریخ پر کوئی تبدیلی نہیں جسے ہٹایا جائے۔', 'Day type cleared':'دن کی قسم ہٹا دی گئی', 'Marked as a working day':'کام کے دن کے طور پر مقرر کیا گیا', 'Working day — set by admin':'کام کا دن — ایڈمن کی طرف سے', '— Pick the employee —':'— ملازم منتخب کریں —', 'Pick the employee first.':'پہلے ملازم منتخب کریں۔', '— Pick the oil —':'— کون سا تیل، منتخب کریں —', 'Pick which oil this purchase is for.':'یہ خریداری کس تیل کی ہے، منتخب کریں۔', 'Pick who this task is for.':'پہلے منتخب کریں کہ یہ ٹاسک کس کے لیے ہے۔', 'Short stock':'اسٹاک کم پڑ گیا', 'Low stock':'اسٹاک کم ہو رہا', 'Promised more than there is':'جتنا ہے اس سے زیادہ وعدہ ہو چکا', 'Running out soon':'جلد ختم ہو گا', 'Fill now':'ابھی بھرنا ہے', 'Pack now':'ابھی پیک کرنا ہے', 'Waiting for you':'آپ کا انتظار ہے', 'Items ready, being packed':'سامان تیار، پیکنگ جاری ہے', 'Nothing logged yet today.':'آج ابڈک کچھ درج نہیں ہوا۔', 'Everything you have logged since midnight.':'آج رات 12 بجے سے اب تک کا سب کام۔', 'Detail':'تفصیل', 'Show more orders':'مزید آرڈر دکھائیں', 'Showing the newest':'سب سے نئے', 'Showing the last':'پچھلے', 'day(s)':'دن', 'people per day.':'لوگ روزانہ۔', 'Show 30 days':'30 دن دکھائیں', 'Showing':'دکھا رہے ہیں', 'Show all':'سب دکھائیں', 'In packing':'پیکنگ میں', 'Items ready, not yet packed':'سامان تیار ہے، پیک نہیں ہوا', 'Ready to Dispatch':'بھیجنے کے لیے تیار', 'Packed & ready to ship':'پیک ہو گیا، بھیجنے کے لیے تیار', 'Recent orders':'حالیہ آرڈر', 'Your recent activity':'آپ کا حالیہ کام', 'Quick access':'آسان رسائی',
     'Accept':'منظور کریں', 'Reject':'نامنظور کریں', 'Mark Ready':'تیار کریں', '🚚 Mark Ready to Dispatch':'🚚 بھیجنے کے لیے تیار کریں', 'Processed & Dispatched':'بھیج دیا گیا', 'Edit':'تبدیل کریں', 'Delete':'ہٹا دیں',
     'New':'نیا', 'Processing':'کام ہو رہا ہے', 'Rejected':'نامنظور',
     'Clients':'گاہک', 'Attend':'حاضری', 'Team':'ٹیم', 'Log':'لاگ', 'Domino':'ڈومینو', 'Daily':'روزانہ', 'More':'مزید',
@@ -4208,6 +4223,11 @@ function holidayLabelFor(dk){
 // tell the admin what "Normal" would mean for the date they are looking at.
 function defaultDayKind(dk){
   return isSundayDateKey(dk) ? 'off' : 'working';
+}
+// The same answer in the two words the picker uses, so "is the choice already
+// the default" is one comparison and not a string mapping repeated per call.
+function defaultDayKindAsType(dk){
+  return isSundayDateKey(dk) ? 'holiday' : 'working';
 }
 function localDateKey(ts){
   const d = new Date(ts);
@@ -18340,25 +18360,42 @@ function openMarkForOthersModal(prefillUsername, prefillDate){
 // The modal always states what the date is set to NOW and what Normal would
 // mean for it, because "Normal" is meaningless without knowing whether the
 // date is a Sunday.
+// ROUND 58 -- this was "Mark a holiday" and it could only ever ADD one. There
+// was no way to take one back (no delete anywhere in the app, so a wrong date
+// killed that day permanently) and no way to run the plant on a Sunday, which
+// happens every month-end and through the festival rush.
+//
+// ROUND 59 (owner, looking at the first version: "why 3 options?"). It had
+// offered Normal / Holiday / Working day -- and on a Tuesday "Normal" and
+// "Working day" are the same sentence twice. The third option existed only to
+// carry the CLEAR, which is a mechanism, not a question anybody asks.
+//
+// The question is binary: IS THE PLANT RUNNING THAT DAY. So there are two
+// answers, and the clear happens by itself -- choosing the answer that already
+// matches the date's own default removes the override instead of storing one.
+// Picking "Working day" on an ordinary Tuesday, or "Holiday" on a Sunday, is
+// how you undo a change, and the admin never has to learn the word "normal".
 function openMarkHolidayModal(prefillDate){
   const today = localDateKey(Date.now());
+  // What this date is RIGHT NOW, after any override -- which is exactly what
+  // isWorkingDay already answers, so the picker cannot drift from the rule the
+  // rest of the app enforces.
+  const kindOf = dk => isWorkingDay(dk) ? 'working' : 'holiday';
   const modalHtml = (dateStr) => {
     const o = dayOverrideFor(dateStr);
-    const current = isForcedWorkingDay(dateStr) ? 'working' : (isDeclaredHoliday(dateStr) ? 'holiday' : 'normal');
-    const def = defaultDayKind(dateStr);
+    const cur = kindOf(dateStr);
     return `
     <h3>${esc(t('🗓️ Set day type'))}</h3>
     <p class="desc" style="margin-top:-6px;">${esc(t('Applies to everyone for that date.'))}</p>
     <div class="field"><label>${esc(t('Date'))}</label><input type="date" id="holidayDateInput" value="${esc(dateStr)}" /></div>
     <div class="field"><label>${esc(t('This day is'))}</label>
       <select id="dayTypeSel">
-        <option value="normal" ${current==='normal'?'selected':''}>${esc(t('Normal'))} — ${esc(def==='off'?t('week off (Sunday)'):t('a working day'))}</option>
-        <option value="holiday" ${current==='holiday'?'selected':''}>${esc(t('Holiday — nobody works'))}</option>
-        <option value="working" ${current==='working'?'selected':''}>${esc(t('Working day — everyone works'))}</option>
+        <option value="working" ${cur==='working'?'selected':''}>${esc(t('Working day — everyone works'))}</option>
+        <option value="holiday" ${cur==='holiday'?'selected':''}>${esc(t('Holiday — nobody works'))}</option>
       </select>
     </div>
-    <div class="field" id="dayLabelField" style="${current==='normal'?'display:none;':''}">
-      <label>${esc(t('Label'))}</label>
+    <div class="field" id="dayLabelField">
+      <label>${esc(t('Reason (optional)'))}</label>
       <input id="holidayLabelInput" value="${o?esc(o.label||''):''}" placeholder="${esc(t('e.g. Diwali, or Month-end stock taking'))}" />
     </div>
     <p class="desc" id="dayTypeHint" style="margin-top:-2px;"></p>
@@ -18369,49 +18406,44 @@ function openMarkHolidayModal(prefillDate){
   };
   showModal(modalHtml(prefillDate || today));
 
-  // The date and the type both change what the sentence below should say, so
-  // the modal is re-read rather than re-rendered -- re-rendering would throw
-  // away whatever the admin had already typed in the label.
   const bind = () => {
     const dateEl = document.getElementById('holidayDateInput');
     const typeEl = document.getElementById('dayTypeSel');
     const labelField = document.getElementById('dayLabelField');
     const hint = document.getElementById('dayTypeHint');
     if(!dateEl || !typeEl) return;
-    // FOUND IN TESTING: changing the DATE used to leave the type dropdown
-    // showing the previous date's setting. Open the picker on a normal
-    // Tuesday, switch the date to a Sunday you already declared a working
-    // day, and it still said "Normal" -- so the admin would be told the date
-    // was unset when it was not, and saving would have been a blind
-    // overwrite. The dropdown and the label now follow the date, because
-    // after changing the date you are talking about a different day.
+    // FOUND IN TESTING (Round 58): changing the DATE used to leave the dropdown
+    // showing the previous date's setting -- so switching to a Sunday already
+    // declared a working day still read as unset, and saving would have been a
+    // blind overwrite of the admin's own earlier decision.
     let lastDate = dateEl.value;
     const followDate = () => {
       const dk = dateEl.value;
-      if(dk === lastDate) return;
+      if(dk === lastDate || !dk) return;
       lastDate = dk;
-      const o = dayOverrideFor(dk);
-      typeEl.value = isForcedWorkingDay(dk) ? 'working' : (isDeclaredHoliday(dk) ? 'holiday' : 'normal');
+      typeEl.value = kindOf(dk);
       const labelEl = document.getElementById('holidayLabelInput');
+      const o = dayOverrideFor(dk);
       if(labelEl) labelEl.value = o ? (o.label || '') : '';
     };
     const sync = () => {
       const dk = dateEl.value;
       const kind = typeEl.value;
-      if(labelField) labelField.style.display = kind === 'normal' ? 'none' : '';
+      // The label only means something on a day that is NOT what the calendar
+      // would have said anyway -- "why is this Sunday on", "why is this
+      // Thursday off". On a default day there is nothing to explain.
+      const isOverride = dk ? (kind !== defaultDayKindAsType(dk)) : false;
+      if(labelField) labelField.style.display = isOverride ? '' : 'none';
       if(!hint) return;
       if(!dk){ hint.textContent = ''; return; }
-      const def = defaultDayKind(dk);
-      if(kind === 'normal'){
-        hint.textContent = def === 'off'
-          ? t('Any override is removed — this date goes back to being a week off.')
-          : t('Any override is removed — this date goes back to being a working day.');
-      } else if(kind === 'working'){
-        hint.textContent = def === 'off'
-          ? t('This Sunday will count as a working day — attendance and entries both apply.')
-          : t('This date is already a working day by default; this also clears any holiday on it.');
+      if(!isOverride){
+        hint.textContent = kind === 'working'
+          ? t('This is already a normal working day — saving removes any change made to it.')
+          : t('This is already a week off — saving removes any change made to it.');
       } else {
-        hint.textContent = t('Nobody works. Attendance is not needed and entries are blocked.');
+        hint.textContent = kind === 'working'
+          ? t('This week-off will count as a working day — attendance and entries both apply.')
+          : t('Nobody works. Attendance is not needed and entries are blocked.');
       }
     };
     dateEl.addEventListener('change', ()=>{ followDate(); sync(); });
@@ -18424,23 +18456,31 @@ function openMarkHolidayModal(prefillDate){
     const dateStr = document.getElementById('holidayDateInput').value;
     const kind = document.getElementById('dayTypeSel').value;
     if(!dateStr){ showAlert(t('Pick a date.')); return; }
-    if(kind === 'normal'){
-      // THE UNDO. Removing the document is what makes the default rule apply
-      // again -- see isWorkingDay. deletePartitionItem is the same path every
-      // other removal in the app uses, so a failure surfaces the same way.
-      if(!dayOverrideFor(dateStr)){ showAlert(t('This date has no override to remove.')); return; }
+
+    // THE CLEAR, with no third option to explain it: the chosen answer is what
+    // this date would be anyway, so the right thing to store is nothing. This
+    // is also the undo for a holiday marked by mistake -- before Round 58 the
+    // app had no way at all to remove one.
+    if(kind === defaultDayKindAsType(dateStr)){
+      if(!dayOverrideFor(dateStr)){
+        showAlert(kind === 'working'
+          ? t('This is already a normal working day — nothing to change.')
+          : t('This is already a week off — nothing to change.'));
+        return;
+      }
       delete S.holidays[dateStr];
       fsDeleteStaticSubKey('holidays', dateStr);
-      closeModal(); render(); showToast(t('Day type cleared'));
+      closeModal(); render(); showToast(t('Changed back to normal'));
       return;
     }
+
     const typed = document.getElementById('holidayLabelInput');
     const label = (typed ? typed.value.trim() : '') || (kind === 'working' ? 'Working day' : 'Holiday');
     const entry = { label, markedBy:S.currentUser.name, at:Date.now() };
     // Only a working day carries `type`. A holiday is written exactly as it
-    // always was, so a document this version writes is readable by an older
-    // build that has not been deployed yet -- which matters on a floor where
-    // not every phone refreshes at the same moment.
+    // always was, so a document this build writes stays readable by a phone
+    // still running the old one -- which matters on a floor where not everyone
+    // refreshes at the same moment.
     if(kind === 'working') entry.type = 'working';
     S.holidays[dateStr] = entry;
     fsSetStaticSubKey('holidays', dateStr, entry);
