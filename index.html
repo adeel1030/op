@@ -10,7 +10,7 @@
      the whole 1.35 MB down again on a phone. Up here it lands inside the
      first kilobyte, so the check costs a few KB instead of the entire app.
      The two can never be allowed to drift -- test_round60 fails if they do. -->
-<meta name="app-build" content="2026-10-02-firestore-preview91">
+<meta name="app-build" content="2026-10-02-firestore-preview92">
 <meta name="theme-color" content="#1E3F1B">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -2115,7 +2115,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-10-02-firestore-preview91"; // ROUND 63 (2026-10-02). Owner, on the admin section shipped one round earlier: "packing team ko 240 ka task diya h jbke 712 pcs chahiye total (sb orders mila kar)." THE NUMBER WAS RIGHT; THE MISSING HALF OF THE SENTENCE WAS MINE. Simulated with the owner's own figures before touching anything: 712 pieces ordered across three accepted orders, 472 already sitting in ready stock, so the row carries qty 240 and orderedQty 712. 240 is what is LEFT to pack -- Round 31's rule, and the reason the figure counts down as the work is done instead of staring back at the same 712 all day. The defect is that the admin section ADDED IN ROUND 62 printed the bare figure and dropped the "of 712 ordered" line that the worker's own row has always carried. A number with nothing to explain it reads as a wrong number, and that is exactly how it was read. ONE RENDERER, BECAUSE THIS IS THE SECOND TIME. The Record button was the first thing to drift when the same row started being drawn in two places, one round ago; the quantity text is the second. So the rule is now written into the file: anything this row says about itself goes through a shared renderer, never a second copy. laneQtyHtml() is that renderer, the worker row and the admin section both call it, and the suite asserts not that the two surfaces are similar but that they return the SAME STRING for the same row. The caption is also careful not to invent a second number: it appears only when the ordered total is genuinely larger than the work left, so a row where the two agree shows "712 pc" and not "712 pc, of 712 pc ordered". A row with no order behind it (a low-stock one) still shows its reason rather than a bare 0. 6 mutants, every one caught -- including the one that removes the cap entirely and makes the task read 712 again, which is the number the owner expected to see and the one that would quietly stop counting down. 618 assertions green. firestore.rules UNCHANGED.
+const APP_BUILD = "2026-10-02-firestore-preview92"; // ROUND 64 (2026-10-02). Owner: "Manager ki kisi bhi entry ko edit krte hi vo data bigad jaata hai." THE DOCUMENT WAS MERGED; THE MONEY WAS NOT. fsEditExpenseAtomic writes the expense with tx.set(..., {merge:true}) -- a PARTIAL update, only the fields the caller sends, laid over whatever the document already holds. The BALANCE, though, was worked out from that partial object alone. `type` was not among the fields sent (it never changes on an edit, so there had never been a reason to send it), so newFields.type came out undefined, a SETTLEMENT was read as an ordinary expense, and the sign of its contribution flipped. THE COST: editing a settlement -- even only its description, with the amount untouched -- moved the manager's balance by TWICE the amount, the wrong way. before -5000, after +5000, delta +10000. Reproduced against a fake Firestore before anything was changed: 7000 became 17000 on a description-only edit, while a plain expense edited cleanly. And because the modal's own optimistic update used the correct LOCAL type, the screen showed the right figure for a moment and then the transaction's authoritative result overwrote it with the wrong one -- which is exactly what "edit karte hi bigad jaata hai" looks like from the chair. THE FIX IS THE GENERAL ONE, NOT A PATCH FOR `type`. The contribution is now computed from the SAME SHAPE the document will actually have -- Object.assign({}, serverBefore, newFields) -- so any field a caller omits behaves as the merge behaves, and this cannot return later through a different field. The suite asserts that property directly: an edit sent with no `type` at all must still move no money, and for every shape of edit the stored row recomputed must equal the balance the transaction wrote. The caller also sends `type` now; the transaction no longer needs it, but a write that moves money should not leave the field that decides owed-or-repaid implicit. FOUR COPIES OF THE RULE THAT DECIDES THE SIGN OF MONEY, NOW ONE. The transaction carried its own private contributionOf, applyExpenseBalanceDelta a second, and the modal's optimistic update a third and fourth. Copy-drift took the Record button in Round 62 and the quantity caption in Round 63; here it costs cash, and the suite now fails if the formula appears in this file more than once. CHECKED AND CLEARED: the stock side. A manager also records purchases, so revertActivity/applyActivityForward were run numerically -- a purchase edited with no change leaves every pool byte-identical, 50 L to 60 L moves raw by exactly 10 L, and filling 100 to 120 pc moves raw -20 L and filled +20. The defect was money only, and settlements only. 7 mutants, every one caught. 631 assertions green. firestore.rules UNCHANGED. NOTE FOR ALREADY-AFFECTED DATA: balances are durable figures, not re-summed from rows (expenses older than 90 days are deleted by cleanupOldExpenses, which is why Round 22 forbids reseeding them), so a balance that already drifted must be corrected with an Opening Balance checkpoint -- it is overstated by twice the amount of each settlement that was edited.
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -5698,14 +5698,43 @@ async function fsApplyExpenseBalanceDelta(username, delta){
 // the old and new person's balance docs in the same transaction.
 async function fsEditExpenseAtomic(id, newFields){
   const expRef = fsDb.collection('expenses').doc(String(id));
-  const contributionOf = (entry)=> entry ? (entry.type==='settlement' ? -entry.amount : entry.amount) : 0;
+  // ROUND 64 (owner: "Manager ki kisi bhi entry ko edit krte hi vo data bigad
+  // jaata hai").
+  //
+  // THE DOCUMENT WAS MERGED; THE MONEY WAS NOT. tx.set(..., {merge:true})
+  // below writes a PARTIAL update -- the fields the caller happened to send --
+  // on top of whatever the document already holds. The balance, though, was
+  // calculated from that partial object alone. `type` is not one of the fields
+  // the caller sends (it never changes, so there was no reason to), so
+  // newFields.type came out undefined, a SETTLEMENT was read as an ordinary
+  // expense, and its contribution flipped sign.
+  //
+  // The cost: editing a settlement -- even only its description, with the
+  // amount untouched -- moved the manager's balance by TWICE the amount, in
+  // the wrong direction. before = -5000, after = +5000, delta = +10000. And
+  // because the modal's own optimistic update used the correct local type, the
+  // screen showed the right figure for a moment and then the transaction's
+  // authoritative result overwrote it with the wrong one, which is exactly
+  // "edit karte hi bigad jaata hai".
+  //
+  // The fix is the general one, not a patch for `type`: the contribution is
+  // now computed from the SAME SHAPE the document will actually have after the
+  // merge. Any field a caller omits now behaves as the merge behaves, so this
+  // cannot come back through a different field later.
+  //
+  // The local copy of the formula went with it -- that was a THIRD copy of the
+  // rule that decides the sign of money, beside expenseContributionOf. Two
+  // copies of one row's quantity text and two copies of one row's button both
+  // drifted in the last two rounds; two copies of this would cost real cash.
   try{
     const result = await fsDb.runTransaction(async (tx)=>{
       const expSnap = await tx.get(expRef);
       const serverBefore = expSnap.exists ? expSnap.data() : null;
       const beforeUsername = serverBefore ? serverBefore.byUsername : newFields.byUsername;
-      const beforeContribution = contributionOf(serverBefore);
-      const afterContribution = contributionOf(newFields);
+      // what the document will BE, which is what the balance must follow
+      const afterEntry = Object.assign({}, serverBefore || {}, newFields);
+      const beforeContribution = expenseContributionOf(serverBefore);
+      const afterContribution = expenseContributionOf(afterEntry);
       const sameUsername = beforeUsername === newFields.byUsername;
 
       // All reads before any writes -- required for a Firestore transaction.
@@ -12153,7 +12182,7 @@ function expenseBalanceFor(username){
 // different manager or changing its amount mid-edit.
 function applyExpenseBalanceDelta(entry, sign){
   if(!entry || !entry.byUsername) return;
-  const delta = (entry.type==='settlement' ? -entry.amount : entry.amount) || 0;
+  const delta = expenseContributionOf(entry); // ROUND 64 -- one formula for the sign of money, see expenseContributionOf
   const finalDelta = sign*delta;
   // Optimistic local update — the UI (e.g. the balance shown at the top of
   // My Expenses) reflects the change instantly, same local-first pattern
@@ -12680,14 +12709,14 @@ function openExpenseModal(existing, type, forUsername){
       const newExpAt = readAdminDateField('expenses', existing.at);
       if(newExpAt === null) return;
       const beforeUsername = existing.byUsername;
-      const beforeContribution = (existing.type==='settlement' ? -existing.amount : existing.amount) || 0;
+      const beforeContribution = expenseContributionOf(existing); // ROUND 64 -- see expenseContributionOf
       Object.assign(existing, { at: newExpAt,
         description: document.getElementById('expDesc').value.trim(),
         category: document.getElementById('expCat').value.trim(), amount,
         byUsername, byName: byUser?byUser.name:byUsername
       });
       touched = existing;
-      const afterContribution = (touched.type==='settlement' ? -touched.amount : touched.amount) || 0;
+      const afterContribution = expenseContributionOf(touched);
       if(beforeUsername===byUsername){
         S.expenseBalances[byUsername] = (S.expenseBalances[byUsername]||0) + (afterContribution - beforeContribution);
       } else {
@@ -12699,7 +12728,14 @@ function openExpenseModal(existing, type, forUsername){
       // here was silently dropped on save even though the local object had
       // already been updated -- the screen showed the new date until the
       // next snapshot quietly reverted it.
-      fsEditExpenseAtomic(touched.id, { description:touched.description, category:touched.category, amount:touched.amount, byUsername:touched.byUsername, byName:touched.byName, at:touched.at }).then(res=>{
+      // ROUND 64: `type` is sent too. It never changes on an edit, which is
+      // exactly why it was left out -- and leaving it out is what flipped the
+      // sign of every settlement, because the balance was worked out from this
+      // partial object instead of from the merged document. The transaction no
+      // longer depends on this being here (it merges over the server's own
+      // copy now), but sending the field that decides whether money is owed or
+      // repaid, on a write that moves money, is not something to leave implicit.
+      fsEditExpenseAtomic(touched.id, { type:touched.type, description:touched.description, category:touched.category, amount:touched.amount, byUsername:touched.byUsername, byName:touched.byName, at:touched.at }).then(res=>{
         if(res && res.ok && res.username!=null && res.balance!=null){ S.expenseBalances[res.username] = res.balance; render(); }
       });
       if(isAdmin) S.expenseAdminSel = byUsername;
