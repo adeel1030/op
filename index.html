@@ -10,7 +10,7 @@
      the whole 1.35 MB down again on a phone. Up here it lands inside the
      first kilobyte, so the check costs a few KB instead of the entire app.
      The two can never be allowed to drift -- test_round60 fails if they do. -->
-<meta name="app-build" content="2026-10-07-firestore-preview95">
+<meta name="app-build" content="2026-10-07-firestore-preview96">
 <meta name="theme-color" content="#1E3F1B">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1809,6 +1809,30 @@
       animation-iteration-count:infinite!important;
     }
   }
+  /* ---------- ROUND 68: four motions, all transform/opacity only ---------
+     The blanket prefers-reduced-motion rule above covers every one of these.
+     The two JS-driven ones (the count-up and the rail) check that media query
+     themselves as well, because a CSS duration of 0.01ms does not stop a
+     requestAnimationFrame loop from counting. */
+  /* The rail an order travels along. The connector is ::before, anchored at
+     the PREVIOUS dot (left:-50%), so growing it from transform-origin:left is
+     literally the order moving from the last step to this one. */
+  @keyframes railFill{from{transform:scaleX(0);}to{transform:scaleX(1);}}
+  @keyframes railDot{0%{transform:scale(.35);}60%{transform:scale(1.35);}100%{transform:scale(1);}}
+  .ot-step.pipe-advance::before{transform-origin:left center;animation:railFill .5s cubic-bezier(.4,0,.2,1);}
+  .ot-step.pipe-advance i{animation:railDot .45s cubic-bezier(.3,1.5,.5,1) .16s both;}
+  /* The attendance stamp -- it lands slightly crooked, like a real one, and
+     stays crooked. A stamp that settles perfectly straight reads as a loading
+     spinner that stopped. */
+  @keyframes attStamp{
+    0%{opacity:0;transform:scale(1.9) rotate(-14deg);}
+    55%{opacity:1;transform:scale(.94) rotate(-3deg);}
+    100%{opacity:1;transform:scale(1) rotate(-2deg);}
+  }
+  .att-stamp{display:inline-block;animation:attStamp .5s cubic-bezier(.2,.9,.3,1) both;}
+  /* A number mid-count. Nothing moves -- only the digits change -- but the
+     slight weight lift is what makes the eye land on it. */
+  .counting{transition:color .25s ease;color:var(--primary);}
   @keyframes staggerIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
   .order-tile-grid .order-tile, .alert-tile-grid .alert-tile, .stat-grid-v2 .stat-card-v2, .more-grid .more-item, .alert-banner-items .alert-item-tile{
     animation:staggerIn .32s cubic-bezier(.2,.8,.3,1) backwards;
@@ -2140,7 +2164,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-10-07-firestore-preview95"; // ROUND 67 (2026-10-07). Owner, on reading Round 66: "Sunday agar Chutti h to Attendance mark krne ka Option q dena h? Or Agar Koi aya hai to admin khud usko working day bna dega." and "Also Attendence window k andr hi rkha h na?" A REAL HOLIDAY IS NOW REALLY CLOSED. Round 66 left a Mark button on a Sunday for exactly one reason: the lock applies on holidays, so without it a Sunday would have locked the company out with no way back in. The owner's route is better than mine -- the way back in is the DAY. Nobody self-marks on a closed day, nobody marks anybody, the manager's team card shows no buttons, and the Daily Work entry window was already shut. If work is happening, the admin switches that date to Working Day (Round 58) and every ordinary rule returns, verified end to end in a browser. A CLOSED DAY MUST ALWAYS NAME THE CONTROL THAT OPENS IT. Four places refuse -- the check-in card, the lock card, the mark window, the team card -- and each one says "Working Day" rather than only "no". A refusal that does not say what to do instead is how a closed day becomes a phone call to the owner; the suite checks for the words, not just the refusal. The lock card in particular no longer tells somebody to mark their attendance on a day nothing can be marked. CLEARING A DAY STAYS OPEN, as it has since Round 33: a day can BECOME a holiday after somebody was marked on it, and a mark that can be neither corrected nor removed is worse than the wrong mark. A HIDDEN BUTTON IS NOT A RULE. The self-marking window (10:00-12:00, admin-configurable) was enforced only by the screen choosing not to draw the button. recordPresent now re-checks the day AND the window at the moment of writing, admin exempt exactly as the screen is, and the refusal states the actual times. Reachable two ways, both real: a screen painted at 11:58 whose button is pressed at 12:01, and a second phone holding an older render -- the same gap Round 22 found on markOrderPacked and Round 33 found on this very function. NOT A HARNESS SHIM: every write check in Rounds 66 and 67 now opens its own day explicitly, so the suite cannot pass or fail by what day of the week it happens to run on -- the Round 58 lesson. 8 mutants, every one caught. 29 new assertions, 774 green. firestore.rules UNCHANGED this round.
+const APP_BUILD = "2026-10-07-firestore-preview96"; // ROUND 68 (2026-10-07). Owner: "koi animation suggest kro app ko or beautiful and interactive banane k liye" -> "ok do" on four of them. FOUR MOTIONS, ONE RULE: AN ANIMATION PLAYS ON A CHANGE, NEVER ON AN ARRIVAL. A number that counts up every time Home opens, or a rail that re-fills on every Firestore snapshot, stops carrying information within a day -- it becomes the infinite pulse that people learn to skip. So each one remembers what it last showed and moves only when the new value differs; first sight is silent, standing still is silent, and going backwards is silent. THE RAIL. The 5-step pipeline on an order tile used to make the dot vanish from one step and appear at the next. The connector is positioned from the PREVIOUS dot, so growing it from transform-origin:left is literally the order travelling, with the new dot landing 160ms behind it. Only forwards: Undo Ready to Dispatch and Undo Dispatch are corrections, and a correction that celebrates itself is confusing. THE STAMP. A green stamp lands slightly crooked on the Attendance card after a self-mark, and stays crooked -- one that settles perfectly straight reads as a spinner that stopped. Deliberately a 1200ms WINDOW rather than a one-shot flag: recordPresent renders and showToast renders again a tick later, so a flag consumed by the first paint would have put the class on a node that lived about a millisecond. THE TAP. 10ms of vibration on the five moments that mean "it is done" -- attendance marked, a checklist item ticked, an order moved to Ready to Dispatch, an order dispatched, somebody marked present from the team card. On SUCCESS, never on the press: a buzz for an action that was then refused is worse than no buzz. Guarded so it cannot throw inside a write path, and simply absent on iPhone, where Safari does not implement the API at all. Taking a checklist tick BACK does not buzz. AND THE THING THIS ROUND ACTUALLY FOUND. The app has had a count-up since Round 15 -- animateStatNumbers() -- and I wrote a second one. The two fought over the same node, the newer lost, and a test asserting the opposite is what caught it: exactly the defect class that cost Round 62 the Record button, Round 63 the quantity caption and Round 64 four copies of a money formula. The duplicate is deleted, and the real one is fixed in the two ways it was wrong: (1) it never asked about prefers-reduced-motion, so somebody who had told their phone to stop moving still watched every figure on Home count itself up -- the blanket CSS rule added in Round 44 collapses keyframes but cannot touch a requestAnimationFrame loop; (2) its memory was keyed off the tile LABEL, falling back to the element index on screen -- Home shows "Total Expense" twice with two different meanings and they shared one memory, and an index moves the moment a tile is hidden by the Permission Manager, so every remembered number after it pointed at a different tile. Renderers now declare the identity once through countNumHtml, and the old derivation stays only as the fallback for numbers that have none. Every new keyframe moves transform or opacity alone -- asserted, not assumed, because 400 staff are on cheap Android phones and a keyframe that animates width or margin re-runs layout on every frame. The rendered number is always the correct one before any script runs. 10 mutants, every one caught (one survived the first pass -- a dropped transform-origin that left the rail growing from its own middle -- and is now covered). 39 new assertions, 812 green. firestore.rules UNCHANGED.
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -9281,7 +9305,36 @@ function bindConnectionFailedScreen(){
 const _numAnimCache = new Map();
 function animateStatNumbers(root){
   if(!root || !root.querySelectorAll) return;
-  root.querySelectorAll('.stat .n, .stat-card-v2 .n').forEach((el, idx)=>{
+  // ROUND 68 -- TWO FIXES TO AN ANIMATION THAT HAS BEEN SHIPPING SINCE ROUND 15.
+  //
+  // 1. It never asked about prefers-reduced-motion. The blanket CSS rule added
+  //    in Round 44 collapses every keyframe to 0.01ms, but it cannot touch a
+  //    requestAnimationFrame loop -- so somebody who had explicitly asked
+  //    their phone for less movement still watched every figure on Home count
+  //    itself up. Found by a test that asserted the opposite and failed.
+  // 2. Its memory was keyed off the tile's LABEL, falling back to the
+  //    element's index on screen. Home shows "Total Expense" twice with two
+  //    different meanings (this month, today) and they shared one memory; and
+  //    an index moves the moment a tile is added, hidden by the Permission
+  //    Manager, or reordered, so every remembered number after it pointed at
+  //    a different tile. Renderers now state the identity with
+  //    data-count-key (see countNumHtml) and that is preferred when present.
+  //    The old derivation stays as the fallback for the numbers that have no
+  //    key yet -- Domino, the expense cards -- so nothing loses its animation.
+  if(motionReduced()) {
+    // Still RECORD every value, or turning the setting off later would make
+    // the whole screen count up at once as if everything had just changed.
+    root.querySelectorAll('.stat .n, .stat-card-v2 .n, [data-count-key]').forEach((el, idx)=>{
+      const k = el.getAttribute && el.getAttribute('data-count-key');
+      const raw = el.textContent.trim();
+      const m = raw.match(/^([^\d-]*)(-?[\d,]+)([^\d]*)$/);
+      if(!m) return;
+      const target = parseInt(m[2].replace(/,/g,''), 10);
+      if(Number.isFinite(target)) _numAnimCache.set(k || _statNumKey(el, idx), target);
+    });
+    return;
+  }
+  root.querySelectorAll('.stat .n, .stat-card-v2 .n, [data-count-key]').forEach((el, idx)=>{
     const raw = el.textContent.trim();
     // Only plain formatted numbers, e.g. "42", "1,234", "₹12,345", "₹-500"
     // -- NOT things like a "3:45" HH:MM duration (fmtHHMM output), which
@@ -9292,22 +9345,34 @@ function animateStatNumbers(root){
     const prefix = m[1], suffix = m[3];
     const target = parseInt(m[2].replace(/,/g,''), 10);
     if(!Number.isFinite(target)) return;
-    const tileEl = el.closest('[data-stat],[data-more-tab],.stat,.stat-card-v2');
-    const labelEl = tileEl ? tileEl.querySelector('.l,.title') : null;
-    const key = (tileEl && (tileEl.getAttribute('data-stat') || tileEl.getAttribute('data-more-tab')))
-                || (labelEl && labelEl.textContent.trim()) || ('statnum'+idx);
+    const key = (el.getAttribute && el.getAttribute('data-count-key')) || _statNumKey(el, idx);
     const prev = _numAnimCache.get(key);
     _numAnimCache.set(key, target);
     if(prev===undefined || prev===target) return; // first sight, or genuinely unchanged -- snap, don't animate
     const start = prev, delta = target-start, dur = 450, t0 = performance.now();
+    // ROUND 68: a figure mid-count carries .counting, which tints it for the
+    // duration. Nothing MOVES -- only the digits change -- and that tint is
+    // what makes the eye land on the one number that is news.
+    if(el.classList) el.classList.add('counting');
     (function tick(now){
       const p = Math.min(1, (now-t0)/dur);
       const eased = 1 - Math.pow(1-p, 3); // ease-out cubic
       const val = Math.round(start + delta*eased);
       el.textContent = prefix + val.toLocaleString('en-IN') + suffix;
-      if(p<1) requestAnimationFrame(tick);
+      if(p<1){ requestAnimationFrame(tick); return; }
+      el.textContent = prefix + target.toLocaleString('en-IN') + suffix; // land exactly
+      if(el.classList) el.classList.remove('counting');
     })(t0);
   });
+}
+// The pre-Round-68 identity, kept for the numbers that do not yet declare one.
+// Fragile on purpose-of-record: a label can repeat and an index can shift, which
+// is exactly why countNumHtml exists. Anything that matters should carry a key.
+function _statNumKey(el, idx){
+  const tileEl = el.closest ? el.closest('[data-stat],[data-more-tab],.stat,.stat-card-v2') : null;
+  const labelEl = tileEl ? tileEl.querySelector('.l,.title') : null;
+  return (tileEl && (tileEl.getAttribute('data-stat') || tileEl.getAttribute('data-more-tab')))
+      || (labelEl && labelEl.textContent.trim()) || ('statnum'+idx);
 }
 const _statusFlashCache = new Map();
 function flashChangedBadges(root){
@@ -10662,6 +10727,15 @@ function bindShell(){
   // it on every render costs a querySelectorAll and nothing else.
   bindAlertTiles();
   bindView();
+  // ROUND 68 -- the two motions that have to compare the new paint against
+  // the last one. They run LAST, after the screen exists and after every
+  // binder, and they are deliberately in bindShell rather than in render():
+  // render() has early-return paths (the loading screen, the login screen,
+  // the post-login sequence) that never reach a shell at all, and a motion
+  // pass that ran on those would be remembering numbers from a screen that
+  // was never shown. Both are pure reads plus a class, so a failure in
+  // either cannot leave the app in a different state than before.
+  try{ runPipelineAdvance(); }catch(e){ console.error('pipelineAdvance', e); }
 }
 
 // BUGFIX (2026-08-29, full security audit): used to check
@@ -10842,6 +10916,7 @@ function markOrderPacked(orderId, onDone){
   o.packedBy = S.currentUser.name;
   o.updatedByUsername = S.currentUser.username;
   savePartitionForItem('orders', o);
+  hapticTap();   // ROUND 68
   render();
   showToast('Order marked Ready to Dispatch');
   if(onDone) onDone();
@@ -10932,6 +11007,7 @@ function checklistSetTick(o, mode, key, on){
   o[cfg.field] = next;
   o.updatedByUsername = (S.currentUser && S.currentUser.username) || o.updatedByUsername;
   savePartitionForItem('orders', o);
+  if(on) hapticTap();   // ROUND 68 -- one item is in the goods / on the bill
 }
 // The one row renderer. Packing reads cases+pieces; billing reads the line's
 // money, straight out of orderLineMrp so it cannot disagree with the tile.
@@ -11146,6 +11222,7 @@ function openDispatchModal(orderId){
     o.processedAt = Date.now(); // tracking link expires 7 days after this
     o.updatedByUsername = S.currentUser.username;
     savePartitionForItem('orders', o);
+    hapticTap(18);   // ROUND 68 -- the day's biggest moment gets the longer tap
     closeModal(); render();
     showToast('Order Processed & Dispatched ✅');
   };
@@ -13277,8 +13354,120 @@ function homeDeltaHtml(now, before){
   if(d < 0) return `<span class="d down">▼ ${Math.abs(d).toLocaleString('en-IN')}</span>`;
   return `<span class="d same">— ${esc(t('same'))}</span>`;
 }
-function homeTodayCellHtml(n, label, now, before){
-  return `<div class="today-cell"><div class="n">${esc(String(n))}</div>`
+/* ================== MOTION (ROUND 68) =================================
+   Four pieces, asked for as "koi animation suggest kro app ko or beautiful
+   and interactive banane k liye". Every one of them says the same thing --
+   "what you just did, happened" -- and none of them is decoration for its
+   own sake. The app already had 25 keyframes; these are the four that were
+   missing from the moments that matter.
+
+   THE RULE THEY ALL FOLLOW: an animation plays on a CHANGE, never on an
+   arrival. A number that counts up every time you open Home, or a rail that
+   re-fills on every snapshot, stops meaning anything within a day -- it
+   becomes the infinite pulse that people's eyes learn to skip. So each one
+   remembers what it last showed, and moves only when the new value differs.
+   First sight is always silent.
+
+   AND THEY ALL CHECK prefers-reduced-motion THEMSELVES. The blanket CSS rule
+   collapses every duration to 0.01ms, which handles the keyframes -- but it
+   cannot stop a requestAnimationFrame loop from counting, or a vibration
+   motor from running. Somebody who has asked their phone for less movement
+   gets the final number instantly and a silent phone.
+*/
+function motionReduced(){
+  try{ return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); }
+  catch(e){ return false; }
+}
+// A 10ms tap on the five moments that mean "it is done": attendance marked,
+// a checklist item ticked, an order moved to Ready to Dispatch, an order
+// dispatched, somebody marked present from the team card. Deliberately on
+// SUCCESS rather than on the tap -- a buzz for an action that was then
+// refused is worse than no buzz at all.
+// Returns false (never throws) where the platform has no vibration motor,
+// which includes every iPhone: Safari does not implement this API, so iOS
+// staff simply get the visual confirmation and nothing else.
+function hapticTap(ms){
+  try{
+    if(typeof navigator === 'undefined' || typeof navigator.vibrate !== 'function') return false;
+    if(motionReduced()) return false;
+    return navigator.vibrate(ms || 10);
+  }catch(e){ return false; }
+}
+
+/* ---- the numbers that move ------------------------------------------- */
+// ONE renderer for an animatable number, used by the pipeline tiles, the
+// stock tier tiles and the Today cells.
+//
+// IT DOES NOT ANIMATE ANYTHING. The app has had a count-up since Round 15 --
+// animateStatNumbers(), called from bindShell -- and writing a second one
+// here is precisely the defect this project keeps paying for: the Record
+// button in Round 62, the quantity caption in Round 63, the money formula in
+// Round 64, each of them one thing written twice. (It was written twice this
+// round too, and the duplicate is deleted: the two animators fought over the
+// same node and the newer one lost, which is how it was found.)
+//
+// What this adds is the one thing that animator could not do for itself: a
+// STABLE IDENTITY. It used to key its memory off the tile's label text, or
+// off the element's index on screen when there was no label -- so "Total
+// Expense" appears twice on Home with two different meanings and shared one
+// memory, and adding or hiding a tile shifted every index after it, pointing
+// each remembered number at a different tile. data-count-key is that identity
+// stated once, by the renderer that knows what the number is.
+//
+// The final text is ALWAYS in the markup. With JavaScript mid-flight, under
+// reduced motion, or on the printed page, the number is simply right; the
+// animation only ever overwrites a value that is already correct.
+function countNumHtml(displayText, value, key, extraAttr){
+  const n = Number(value);
+  const animatable = Number.isFinite(n) && key;
+  return `<div class="n"${animatable ? ` data-count-key="${esc(String(key))}" data-count="${n}"` : ''}${extraAttr ? ' ' + extraAttr : ''}>${displayText}</div>`;
+}
+
+/* ---- the order travelling along its rail ------------------------------ */
+// ROUND 68: the attendance stamp is a ONE-SHOT. It fires on the paint that
+// follows a successful mark and never again -- re-opening the Attendance
+// screen later shows the same card, still, with no animation. A stamp that
+// re-stamps every visit would be the "infinite pulse" mistake in a different
+// costume.
+let _attStampUntil = 0;
+const _pipeLast = Object.create(null);
+// Same rule as the numbers: only a genuine ADVANCE animates. Going backwards
+// (Undo Ready to Dispatch, Undo Dispatch) is a correction, and a correction
+// that celebrates itself is confusing; it just redraws.
+// Read-and-clear. Called from inside renderCheckin's template, so the very
+// first paint after the mark carries the class and every later one does not.
+// A short WINDOW rather than a one-shot flag, and the reason is specific:
+// recordPresent calls render(), and showToast() immediately calls render()
+// again. A flag consumed by the first of those would put the class on a DOM
+// node that is replaced about a millisecond later, so the stamp would never
+// be seen at all. 1200ms is long enough to cover that pair and short enough
+// that the toast's own 2.8s expiry repaint, and every later visit to this
+// screen, are still.
+function _consumeAttStamp(){
+  if(Date.now() >= _attStampUntil) return '';
+  return motionReduced() ? '' : 'att-stamp';
+}
+function runPipelineAdvance(){
+  let tiles;
+  try{ tiles = document.querySelectorAll('[data-pipe]'); }catch(e){ return; }
+  const reduce = motionReduced();
+  for(let i=0;i<tiles.length;i++){
+    const el = tiles[i];
+    const id = el.getAttribute('data-pipe');
+    const idx = Number(el.getAttribute('data-pipe-idx'));
+    if(!id || !Number.isFinite(idx)) continue;
+    const prev = _pipeLast[id];
+    _pipeLast[id] = idx;
+    if(reduce) continue;
+    if(prev === undefined || idx <= prev) continue;
+    const now = el.querySelector('.ot-step.now');
+    if(now) now.classList.add('pipe-advance');
+  }
+}
+function homeTodayCellHtml(n, label, now, before, key){
+  // ROUND 68: `now` is already the raw number this cell is about, so the
+  // count-up needs nothing from the caller except a stable key.
+  return `<div class="today-cell">${countNumHtml(esc(String(n)), now, key)}`
        + `<div class="l">${label}</div>`
        + `<div class="d-wrap">${homeDeltaHtml(now, before)}</div></div>`;
 }
@@ -13311,10 +13500,10 @@ function homeTodayCardHtml(withAttendance){
   return `<div class="today-card">
     <div class="today-head"><b>${esc(t('Today'))}</b><span>${esc(t('vs all of yesterday'))}</span></div>
     <div class="today-grid${withAttendance ? ' cols-5' : ''}">
-      ${homeTodayCellHtml(s.today.orders.toLocaleString('en-IN'), esc(t('Orders taken')), s.today.orders, s.prev.orders)}
-      ${homeTodayCellHtml(s.today.dispatched.toLocaleString('en-IN'), esc(t('Dispatched')), s.today.dispatched, s.prev.dispatched)}
-      ${homeTodayCellHtml(s.today.filled.toLocaleString('en-IN'), esc(t('Filled pc')), s.today.filled, s.prev.filled)}
-      ${homeTodayCellHtml(s.today.packed.toLocaleString('en-IN'), esc(t('Packed pc')), s.today.packed, s.prev.packed)}
+      ${homeTodayCellHtml(s.today.orders.toLocaleString('en-IN'), esc(t('Orders taken')), s.today.orders, s.prev.orders, 'home:orders')}
+      ${homeTodayCellHtml(s.today.dispatched.toLocaleString('en-IN'), esc(t('Dispatched')), s.today.dispatched, s.prev.dispatched, 'home:dispatched')}
+      ${homeTodayCellHtml(s.today.filled.toLocaleString('en-IN'), esc(t('Filled pc')), s.today.filled, s.prev.filled, 'home:filled')}
+      ${homeTodayCellHtml(s.today.packed.toLocaleString('en-IN'), esc(t('Packed pc')), s.today.packed, s.prev.packed, 'home:packed')}
       ${attendanceCell}
     </div></div>`;
 }
@@ -13364,8 +13553,8 @@ function homeMyTodayCardHtml(role){
   return `<div class="today-card">
     <div class="today-head"><b>${esc(t('Today — your work'))}</b><span>${esc(t('vs all of yesterday'))}</span></div>
     <div class="today-grid">
-      ${homeTodayCellHtml(s.today.myEntries, esc(t('Entries logged')), s.today.myEntries, s.prev.myEntries)}
-      ${homeTodayCellHtml(mineNow.toLocaleString('en-IN'), esc(q === 'packaging' ? t('Packed pc') : t('Filled pc')), mineNow, minePrev)}
+      ${homeTodayCellHtml(s.today.myEntries, esc(t('Entries logged')), s.today.myEntries, s.prev.myEntries, 'home:myEntries')}
+      ${homeTodayCellHtml(mineNow.toLocaleString('en-IN'), esc(q === 'packaging' ? t('Packed pc') : t('Filled pc')), mineNow, minePrev, 'home:mine')}
       <div class="today-cell"><div class="n">${openTasks}</div><div class="l">${esc(t('Tasks open'))}</div><div class="d-wrap"><span class="d same">${esc(t('assigned'))}</span></div></div>
       <div class="today-cell"><div class="n">${checkedIn ? '✓' : '—'}</div><div class="l">${esc(t('Check-in'))}</div><div class="d-wrap"><span class="d ${checkedIn?'up':'same'}">${esc(checkedIn ? fmtTime(att.timestamp) : t('not yet'))}</span></div></div>
     </div></div>`;
@@ -13434,7 +13623,7 @@ function stockTierTileHtml(tier, tiers){
   const n = isUrgent ? tiers.urgentCount : tiers.lowCount;
   return `<div class="stat-card-v2" data-alert-tier="${esc(tier)}">
     <div class="row-top"><div class="icon-badge ${isUrgent?'red':'orange'}">${isUrgent?'\u{1F6A8}':'\u26A0\uFE0F'}</div><span class="chev">\u203A</span></div>
-    <div class="n">${n}</div>
+    ${countNumHtml(n, n, 'tier:' + tier)}
     <div class="title">${esc(isUrgent ? t('Short stock') : t('Low stock'))}</div>
     <div class="sub">${esc(isUrgent ? t('Promised more than there is') : t('Running out soon'))}</div>
   </div>`;
@@ -13502,8 +13691,14 @@ function renderHomeGeneric(role){
   // -> Ready to Dispatch, then stock, then the role's own.
   const tiles = [];
   const companyTile = key => homeCompanyTileVisible(role, key);
-  const tile = (attr, badge, icon, n, title, sub) =>
-    `<div class="stat-card-v2" ${attr}><div class="row-top"><div class="icon-badge ${badge}">${icon}</div><span class="chev">\u203A</span></div><div class="n">${n}</div><div class="title">${title}</div><div class="sub">${sub}</div></div>`;
+  // ROUND 68: the number routes through countNumHtml so it can count up when
+  // it moves. The key is taken from the tile's own data-stat attribute, which
+  // is already unique and already stable -- inventing a second identifier for
+  // the same tile is exactly how two things that must agree stop agreeing.
+  const tile = (attr, badge, icon, n, title, sub) => {
+    const km = /data-stat="([a-z]+)"/.exec(attr);
+    return `<div class="stat-card-v2" ${attr}><div class="row-top"><div class="icon-badge ${badge}">${icon}</div><span class="chev">\u203A</span></div>${countNumHtml(n, n, km ? 'tile:' + km[1] : null)}<div class="title">${title}</div><div class="sub">${sub}</div></div>`;
+  };
 
   if(companyTile('tile_pending')) tiles.push(tile('data-stat="pending"', 'green', '\u{1F6CD}\uFE0F', pending, esc(t('New Orders')), esc(t('Pending orders'))));
   if(canViewTile(role,'tile_processing')) tiles.push(tile('data-stat="processing"', 'orange', '\u{1F527}', processing, esc(t('Processing')), esc(t('Orders in progress'))));
@@ -13641,19 +13836,19 @@ function renderHomeAdmin(){
   <div class="stat-grid-v2">
     <div class="stat-card-v2" data-stat="pending">
       <div class="row-top"><div class="icon-badge green">🛍️</div><span class="chev">›</span></div>
-      <div class="n">${pending}</div><div class="title">${esc(t('New Orders'))}</div><div class="sub">${esc(t('Pending orders'))}</div>
+      ${countNumHtml(pending, pending, 'tile:pending')}<div class="title">${esc(t('New Orders'))}</div><div class="sub">${esc(t('Pending orders'))}</div>
     </div>
     <div class="stat-card-v2" data-stat="processing">
       <div class="row-top"><div class="icon-badge orange">⏳</div><span class="chev">›</span></div>
-      <div class="n">${processing}</div><div class="title">${esc(t('Processing'))}</div><div class="sub">${esc(t('Orders in progress'))}</div>
+      ${countNumHtml(processing, processing, 'tile:processing')}<div class="title">${esc(t('Processing'))}</div><div class="sub">${esc(t('Orders in progress'))}</div>
     </div>
     <div class="stat-card-v2" data-stat="ready">
       <div class="row-top"><div class="icon-badge blue">📦</div><span class="chev">›</span></div>
-      <div class="n">${ready}</div><div class="title">${esc(t('In packing'))}</div><div class="sub">${esc(t('Items ready, being packed'))}</div>
+      ${countNumHtml(ready, ready, 'tile:ready')}<div class="title">${esc(t('In packing'))}</div><div class="sub">${esc(t('Items ready, being packed'))}</div>
     </div>
     <div class="stat-card-v2" data-stat="packed">
       <div class="row-top"><div class="icon-badge purple">🚚</div><span class="chev">›</span></div>
-      <div class="n">${packed}</div><div class="title">${esc(t('Ready to Dispatch'))}</div><div class="sub">${esc(t('Packed & ready to ship'))}</div>
+      ${countNumHtml(packed, packed, 'tile:packed')}<div class="title">${esc(t('Ready to Dispatch'))}</div><div class="sub">${esc(t('Packed & ready to ship'))}</div>
     </div>
     ${stockTierTileHtml('urgent', myAlertTiers(alerts))}
     ${stockTierTileHtml('low', myAlertTiers(alerts))}
@@ -14307,7 +14502,9 @@ function orderPipelineHtml(o){
     const cls = i < idx ? 'done' : (i === idx ? 'now' : 'todo');
     return `<span class="ot-step ${cls}"><i></i><em>${esc(t(ORDER_PIPELINE_SHORT[st]))}</em></span>`;
   }).join('');
-  return `<div class="ot-steps" role="img" aria-label="${esc(t('Stage'))}: ${esc(stageLabel(o.status))} (${idx+1}/${ORDER_PIPELINE.length})">${steps}</div>`;
+  // ROUND 68: the id and the position, so the rail can be animated from where
+  // this order WAS to where it is now. Nothing reads these but runPipelineAdvance.
+  return `<div class="ot-steps" data-pipe="${esc(String(o.id))}" data-pipe-idx="${idx}" role="img" aria-label="${esc(t('Stage'))}: ${esc(stageLabel(o.status))} (${idx+1}/${ORDER_PIPELINE.length})">${steps}</div>`;
 }
 // The ONE button that is this order's next step. Everything else on the tile
 // is an escape hatch, a correction or a lookup -- useful, but not what the
@@ -18328,7 +18525,7 @@ function renderCheckin(){
       <div style="font-size:1.25rem;font-weight:800;color:var(--success);margin-bottom:4px;">${esc(t('✅ Marked present by Admin'))}</div>
       <p class="desc" style="margin:6px 0 0;">${esc(t('Aaj ki attendance admin ne laga di hai — aapko dobara lagane ki zarurat nahi.'))}</p>
     ` : already ? `
-      <div style="font-size:1.25rem;font-weight:800;color:var(--success);margin-bottom:4px;">${esc(t('✅ Marked present today'))}</div>
+      <div class="${_consumeAttStamp()}" style="font-size:1.25rem;font-weight:800;color:var(--success);margin-bottom:4px;">${esc(t('✅ Marked present today'))}</div>
       <p class="desc" style="margin:6px 0 0;">${esc(t('You can mark attendance again tomorrow.'))}</p>
     ` : outsideMarkWindow ? `
       <div style="font-size:1.125rem;font-weight:800;color:var(--ink-soft);margin-bottom:4px;">${esc(t('⏰ Outside marking window'))}</div>
@@ -18423,6 +18620,8 @@ function recordPresent(lat, lng, note, fieldLocation){
   S.attendance.push(entry);
   invalidateAttendanceIndex(); // the identity check would catch this anyway; being explicit at every write keeps it true if one ever mutates in place
   savePartitionForItem('attendance', entry);
+  _attStampUntil = Date.now() + 1200;   // ROUND 68 -- see _consumeAttStamp
+  hapticTap();
   render(); showToast('Marked present ✅');
 }
 function bindCheckin(){
@@ -18858,6 +19057,7 @@ function bindAttendanceTeamCard(){
     const apply = ()=>{
       const refusal = markAttendanceForUser(username, localDateKey(Date.now()), status);
       if(refusal){ showAlert(t(refusal)); render(); return; }
+      hapticTap();   // ROUND 68
       render();
       showToast(`${u.name} — ${t(status==='absent'?'Absent':'Present')}`);
     };
