@@ -10,7 +10,7 @@
      the whole 1.35 MB down again on a phone. Up here it lands inside the
      first kilobyte, so the check costs a few KB instead of the entire app.
      The two can never be allowed to drift -- test_round60 fails if they do. -->
-<meta name="app-build" content="2026-10-07-firestore-preview97">
+<meta name="app-build" content="2026-10-07-firestore-preview98">
 <meta name="theme-color" content="#1E3F1B">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -2164,7 +2164,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-10-07-firestore-preview97"; // ROUND 69 (2026-10-07). Owner: "Ik bar Jiski Attendance mark ho gyi Absent ya present. either by self or by permitted person ya admin. (admin k alawa jisko admin ne permission di hui h including manager vo usko change na kar paye).." A MARK THAT EXISTS BELONGS TO ADMIN. A permission holder's job is now exactly one thing: mark somebody who is NOT yet marked. The moment a record exists for that person on that day -- their own tap, a manager's, an admin's -- only admin may change it. Both directions, present to absent and absent to present, and re-stating the same answer is refused too: the test is that a RECORD EXISTS, never what it says. A rule written against the markedByAdmin flag would have missed the commonest case of all, somebody who marked themselves. THE WHOLE FEATURE IS ONE WORD REMOVED FROM ONE LINE OF FIRESTORE.RULES. Round 33 gave every person-day exactly one document, so the first mark of the day is a CREATE and every change to it is an UPDATE. marksForOthers() comes off `allow update` and stays on `allow create`, and that is the rule -- no condition to write, nothing to keep in step. Round 66 had put it on update for a reason recorded there (without it a manager could only mark people nobody had touched); that turned out to be precisely what the owner wanted, stated in the shape the data already had. THE SCREEN AGREES RATHER THAN DECIDES. The team card used to show a lit "Present" and a live "Absent" on somebody already present -- it was offering the one action that is now refused. A marked row now carries no buttons at all and says "Mark ho chuka -- sirf admin badal sakta hai", because two buttons that would both be refused read as a broken screen rather than as a rule. markAttendanceForUser re-checks it anyway, for the stale render and the second device. ADMIN IS UNTOUCHED: flip either way, any past date, and clear a day entirely. THE COST, SAID PLAINLY: a manager who marks somebody Absent by mistake cannot take it back, and that person stays locked out of the app until an admin fixes it. That is the direct meaning of what was asked, and the owner chose it over a correction-request flow. 7 mutants, every one caught -- including making the document id random again, which would have turned every change back into a create and quietly undone the rules change. 23 new assertions, 836 green. FIRESTORE.RULES CHANGED -- DEPLOY IT.
+const APP_BUILD = "2026-10-07-firestore-preview98"; // ROUND 70 (2026-10-07). Owner: "firestore pr koi be wja to data aa ja nhi rha na. kahi be wja pese badhe ja rhe ho. ik bar check kr lo." -> "ok krdo, pehla wala (heartbeat) or Baaki teen saath me kar do." THE MOST EXPENSIVE LINE IN THE APP, AND IT COST NOTHING TODAY. startHeartbeat() writes one activeSessions document per device per MINUTE -- the only machine-generated write in this app -- and every device was listening to that whole collection, so each heartbeat was delivered to, and billed on, every other device. With D devices online that is D x 480 writes a day and D x D x 480 reads. At ten people: 48,000 reads a day, which sits just inside Firestore's 50,000/day free tier, which is precisely why it had never appeared on a bill. At 400: 76.8 MILLION reads a day, about $23 a day. Quadratic -- doubling the staff quadruples it. Exactly ONE screen reads other people's sessions: renderAttendanceMap's "Active now" list, admin-only and not grantable (attendance is not in CHECKLIST_MODULES). Everyone else needs one document, their own, for checkSessionStillValid's single-device logout -- so that is what they take now. Reads fall from 76.8M/day to about 576,000 (each device's own echo, plus the admins), roughly 130x, around $5 a month instead of $690. Same shape as Round 56's attendance fix, applied to the one collection that fires every sixty seconds. THREE MORE COLLECTIONS WERE ON ALL 400 SHOP-FLOOR PHONES FOR SCREENS ONLY SOME ROLES CAN OPEN. trackingViewLogs and siteVisitLogs are read by two admin-gated buttons and nothing else -- admin only now. retailSales keeps its full 180 days, because that width is deliberate (the monthly PDF lets an admin pick any of the last six months and warns when the window stops covering it) -- what narrowed is the AUDIENCE: admin, manager, or whoever holds entry_retail/entry_samples. stockMovementLog follows whoever can actually see a stock pool, plus the Data Log tab. Round 56 did this for attendance and loginLog and stopped; these are the four it missed. THE LAST TWO UNBOUNDED QUERIES. tasks and stockTasks had no filter of any kind -- every task ever created, on every login, forever, and nothing in Firestore is ever deleted. Both now carry a 120-day floor on createdAt, which every document they have ever written sets; that matters more than it looks, because a `where` on a field a document LACKS silently excludes it, so bounding on a usually-present field would have quietly hidden real work. A single inequality, no orderBy: a composite index that was never deployed is a listener that fails outright for everybody. customers is deliberately left whole -- a party that last ordered two years ago can order tomorrow, and the order picker needs the list. Bounding it would be a correctness bug dressed as a saving. THE RE-ATTACH GUARD IS NOW A SIGNATURE. Permissions arrive after login, so every listener decision made from them is provisional until they land -- and there are four such decisions now, not one. Round 66's single boolean became listenerSignature(role), so a permission-derived listener added later is covered by one line in that function rather than by remembering to add another comparison. CHECKED AND CLEARED while in here: no write happens on render (every render*/bind* function scanned -- all writes sit inside click handlers); the old 4-second polling loop is dead; the offline queue flushes only on the `online` event; reconcileStockTasks writes once per open->done flip and then stops, so there is no feedback loop; stock task CREATION is admin/manager-only, so it cannot storm across 400 devices. 9 mutants, every one caught -- including moving the new blocks below the manager-only early return, which would have silently stripped all four listeners from every non-manager. 31 new assertions, 867 green. firestore.rules UNCHANGED: rules restrict reads, they never require them, so asking for less is always allowed.
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -6322,7 +6322,7 @@ function fsDetachAllListeners(){
   // the index cache is dropped so nothing can be answered from either.
   fsLoaded.attendance = false;
   S.attendanceTeam = [];
-  _lastMarkOthersBinding = null;
+  _lastListenerSignature = null;
   invalidateAttendanceIndex();
   // Round 19: also cancel any pending chatMessages auto-retry timers (see
   // attachChatMessagesListeners) -- otherwise a retry scheduled just before
@@ -6888,8 +6888,71 @@ function attachRoleGatedListeners(){
     } else {
       S.attendanceTeam = [];
     }
-    _lastMarkOthersBinding = hasMarkOthersPermission(role);
   }
+  _lastListenerSignature = listenerSignature(role);
+  // ---- ROUND 70, the heartbeat ----------------------------------------
+  // THE MOST EXPENSIVE LINE IN THE APP, AND IT COST NOTHING TODAY.
+  // startHeartbeat() writes one activeSessions document per device per
+  // MINUTE. Every device was listening to the whole collection, so each of
+  // those writes was delivered to -- and billed on -- every other device.
+  // With D devices online that is D x 480 writes a day and D x D x 480
+  // reads: at ten people, 48,000 reads a day, which sits just inside
+  // Firestore's 50,000/day free tier and is exactly why nobody noticed. At
+  // 400 it is 76.8 MILLION reads a day. Doubling the staff quadruples it.
+  //
+  // Only ONE screen reads other people's sessions: renderAttendanceMap's
+  // "Active now" list, which is admin-only (ROLES.admin alone carries the
+  // attendance tab, and it is not offered in CHECKLIST_MODULES, so it cannot
+  // be granted). Everyone else needs exactly one document -- their own --
+  // for checkSessionStillValid's single-device logout. So that is what they
+  // now take. Same shape as Round 56's attendance fix, applied to the one
+  // collection that fires every sixty seconds.
+  if(isAdmin){
+    fsBindStaticCollection('activeSessions', obj=>{ S.activeSessions = obj; checkSessionStillValid(); });
+  } else if(S.currentUser && S.currentUser.username){
+    const me = S.currentUser.username;
+    fsBindDoc('activeSessions', me, data=>{
+      // Keep the map shape every reader already expects, holding one key.
+      const next = {}; next[me] = data || {};
+      S.activeSessions = next;
+      checkSessionStillValid();
+    });
+  }
+
+  // ---- ROUND 70, three more collections that the whole floor was reading -
+  // Round 56 did this for attendance and loginLog and stopped there. These
+  // are the ones it missed, each checked against who actually opens them.
+  //
+  // trackingViewLogs -- "who opened this order's tracking link". The only
+  // button that opens it is on the order tile behind `isAdmin`.
+  // siteVisitLogs -- "who opened the order form website". Same, gated on
+  // role==='admin' in renderCustomers.
+  if(isAdmin){
+    fsBindCollection('trackingViewLogs', fsDb.collection('trackingViewLogs').where('at','>=', now-7*DAY_MS).orderBy('at','desc'), (a,b)=>b.at-a.at);
+    fsBindCollection('siteVisitLogs', fsDb.collection('siteVisitLogs').where('at','>=', now-7*DAY_MS).orderBy('at','desc'), (a,b)=>b.at-a.at);
+  } else {
+    S.trackingViewLogs = []; S.siteVisitLogs = [];
+  }
+  // stockMovementLog -- the per-item history behind a stock number. Readable
+  // by anyone who can see ANY stock pool, which is every role except sales
+  // (and any custom team the admin has not given stock to).
+  if(['raw','filled','ready'].some(sub=>canViewStockSub(role, sub))
+     || (roleDef(role).tabs || []).includes('log')){
+    fsBindCollection('stockMovementLog', fsDb.collection('stockMovementLog').where('at','>=', now-7*DAY_MS).orderBy('at','desc'), (a,b)=>b.at-a.at);
+  } else {
+    S.stockMovementLog = [];
+  }
+  // retailSales -- 180 days, and that width is DELIBERATE: the monthly PDF
+  // report lets an admin pick any of the last six months and warns when the
+  // window no longer covers it. So the width stays and the AUDIENCE narrows.
+  // Read by: the Home retail card (gated on entry_retail/entry_samples), the
+  // Daily Work retail section (admin/manager), and that report (admin).
+  if(isAdmin || role === 'manager' || canDoEntry(role,'entry_retail') || canDoEntry(role,'entry_samples')){
+    fsBindCollection('retailSales', fsDb.collection('retailSales').where('at','>=', now-180*DAY_MS).orderBy('at'), (a,b)=>a.at-b.at, normalizeRetailEntry);
+  } else {
+    S.retailSales = [];
+  }
+
   if(role!=='admin' && role!=='manager'){
     // expenses/expenseBalances stay admin+manager only -- any other role
     // attempting them is a guaranteed permission-denied.
@@ -6982,18 +7045,34 @@ function attachFirestoreListeners(){
   // unfiltered query started silently failing for every non-admin role
   // the moment Round 16 scoped chatMessages' read rule per-document).
   attachChatMessagesListeners();
-  fsBindCollection('retailSales', db.collection('retailSales').where('at','>=', now-180*DAY_MS).orderBy('at'), (a,b)=>a.at-b.at, normalizeRetailEntry);
-  fsBindCollection('trackingViewLogs', db.collection('trackingViewLogs').where('at','>=', now-7*DAY_MS).orderBy('at','desc'), (a,b)=>b.at-a.at);
-  fsBindCollection('siteVisitLogs', db.collection('siteVisitLogs').where('at','>=', now-7*DAY_MS).orderBy('at','desc'), (a,b)=>b.at-a.at);
-  fsBindCollection('stockMovementLog', db.collection('stockMovementLog').where('at','>=', now-7*DAY_MS).orderBy('at','desc'), (a,b)=>b.at-a.at);
+  // ROUND 70: retailSales / trackingViewLogs / siteVisitLogs /
+  // stockMovementLog all moved into attachRoleGatedListeners. Every one of
+  // them was downloaded onto all 400 shop-floor phones for screens only some
+  // roles can open -- the same thing Round 56 found for attendance and
+  // loginLog, in four more places. See that function for who gets which.
 
   // Small/low-churn reference + working-set collections — always loaded,
   // same as today.
   fsBindCollection('customers', db.collection('customers'), null);
   fsBindCollection('catalogItems', db.collection('catalogItems'), null, null, ()=>{ rebuildCatalogFlat(); scheduleRender(); });
   fsBindCollection('transports', db.collection('transports'), null, d=>d.name);
-  fsBindCollection('tasks', db.collection('tasks'), null);
-  fsBindCollection('stockTasks', db.collection('stockTasks'), null, null, ()=>{ scheduleStockTaskAutoSync(); scheduleRender(); }); // ROUND 31
+  // ROUND 70: these two were the last collections with NO bound of any kind
+  // -- every task ever created, downloaded in full on every login, forever.
+  // Nothing in Firestore is ever deleted (see the file-header note), so at a
+  // dozen tasks a day that is ~4,400 documents a year, on every one of 400
+  // phones, twice a day.
+  // 120 days is deliberately generous: a task still open after four months is
+  // not a task anybody is doing. Both collections set createdAt on every
+  // document they have ever written (see the task modal's save handler and
+  // syncStockTasksFromAlerts), which matters more than it looks -- a `where`
+  // on a field a document lacks silently EXCLUDES that document, so bounding
+  // on a field that is only usually present would quietly hide real work.
+  // A single inequality uses Firestore's automatic index; adding a sort would
+  // need a composite index deployed by hand, and a missing one is a listener
+  // that fails outright for everybody.
+  const TASK_WINDOW_MS = 120*DAY_MS;
+  fsBindCollection('tasks', db.collection('tasks').where('createdAt','>=', now-TASK_WINDOW_MS), null);
+  fsBindCollection('stockTasks', db.collection('stockTasks').where('createdAt','>=', now-TASK_WINDOW_MS), null, null, ()=>{ scheduleStockTaskAutoSync(); scheduleRender(); }); // ROUND 31
   fsBindCollection('customRoles', db.collection('customRoles'), null, null, ()=>{ rebuildRolesRegistry(); scheduleRender(); });
   fsBindCollection('users', db.collection('users'), null, null, ()=>{ rebuildRolesRegistry(); checkSessionStillValid(); scheduleRender(); });
 
@@ -7038,8 +7117,8 @@ function attachFirestoreListeners(){
     // churning those on every unrelated permission edit would be worse than
     // the problem it fixes.
     const role = S.currentUser && S.currentUser.role;
-    if(role && role !== 'admin' && _lastMarkOthersBinding !== null
-       && hasMarkOthersPermission(role) !== _lastMarkOthersBinding){
+    if(role && _lastListenerSignature !== null
+       && listenerSignature(role) !== _lastListenerSignature){
       attachRoleGatedListeners();
     }
   });
@@ -7073,8 +7152,13 @@ function attachFirestoreListeners(){
   // branch that's actually safe for an unfiltered collection scan; other
   // roles simply never had a legitimate use for this data and no longer
   // generate a doomed query for it.
+  // ROUND 70: activeSessions moved INTO attachRoleGatedListeners. It is the
+  // one collection in this app that is written by a machine rather than by a
+  // person -- every signed-in device writes its own heartbeat document once a
+  // minute -- and it was being listened to in full by every one of those
+  // devices. See that function for the arithmetic; the short version is that
+  // the cost of this single line grew with the SQUARE of the headcount.
   attachRoleGatedListeners();
-  fsBindStaticCollection('activeSessions', obj=>{ S.activeSessions = obj; checkSessionStillValid(); });
   // loginLockouts/pendingNotifs are NOT listened here — Security Rules
   // block ALL client reads of loginLockouts (server-only in every
   // respect), and pendingNotifs is scoped per-user with a read rule but
@@ -18943,7 +19027,24 @@ function startOfTodayTs(){
 // network AFTER login, so a team the admin has just been given this right
 // cannot have had the subscription at attach time -- see the rolePermissions
 // listener, which re-attaches exactly when (and only when) this flips.
-let _lastMarkOthersBinding = null;
+// ROUND 70: this started as one boolean for one permission and is now the
+// whole shape of what this device subscribes to. Permissions arrive over the
+// network AFTER login, so every listener decision made from them is provisional
+// until they land -- and from Round 70 there are four of them, not one.
+// Comparing a signature rather than a boolean means a new permission-derived
+// listener added later is covered by writing it into the signature, which is
+// one line, instead of being silently missed.
+let _lastListenerSignature = null;
+function listenerSignature(role){
+  if(!role) return '';
+  return [
+    role,
+    hasMarkOthersPermission(role) ? 'att' : '-',
+    (role === 'admin' || role === 'manager' || canDoEntry(role,'entry_retail') || canDoEntry(role,'entry_samples')) ? 'retail' : '-',
+    ['raw','filled','ready'].some(sub=>canViewStockSub(role, sub)) ? 'stock' : '-',
+    (roleDef(role).tabs || []).includes('log') ? 'log' : '-',
+  ].join('|');
+}
 function isPresentToday(username){
   if(!username) return false;
   const rec = attendanceRecordFor(username, localDateKey(Date.now()));
