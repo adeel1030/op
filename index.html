@@ -10,7 +10,7 @@
      the whole 1.35 MB down again on a phone. Up here it lands inside the
      first kilobyte, so the check costs a few KB instead of the entire app.
      The two can never be allowed to drift -- test_round60 fails if they do. -->
-<meta name="app-build" content="2026-10-02-firestore-preview92">
+<meta name="app-build" content="2026-10-07-firestore-preview93">
 <meta name="theme-color" content="#1E3F1B">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1731,6 +1731,31 @@
   .modal h3{margin:0 0 14px;font-size:1rem;}
   .modal-actions{display:flex;gap:8px;margin-top:16px;}
 
+  /* ---------- ROUND 65: item checklist (packing / billing) -------------
+     One stylesheet for both modes -- the modes differ only in wording and
+     in whether a line prints money, never in layout. */
+  .chk-prog{display:flex;align-items:center;gap:8px;margin:0 0 10px;}
+  .chk-prog-n{font-weight:800;font-size:0.9375rem;flex:0 0 auto;}
+  .chk-prog-bar{flex:1;height:7px;border-radius:99px;background:var(--border);overflow:hidden;}
+  .chk-prog-fill{height:100%;border-radius:99px;background:var(--success);transition:width .28s ease;}
+  .chk-row{display:flex;align-items:center;gap:10px;padding:10px 11px;margin-bottom:8px;
+    border:1px solid var(--border);border-radius:12px;background:var(--bg);}
+  .chk-row-next{border-color:var(--primary);background:var(--surface);
+    box-shadow:0 2px 10px rgba(0,0,0,0.07);}
+  .chk-txt{flex:1;min-width:0;}
+  .chk-name{font-weight:700;font-size:0.84375rem;line-height:1.3;}
+  .chk-qty{font-size:0.75rem;color:var(--ink-soft);margin-top:2px;}
+  .chk-tick{flex:0 0 auto;white-space:nowrap;}
+  .chk-more{font-size:0.71875rem;color:var(--ink-soft);text-align:center;margin:2px 0 10px;}
+  .chk-done{margin:4px 0 12px;}
+  .chk-done>summary{cursor:pointer;font-size:0.75rem;color:var(--ink-soft);
+    list-style:none;padding:4px 0;}
+  .chk-done>summary::-webkit-details-marker{display:none;}
+  .chk-done-row{display:flex;align-items:center;gap:8px;padding:5px 2px;font-size:0.75rem;}
+  .chk-done-row span{flex:1;min-width:0;color:var(--ink-soft);text-decoration:line-through;}
+  .chk-go{width:100%;}
+  .chk-left{font-size:0.75rem;color:var(--warning);font-weight:700;text-align:center;margin:0 0 8px;}
+
   /* ---------- Round 15 (2026-09-...): "Suggest More & More Animations, i
      want to make this so beautiful" -- explicit user choice was "Subtle &
      professional" (tap feedback everywhere + list stagger-in + number
@@ -2115,7 +2140,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-10-02-firestore-preview92"; // ROUND 64 (2026-10-02). Owner: "Manager ki kisi bhi entry ko edit krte hi vo data bigad jaata hai." THE DOCUMENT WAS MERGED; THE MONEY WAS NOT. fsEditExpenseAtomic writes the expense with tx.set(..., {merge:true}) -- a PARTIAL update, only the fields the caller sends, laid over whatever the document already holds. The BALANCE, though, was worked out from that partial object alone. `type` was not among the fields sent (it never changes on an edit, so there had never been a reason to send it), so newFields.type came out undefined, a SETTLEMENT was read as an ordinary expense, and the sign of its contribution flipped. THE COST: editing a settlement -- even only its description, with the amount untouched -- moved the manager's balance by TWICE the amount, the wrong way. before -5000, after +5000, delta +10000. Reproduced against a fake Firestore before anything was changed: 7000 became 17000 on a description-only edit, while a plain expense edited cleanly. And because the modal's own optimistic update used the correct LOCAL type, the screen showed the right figure for a moment and then the transaction's authoritative result overwrote it with the wrong one -- which is exactly what "edit karte hi bigad jaata hai" looks like from the chair. THE FIX IS THE GENERAL ONE, NOT A PATCH FOR `type`. The contribution is now computed from the SAME SHAPE the document will actually have -- Object.assign({}, serverBefore, newFields) -- so any field a caller omits behaves as the merge behaves, and this cannot return later through a different field. The suite asserts that property directly: an edit sent with no `type` at all must still move no money, and for every shape of edit the stored row recomputed must equal the balance the transaction wrote. The caller also sends `type` now; the transaction no longer needs it, but a write that moves money should not leave the field that decides owed-or-repaid implicit. FOUR COPIES OF THE RULE THAT DECIDES THE SIGN OF MONEY, NOW ONE. The transaction carried its own private contributionOf, applyExpenseBalanceDelta a second, and the modal's optimistic update a third and fourth. Copy-drift took the Record button in Round 62 and the quantity caption in Round 63; here it costs cash, and the suite now fails if the formula appears in this file more than once. CHECKED AND CLEARED: the stock side. A manager also records purchases, so revertActivity/applyActivityForward were run numerically -- a purchase edited with no change leaves every pool byte-identical, 50 L to 60 L moves raw by exactly 10 L, and filling 100 to 120 pc moves raw -20 L and filled +20. The defect was money only, and settlements only. 7 mutants, every one caught. 631 assertions green. firestore.rules UNCHANGED. NOTE FOR ALREADY-AFFECTED DATA: balances are durable figures, not re-summed from rows (expenses older than 90 days are deleted by cleanupOldExpenses, which is why Round 22 forbids reseeding them), so a balance that already drifted must be corrected with an Opening Balance checkpoint -- it is overstated by twice the amount of each settlement that was edited.
+const APP_BUILD = "2026-10-07-firestore-preview93"; // ROUND 65 (2026-10-07). Owner: "For orders having more than 2 items ... jb order ko in packing se Ready to dispatch kiya jata hai, waha ik Check list dal do (so that har ik item add ho jaaye, jane wle goods me). also inki jb booking hoti hai ... 3-3 items show hon, ik added ka button ho, added ho jaye to vo hat kr agla item ajaye." and "order ko process krne k rights permission manager me dal do. so that packing team bhi order ko process kar sake. agar manager na ho." TWO GATES, ONE CHECKLIST. A 3+ item order now has to be ticked off item by item before it can move -- in front of Mark Ready to Dispatch (are the goods actually in the load?) and in front of Daily Work's per-order Book (is every line typed into the accounting software?). Three pending items on screen at a time; the one just ticked leaves, the next arrives; the real action button stays disabled until the last tick. 1-2 item orders are waved through untouched. THE GATE IS IN THE ACTION, NOT IN A CLICK HANDLER. markOrderPacked and toggleEntryBooked hold it themselves, so the tile button, the stat-count modal and the notification list all pass through the same test and a route added later gets it for free. "Book all remaining" was the fourth door and would have been a one-click bypass -- it now holds those orders back and says how many. A TICK STORES A QUANTITY, NOT A YES. The stored shape is [{k:itemKey,q:qtyWhenTicked}], so editing a line after ticking it VOIDS that tick and the item comes back: 50 pc ticked and 200 pc shipped is the realistic way a checklist turns into a lie. An item removed from the order leaves the list; one added reopens it; stale ticks are pruned on every write. Everything is derived live from the order's own items, so there is nothing to migrate and nothing to keep in sync. ONE RENDERER, AS A RULE NOW. Packing and billing differ only in a config object -- wording, and whether a line prints money. The renderer cannot see which mode it is drawing, and the suite fails if it can. The per-line money comes from orderLineMrp, extracted this round so orderMrpValue is nothing but its sum: Round 64 was four copies of one money formula and three of them had drifted. THE PERMISSION. The order-stage actions -- Mark Ready to Dispatch, its undo, Processed & Dispatched, its undo, and the LR photo that belongs to the dispatch -- were hard-coded to admin+manager in six places. They now read one Permission Manager key, entry_order_stage, defaulting to manager and nobody else, so nothing changes until an admin ticks it for the Packaging team. openDispatchModal had NO role guard of its own at all (the markup was the only thing keeping anyone out, the exact gap Round 22 closed elsewhere); it has one now. The Permission Manager's confirm step warns when the right is granted without the Orders view, because the buttons live on that screen. FIRESTORE.RULES CHANGED THIS ROUND -- DEPLOY IT. A new branch lets entry_order_stage write exactly the fields those actions touch and nothing else (never items, customer, booked or bookChecked), and bookChecked/packChecked were added to the dispatch-lock exemption list: without that, an order dispatched the same day it was created could never finish its billing checklist, could therefore never be booked, and the reconciliation banner would nag forever -- the identical failure that list already exists to prevent, and the same shape as the Round 25 updatedByUsername incident. 12 mutants, every one caught. 61 new assertions, 693 green. The behavioural half clicks the real modal in a real browser.
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -2766,6 +2791,7 @@ function slugifyTeamName(name){
 // defaults until the admin customizes a role in the Permission Manager.
 const ENTRY_MODULES = [
   {key:'entry_order', label:'Create orders'},
+  {key:'entry_order_stage', label:'Move orders forward (Ready to Dispatch · Dispatched)'},
   {key:'entry_purchase', label:'Record purchase (raw)'},
   {key:'entry_filling', label:'Record filling'},
   {key:'entry_packing', label:'Record packing'},
@@ -2775,17 +2801,39 @@ const ENTRY_MODULES = [
   {key:'entry_batch', label:'Quick Action: Batch'},
 ];
 const DEFAULT_ENTRY_PERMS = {
-  admin:    {entry_order:true, entry_purchase:true, entry_filling:true, entry_packing:true, entry_domino:true, entry_retail:true, entry_samples:true, entry_batch:true},
-  manager:  {entry_order:true, entry_purchase:true, entry_filling:true, entry_packing:true, entry_domino:true, entry_retail:true, entry_samples:true, entry_batch:true},
-  sales:    {entry_order:true, entry_purchase:false, entry_filling:false, entry_packing:false, entry_domino:false, entry_retail:false, entry_samples:false, entry_batch:false},
-  filling:  {entry_order:false, entry_purchase:false, entry_filling:true, entry_packing:false, entry_domino:false, entry_retail:false, entry_samples:false, entry_batch:false},
-  packaging:{entry_order:false, entry_purchase:false, entry_filling:false, entry_packing:true, entry_domino:true, entry_retail:false, entry_samples:false, entry_batch:false},
+  admin:    {entry_order:true, entry_order_stage:true, entry_purchase:true, entry_filling:true, entry_packing:true, entry_domino:true, entry_retail:true, entry_samples:true, entry_batch:true},
+  manager:  {entry_order:true, entry_order_stage:true, entry_purchase:true, entry_filling:true, entry_packing:true, entry_domino:true, entry_retail:true, entry_samples:true, entry_batch:true},
+  sales:    {entry_order:true, entry_order_stage:false, entry_purchase:false, entry_filling:false, entry_packing:false, entry_domino:false, entry_retail:false, entry_samples:false, entry_batch:false},
+  filling:  {entry_order:false, entry_order_stage:false, entry_purchase:false, entry_filling:true, entry_packing:false, entry_domino:false, entry_retail:false, entry_samples:false, entry_batch:false},
+  packaging:{entry_order:false, entry_order_stage:false, entry_purchase:false, entry_filling:false, entry_packing:true, entry_domino:true, entry_retail:false, entry_samples:false, entry_batch:false},
 };
 function canDoEntry(role, key){
   if(role==='admin') return true;
   const perm = S.rolePermissions[role];
   if(perm && Object.prototype.hasOwnProperty.call(perm, key)) return !!perm[key];
   return !!(DEFAULT_ENTRY_PERMS[role] && DEFAULT_ENTRY_PERMS[role][key]);
+}
+// ROUND 65 (explicit user request -- "order ko process krne k rights
+// permission manager me dal do. so that packing team bhi order ko process
+// kar sake. agar manager na ho"): the order-stage actions a manager does
+// day to day -- Mark Ready to Dispatch, its undo, Processed & Dispatched,
+// its undo, and the LR/stock photo that belongs to the dispatch -- were
+// hard-coded to admin+manager in six separate places. They now all read
+// this one permission, so an admin can hand them to the Packaging team (or
+// any team) from the Permission Manager when no manager is around.
+//
+// Today's behaviour is unchanged out of the box: DEFAULT_ENTRY_PERMS gives
+// entry_order_stage to manager and to nobody else, and firestore.rules'
+// defaultEntryPerm() mirrors that (`role == 'manager'` is true for every
+// key), so a manager keeps these powers even if their role was customized
+// in the Permission Manager before this key existed.
+//
+// NOTE for the admin: this grants the ACTIONS, not the screen. A team also
+// needs the "Orders" view ticked to see the buttons at all -- the
+// Permission Manager's confirm step now says so out loud.
+function canMoveOrderStage(role){
+  if(role==='admin') return true;
+  return canDoEntry(role, 'entry_order_stage');
 }
 // Non-admin staff may only record a NEW entry (purchase / filling /
 // packaging / expense / retail sale) on a working day, inside the
@@ -3130,6 +3178,13 @@ const I18N = {
     'View only.':'सिर्फ़ देखने के लिए.', 'Editing or deleting stays available until it\'s booked.':'बुक होने तक बदलना या हटाना संभव है.',
     '⚠️ Previous Entry Not Booked':'⚠️ पिछली एंट्री बुक नहीं हुई', 'days':'दिन',
     '🖨️ Print this day':'🖨️ यह दिन प्रिंट करें', '⏰ Entry window':'⏰ एंट्री का समय',
+    // ROUND 65 -- item checklist (packing / billing)
+    '📦 Packing checklist':'📦 पैकिंग चेकलिस्ट', '🧾 Billing checklist':'🧾 बिलिंग चेकलिस्ट',
+    '✓ Added':'✓ डाल दिया', '✓ Entered':'✓ एंट्री हो गई',
+    'Tick each item as it goes into the goods.':'हर आइटम माल में डालते ही टिक करें.',
+    'Tick each item as you enter it in the accounting software.':'हर आइटम अकाउंटिंग सॉफ़्टवेयर में डालते ही टिक करें.',
+    'done':'हो गए', 'total':'कुल', 'tap to review':'देखने के लिए टैप करें', 'more after these':'और इनके बाद', 'still to tick':'अभी टिक करने बाकी',
+    'order still needs its billing checklist':'ऑर्डर की बिलिंग चेकलिस्ट बाकी है', 'orders still need their billing checklist':'ऑर्डरों की बिलिंग चेकलिस्ट बाकी है',
     'of':'में से', 'entries booked':'एंट्रीज़ बुक हुईं', '✅ Book all remaining':'✅ सभी बाकी बुक करें',
     // LANGUAGE ROLLOUT, PHASE 6 (2026-09-08, modals batch 1): first pass at
     // the previously-deferred MODAL forms (openUploadLRModal/openViewLRModal/
@@ -3575,6 +3630,13 @@ const I18N = {
     'View only.':'صرف دیکھنے کے لیے۔', 'Editing or deleting stays available until it\'s booked.':'بک ہونے تک تبدیل یا حذف کرنا ممکن ہے۔',
     '⚠️ Previous Entry Not Booked':'⚠️ پچھلا اندراج بک نہیں ہوا', 'days':'دن',
     '🖨️ Print this day':'🖨️ یہ دن پرنٹ کریں', '⏰ Entry window':'⏰ اندراج کا وقت',
+    // ROUND 65 -- item checklist (packing / billing)
+    '📦 Packing checklist':'📦 پیکنگ چیک لسٹ', '🧾 Billing checklist':'🧾 بلنگ چیک لسٹ',
+    '✓ Added':'✓ ڈال دیا', '✓ Entered':'✓ اندراج ہو گیا',
+    'Tick each item as it goes into the goods.':'ہر آئٹم مال میں ڈالتے ہی ٹک کریں۔',
+    'Tick each item as you enter it in the accounting software.':'ہر آئٹم اکاؤنٹنگ سافٹ ویئر میں ڈالتے ہی ٹک کریں۔',
+    'done':'ہو گئے', 'total':'کل', 'tap to review':'دیکھنے کے لیے ٹیپ کریں', 'more after these':'مزید ان کے بعد', 'still to tick':'ابھی ٹک کرنے باقی',
+    'order still needs its billing checklist':'آرڈر کی بلنگ چیک لسٹ باقی ہے', 'orders still need their billing checklist':'آرڈرز کی بلنگ چیک لسٹ باقی ہے',
     'of':'میں سے', 'entries booked':'اندراجات بک ہوئے', '✅ Book all remaining':'✅ سب باقی بک کریں',
     // LANGUAGE ROLLOUT, PHASE 6 (2026-09-08, modals batch 1) -- see the hi
     // block's comment above for full scope notes (same batch of modals,
@@ -10637,9 +10699,19 @@ function undoMarkOrderReady(orderId, onDone){
 // actual dispatch booking (Processed & Dispatched, which opens the LR/
 // transport modal). No stock side-effects — purely a status + audit trail.
 function markOrderPacked(orderId, onDone){
-  if(S.currentUser.role!=='admin' && S.currentUser.role!=='manager') return;
+  if(!canMoveOrderStage(S.currentUser.role)) return; // ROUND 65: was admin+manager hard-coded
   const o = S.orders.find(x=>x.id===orderId); if(!o) return;
   if(o.status!=='ready') return;
+  // ROUND 65: a 3+ item order goes through the packing checklist first. The
+  // gate sits HERE, not in the click handler, so every route that can
+  // advance an order -- the tile button, the stat-count modal, a
+  // notification -- passes through it, and a route added later gets it for
+  // free. Re-entry is safe: by the time onComplete fires the checklist is
+  // complete, so this branch is false and the order actually moves.
+  if(orderNeedsChecklist(o) && !checklistState(o,'pack').complete){
+    openItemChecklistModal(orderId, 'pack', ()=>markOrderPacked(orderId, onDone));
+    return;
+  }
   o.status = 'packed';
   o.packedAt = Date.now();
   o.packedBy = S.currentUser.name;
@@ -10650,7 +10722,7 @@ function markOrderPacked(orderId, onDone){
   if(onDone) onDone();
 }
 function undoMarkOrderPacked(orderId, onDone){
-  if(S.currentUser.role!=='admin' && S.currentUser.role!=='manager') return;
+  if(!canMoveOrderStage(S.currentUser.role)) return; // ROUND 65
   const o = S.orders.find(x=>x.id===orderId); if(!o) return;
   if(o.status!=='packed') return;
   o.status = 'ready';
@@ -10662,7 +10734,186 @@ function undoMarkOrderPacked(orderId, onDone){
   if(onDone) onDone();
 }
 
+/* ===================== ITEM CHECKLIST (ROUND 65) =======================
+   Explicit user request: "For orders having more than 2 items ... jb order
+   ko in packing se Ready to dispatch kiya jata hai, waha ik Check list dal
+   do (so that har ik item add ho jaaye, jane wle goods me). also inki jb
+   booking hoti hai ... waha bhi check list ajaye ... 3-3 items show hon,
+   ik added ka button ho, added ho jaye to vo hat kr agla item ajaye."
+
+   One checklist, two jobs:
+     mode 'pack' -- "is every item physically in the goods going out?"
+                    gates Mark Ready to Dispatch (ready -> packed)
+     mode 'book' -- "is every item typed into the accounting software?"
+                    gates Daily Work's per-order Book tick
+   Deliberately ONE renderer for both. Each of the last three rounds lost
+   time to the same defect class -- the same row drawn in two places
+   drifting apart (the Record button in R62, the quantity caption in R63,
+   the money formula in R64) -- so the ONLY thing the two modes may differ
+   on is the small config object below. Anything else is a bug.
+
+   Stored on the order as an ARRAY of {k:itemKey, q:qtyWhenTicked}:
+    - an array, not a map, because an item key is `name__size` and a size the
+      admin types later could contain a '.', which is not safe as a Firestore
+      map key. An array of maps has no such restriction.
+    - the QTY is stored, not just `true`. Tick 50 pc, then someone edits the
+      order to 200 pc, and the tick no longer matches, so that item comes
+      BACK unticked instead of silently passing 200 pc as "checked". This is
+      the whole reason this is not a boolean.
+   Nothing is derived from a stored list of names, so an item removed from
+   the order simply vanishes from the checklist and a newly added one appears
+   unticked. No migration, nothing to keep in sync.
+*/
+const CHECKLIST_MIN_ITEMS = 3;   // 1-2 item orders are waved straight through
+const CHECKLIST_WINDOW = 3;      // how many pending items are on screen at once
+const CHECKLIST_MODES = {
+  pack: { field:'packChecked', title:'📦 Packing checklist', tick:'✓ Added',
+          hint:'Tick each item as it goes into the goods.',
+          doneLabel:'🚚 Mark Ready to Dispatch', money:false },
+  book: { field:'bookChecked', title:'🧾 Billing checklist', tick:'✓ Entered',
+          hint:'Tick each item as you enter it in the accounting software.',
+          doneLabel:'✅ Book', money:true },
+};
+function checklistModeCfg(mode){ return CHECKLIST_MODES[mode] || CHECKLIST_MODES.pack; }
+function checklistItemsOf(o){ return ((o && o.items) || []).filter(i=>i && !i.cancelled); }
+function orderNeedsChecklist(o){ return checklistItemsOf(o).length >= CHECKLIST_MIN_ITEMS; }
+function checklistTickedList(o, mode){
+  const raw = o ? o[checklistModeCfg(mode).field] : null;
+  return Array.isArray(raw) ? raw.filter(x=>x && typeof x.k === 'string') : [];
+}
+function checklistState(o, mode){
+  const items = checklistItemsOf(o);
+  const ticked = checklistTickedList(o, mode);
+  const isTicked = i => ticked.some(x=>x.k===i.key && x.q===i.qty);
+  const done = items.filter(isTicked);
+  const pending = items.filter(i=>!isTicked(i));
+  return { items, done, pending, total: items.length,
+           complete: items.length>0 && pending.length===0 };
+}
+// Rewrites the stored list from the order's live items every time, so stale
+// ticks from edited or removed items can never accumulate in the document.
+function checklistSetTick(o, mode, key, on){
+  const cfg = checklistModeCfg(mode);
+  const items = checklistItemsOf(o);
+  const prev = checklistTickedList(o, mode);
+  const next = items
+    .filter(i => prev.some(x=>x.k===i.key && x.q===i.qty))
+    .filter(i => on || i.key!==key)
+    .map(i => ({k:i.key, q:i.qty}));
+  if(on && !next.some(x=>x.k===key)){
+    const it = items.find(i=>i.key===key);
+    if(it) next.push({k:it.key, q:it.qty});
+  }
+  o[cfg.field] = next;
+  o.updatedByUsername = (S.currentUser && S.currentUser.username) || o.updatedByUsername;
+  savePartitionForItem('orders', o);
+}
+// The one row renderer. Packing reads cases+pieces; billing reads the line's
+// money, straight out of orderLineMrp so it cannot disagree with the tile.
+function checklistLineDetail(i, cfg){
+  const it = findItem(i.key);
+  if(cfg.money){
+    const unit = it ? ` × ₹${it.mrp.toLocaleString('en-IN')} = <b>₹${orderLineMrp(i).toLocaleString('en-IN')}</b>` : '';
+    return `${i.qty} ${esc(t('pc'))}${unit}`;
+  }
+  // Deliberately NOT fmtCase here. fmtCase prints "0c 24pc (24 pc)" for an
+  // item that happens to be short of one case, and "0c" in front of a packer
+  // who is counting bottles is noise at best and a miscount at worst. This
+  // says only what has to be picked up, and states the total once.
+  const caseSize = it ? it.caseSize : null;
+  const cases = caseSize ? Math.floor(i.qty / caseSize) : 0;
+  const loose = caseSize ? i.qty % caseSize : i.qty;
+  if(!cases) return `<b>${i.qty} ${esc(t('pc'))}</b>`;
+  const caseWord = esc(t(cases === 1 ? 'case' : 'cases'));
+  const head = loose
+    ? `<b>${cases} ${caseWord} + ${loose} ${esc(t('pc'))}</b>`
+    : `<b>${cases} ${caseWord}</b>`;
+  return `${head} <span style="opacity:.7;">(${i.qty} ${esc(t('pc'))} ${esc(t('total'))})</span>`;
+}
+function checklistBodyHtml(o, mode){
+  const cfg = checklistModeCfg(mode);
+  const st = checklistState(o, mode);
+  const pct = st.total ? Math.round(st.done.length/st.total*100) : 0;
+  const visible = st.pending.slice(0, CHECKLIST_WINDOW);
+  const hiddenCount = st.pending.length - visible.length;
+  const rowHtml = (i, idx)=>`<div class="chk-row${idx===0?' chk-row-next':''}">
+      <div class="chk-txt">
+        <div class="chk-name">${esc(t(i.name))} ${esc(translateSizeUnit(i.size))}</div>
+        <div class="chk-qty mono">${checklistLineDetail(i, cfg)}</div>
+      </div>
+      <button type="button" class="btn btn-sm btn-success chk-tick" data-chk-tick="${esc(String(i.key))}">${esc(t(cfg.tick))}</button>
+    </div>`;
+  const doneHtml = st.done.length ? `<details class="chk-done">
+      <summary>✓ ${st.done.length} ${esc(t('done'))} — ${esc(t('tap to review'))}</summary>
+      ${st.done.map(i=>`<div class="chk-done-row">
+        <span>${esc(t(i.name))} ${esc(translateSizeUnit(i.size))} — ${checklistLineDetail(i, cfg)}</span>
+        <button type="button" class="btn btn-sm btn-outline" data-chk-untick="${esc(String(i.key))}">↩</button>
+      </div>`).join('')}
+    </details>` : '';
+  return `<div class="chk-prog">
+      <span class="chk-prog-n">${st.done.length} / ${st.total}</span>
+      <span class="chk-prog-bar"><span class="chk-prog-fill" style="width:${pct}%;"></span></span>
+    </div>
+    ${doneHtml}
+    ${visible.map(rowHtml).join('')}
+    ${hiddenCount>0?`<div class="chk-more">+${hiddenCount} ${esc(t('more after these'))}</div>`:''}
+    ${st.complete
+      ? `<button type="button" class="btn btn-success chk-go" id="chkGoBtn">${esc(t(cfg.doneLabel))}</button>`
+      : `<div class="chk-left">${st.pending.length} ${esc(t('still to tick'))}</div>
+         <button type="button" class="btn chk-go" id="chkGoBtn" disabled>${esc(t(cfg.doneLabel))}</button>`}`;
+}
+// onComplete is called ONLY after the last item is ticked and the person
+// presses the real action button. It is the original action, re-entered --
+// which is safe because by then checklistState(...).complete is true, so the
+// gate in that action lets it through instead of reopening this modal.
+function openItemChecklistModal(orderId, mode, onComplete){
+  const cfg = checklistModeCfg(mode);
+  const first = S.orders.find(x=>x.id===orderId);
+  if(!first) return;
+  showModal(`
+    <h3>${esc(t(cfg.title))}</h3>
+    <p class="desc" style="margin-top:-6px;">${esc(orderDisplayLabel(first))} — ${esc(t(cfg.hint))}</p>
+    <div id="chkBody"></div>
+    <div class="modal-actions"><button type="button" class="btn btn-outline" id="cancelModal">${esc(t('Close'))}</button></div>
+  `);
+  const paint = ()=>{
+    const body = document.getElementById('chkBody');
+    if(!body) return; // modal was closed between a tick and its repaint
+    const o = S.orders.find(x=>x.id===orderId);
+    if(!o){
+      closeModal();
+      showAlert(t('This order no longer exists — it may have been deleted or changed on another device.'));
+      render(); return;
+    }
+    body.innerHTML = checklistBodyHtml(o, mode);
+    body.querySelectorAll('[data-chk-tick]').forEach(b=>b.addEventListener('click', ()=>{
+      const cur = S.orders.find(x=>x.id===orderId); if(!cur) { paint(); return; }
+      checklistSetTick(cur, mode, b.dataset.chkTick, true);
+      paint();
+    }));
+    body.querySelectorAll('[data-chk-untick]').forEach(b=>b.addEventListener('click', ()=>{
+      const cur = S.orders.find(x=>x.id===orderId); if(!cur) { paint(); return; }
+      checklistSetTick(cur, mode, b.dataset.chkUntick, false);
+      paint();
+    }));
+    const go = document.getElementById('chkGoBtn');
+    if(go && !go.disabled) go.addEventListener('click', ()=>{
+      const cur = S.orders.find(x=>x.id===orderId);
+      if(!cur || !checklistState(cur, mode).complete){ paint(); return; }
+      closeModal();
+      if(onComplete) onComplete();
+    });
+  };
+  paint();
+}
+
 function openDispatchModal(orderId){
+  // ROUND 65: this was the one order-stage entry point with no role guard of
+  // its own -- the tile markup and the notification button were the only
+  // things keeping non-managers out, exactly the gap Round 22 closed on
+  // undoDispatch and markOrderPacked. A stale button in an already-open
+  // modal had nothing behind it. Guarded now, on the same permission.
+  if(!canMoveOrderStage(S.currentUser.role)) return;
   const o = S.orders.find(x=>x.id===orderId); if(!o) return;
   const cust = liveCustomerFor(o);
   const prefillTransport = (cust && cust.transport) || '';
@@ -11441,6 +11692,16 @@ function toggleEntryBooked(source, id){
   if(S.currentUser.role!=='admin') return;
   const list = source==='expenses' ? S.expenses : source==='retailSales' ? S.retailSales : source==='orders' ? S.orders : S.activityLog;
   const e = list.find(x=>x.id===id); if(!e) return;
+  // ROUND 65: booking an order with 3+ items means its bill has been typed
+  // into the accounting software line by line, so the billing checklist has
+  // to be finished first. Deliberately only on the way IN -- UNDOING a book
+  // is a correction and must never be blocked by a checklist. Nothing else
+  // in Daily Work (purchase/filling/packing/expense/retail) is touched;
+  // those are single-line entries with nothing to tick off.
+  if(source==='orders' && !e.booked && orderNeedsChecklist(e) && !checklistState(e,'book').complete){
+    openItemChecklistModal(id, 'book', ()=>toggleEntryBooked(source, id));
+    return;
+  }
   e.booked = !e.booked;
   savePartitionForItem(source, e);
   render();
@@ -11528,9 +11789,19 @@ function bindDailyWork(){
     S.activityLog.filter(e=>(e.kind==='purchase'||e.kind==='filling'||e.kind==='packaging') && localDateKey(e.at)===date && !e.booked).forEach(e=>{ e.booked = true; savePartitionForItem('activityLog', e); });
     S.expenses.filter(e=>localDateKey(e.at)===date && !e.booked).forEach(e=>{ e.booked = true; savePartitionForItem('expenses', e); });
     S.retailSales.filter(e=>localDateKey(e.at)===date && !e.booked).forEach(e=>{ e.booked = true; savePartitionForItem('retailSales', e); });
-    S.orders.filter(o=>localDateKey(o.createdAt)===date && !o.booked).forEach(o=>{ o.booked = true; savePartitionForItem('orders', o); });
+    // ROUND 65: this button would otherwise be a one-click bypass of the
+    // billing checklist, which would make the checklist pointless. Orders
+    // whose checklist isn't finished are held back and counted; everything
+    // else on the day (including 1-2 item orders) books exactly as before.
+    let heldBack = 0;
+    S.orders.filter(o=>localDateKey(o.createdAt)===date && !o.booked).forEach(o=>{
+      if(orderNeedsChecklist(o) && !checklistState(o,'book').complete){ heldBack++; return; }
+      o.booked = true; savePartitionForItem('orders', o);
+    });
     render();
-    showToast('All entries booked ✅');
+    showToast(heldBack
+      ? `${heldBack} ${t(heldBack===1 ? 'order still needs its billing checklist' : 'orders still need their billing checklist')}`
+      : 'All entries booked ✅');
   });
 }
 
@@ -13794,12 +14065,18 @@ function computeFifoShortages(){
   });
   return shortByOrderItem;
 }
+// ROUND 65: the per-LINE money formula, extracted. The billing checklist
+// has to print each line's own value, and Round 64 was lost to exactly this
+// defect class -- one money formula living in four places, three of which
+// drifted. orderMrpValue is now nothing but the sum of this function, so
+// there is one formula and the checklist cannot disagree with the tile.
+function orderLineMrp(i){
+  if(!i || i.cancelled) return 0;
+  const it = findItem(i.key);
+  return it ? it.mrp*i.qty : 0;
+}
 function orderMrpValue(o){
-  return o.items.reduce((sum,i)=>{
-    if(i.cancelled) return sum;
-    const it = findItem(i.key);
-    return sum + (it ? it.mrp*i.qty : 0);
-  }, 0);
+  return ((o && o.items) || []).reduce((sum,i)=>sum + orderLineMrp(i), 0);
 }
 // PERF BUGFIX (2026-09-02, crash/stress sweep): renderOrderTile used to call
 // computeFifoShortages() itself, ONCE PER TILE -- and computeFifoShortages()
@@ -13901,16 +14178,16 @@ function orderPipelineHtml(o){
 // markup keeps this a pure decision, testable on its own.
 function orderPrimaryAction(o, role){
   const isAdmin = role === 'admin';
-  const isManager = role === 'manager';
+  const canStage = canMoveOrderStage(role); // ROUND 65: was `role === 'manager'`
   if(isAdmin && o.status === 'pending') return 'approve-order';
   if(isAdmin && o.status === 'processing') return 'mark-ready-now';
-  if((isAdmin || isManager) && o.status === 'ready') return 'mark-packed';
-  if((isAdmin || isManager) && o.status === 'packed') return 'dispatch-order';
+  if(canStage && o.status === 'ready') return 'mark-packed';
+  if(canStage && o.status === 'packed') return 'dispatch-order';
   return null; // a dispatched order, or a role with nothing to advance
 }
 function renderOrderTile(o, showUndoDispatch, fifoShortages){
   const isAdmin = S.currentUser.role==='admin';
-  const isLRUploader = S.currentUser.role==='admin' || S.currentUser.role==='manager';
+  const isLRUploader = canMoveOrderStage(S.currentUser.role); // ROUND 65: the LR/stock photo belongs to the dispatch, so it follows the same permission
   fifoShortages = fifoShortages || computeFifoShortages();
   const tileCls = o.status==='ready' ? ' tile-ready' : o.status==='processing' ? ' tile-processing' : o.status==='packed' ? ' tile-packed' : '';
   return `<div class="order-tile${tileCls}" data-order-id="${esc(String(o.id))}">
@@ -13976,7 +14253,7 @@ function renderOrderTile(o, showUndoDispatch, fifoShortages){
       ${o.status==='processing'?`<button class="btn btn-sm btn-success" data-ot-primary data-mark-ready-now="${o.id}">${esc(t('Mark Ready'))}</button>`:''}
       ${o.status==='ready' && o.items.some(it=>it.autoCancelledByReady)?`<button class="btn btn-sm btn-outline" data-undo-ready="${o.id}">↩ Undo Ready</button>`:''}
       `:''}
-      ${(isAdmin || S.currentUser.role==='manager')?`
+      ${canMoveOrderStage(S.currentUser.role)?`
       ${o.status==='ready'?`<button class="btn btn-sm btn-success" data-ot-primary data-mark-packed="${o.id}">${esc(t('🚚 Mark Ready to Dispatch'))}</button>`:''}
       ${o.status==='packed'?`<button class="btn btn-sm btn-outline" data-undo-packed="${o.id}">↩ Undo Ready to Dispatch</button>`:''}
       ${o.status==='packed'?`<button class="btn btn-sm btn-success" data-ot-primary data-dispatch-order="${o.id}">${t('Processed & Dispatched')}</button>`:''}
@@ -14253,7 +14530,7 @@ function openStatModal(key){
   if(key==='processed') document.querySelectorAll('[data-undo-dispatch]').forEach(b=>b.addEventListener('click', ()=>undoDispatch(b.dataset.undoDispatch)));
 }
 function undoDispatch(orderId){
-  if(S.currentUser.role!=='admin' && S.currentUser.role!=='manager') return; // BUGFIX (Round 22 audit): the button was manager/admin-only in markup only -- a stale one in an already-open modal had no server- or client-side guard behind it at all
+  if(!canMoveOrderStage(S.currentUser.role)) return; // ROUND 65 (was admin+manager). BUGFIX (Round 22 audit): the button was manager/admin-only in markup only -- a stale one in an already-open modal had no server- or client-side guard behind it at all
   if(!S.orders.find(x=>x.id===orderId)) return;
   showConfirm('Undo dispatch and move this order back to Ready to Dispatch?', ()=>{
     // RACE FIX (Round 22 audit): re-resolve inside the callback -- the object
@@ -15426,6 +15703,16 @@ function openPermissionConfirm(role, viewChecked, entryChecked){
     <div>
       ${entryChecked.length? entryChecked.map(m=>`<div style="padding:4px 0;font-size:0.8125rem;">✅ ${esc(m.label)}</div>`).join('') : `<div class="desc" style="margin:0;">No data-entry rights.</div>`}
     </div>
+    ${(entryChecked.some(m=>m.key==='entry_order_stage') && !viewChecked.some(v=>v.key==='orders')) ? `
+    <!-- ROUND 65: "Move orders forward" grants the ACTIONS; the buttons live
+         on the Orders screen. Granted without the Orders view it is a right
+         this team can never reach -- which would read as "button nahi dikh
+         raha" rather than as a missing tick. Said out loud here instead. -->
+    <div style="margin-top:12px;padding:9px 11px;border-radius:10px;background:var(--warning-bg);border:1px solid var(--warning);font-size:0.75rem;line-height:1.45;">
+      ⚠️ <b>Move orders forward</b> is ticked but <b>Orders</b> is not.
+      The buttons for it live on the Orders screen, so this team won't be able
+      to use it until you also tick <b>Orders</b> under “Can view”.
+    </div>` : ''}
     <p class="desc" style="margin-top:14px;font-weight:700;color:var(--ink);">Are you sure you want to apply this?</p>
     <div class="modal-actions">
       <button type="button" class="btn btn-outline" id="cancelConfirmBtn">Go back</button>
