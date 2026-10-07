@@ -10,7 +10,7 @@
      the whole 1.35 MB down again on a phone. Up here it lands inside the
      first kilobyte, so the check costs a few KB instead of the entire app.
      The two can never be allowed to drift -- test_round60 fails if they do. -->
-<meta name="app-build" content="2026-10-07-firestore-preview96">
+<meta name="app-build" content="2026-10-07-firestore-preview97">
 <meta name="theme-color" content="#1E3F1B">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -2164,7 +2164,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-10-07-firestore-preview96"; // ROUND 68 (2026-10-07). Owner: "koi animation suggest kro app ko or beautiful and interactive banane k liye" -> "ok do" on four of them. FOUR MOTIONS, ONE RULE: AN ANIMATION PLAYS ON A CHANGE, NEVER ON AN ARRIVAL. A number that counts up every time Home opens, or a rail that re-fills on every Firestore snapshot, stops carrying information within a day -- it becomes the infinite pulse that people learn to skip. So each one remembers what it last showed and moves only when the new value differs; first sight is silent, standing still is silent, and going backwards is silent. THE RAIL. The 5-step pipeline on an order tile used to make the dot vanish from one step and appear at the next. The connector is positioned from the PREVIOUS dot, so growing it from transform-origin:left is literally the order travelling, with the new dot landing 160ms behind it. Only forwards: Undo Ready to Dispatch and Undo Dispatch are corrections, and a correction that celebrates itself is confusing. THE STAMP. A green stamp lands slightly crooked on the Attendance card after a self-mark, and stays crooked -- one that settles perfectly straight reads as a spinner that stopped. Deliberately a 1200ms WINDOW rather than a one-shot flag: recordPresent renders and showToast renders again a tick later, so a flag consumed by the first paint would have put the class on a node that lived about a millisecond. THE TAP. 10ms of vibration on the five moments that mean "it is done" -- attendance marked, a checklist item ticked, an order moved to Ready to Dispatch, an order dispatched, somebody marked present from the team card. On SUCCESS, never on the press: a buzz for an action that was then refused is worse than no buzz. Guarded so it cannot throw inside a write path, and simply absent on iPhone, where Safari does not implement the API at all. Taking a checklist tick BACK does not buzz. AND THE THING THIS ROUND ACTUALLY FOUND. The app has had a count-up since Round 15 -- animateStatNumbers() -- and I wrote a second one. The two fought over the same node, the newer lost, and a test asserting the opposite is what caught it: exactly the defect class that cost Round 62 the Record button, Round 63 the quantity caption and Round 64 four copies of a money formula. The duplicate is deleted, and the real one is fixed in the two ways it was wrong: (1) it never asked about prefers-reduced-motion, so somebody who had told their phone to stop moving still watched every figure on Home count itself up -- the blanket CSS rule added in Round 44 collapses keyframes but cannot touch a requestAnimationFrame loop; (2) its memory was keyed off the tile LABEL, falling back to the element index on screen -- Home shows "Total Expense" twice with two different meanings and they shared one memory, and an index moves the moment a tile is hidden by the Permission Manager, so every remembered number after it pointed at a different tile. Renderers now declare the identity once through countNumHtml, and the old derivation stays only as the fallback for numbers that have none. Every new keyframe moves transform or opacity alone -- asserted, not assumed, because 400 staff are on cheap Android phones and a keyframe that animates width or margin re-runs layout on every frame. The rendered number is always the correct one before any script runs. 10 mutants, every one caught (one survived the first pass -- a dropped transform-origin that left the rail growing from its own middle -- and is now covered). 39 new assertions, 812 green. firestore.rules UNCHANGED.
+const APP_BUILD = "2026-10-07-firestore-preview97"; // ROUND 69 (2026-10-07). Owner: "Ik bar Jiski Attendance mark ho gyi Absent ya present. either by self or by permitted person ya admin. (admin k alawa jisko admin ne permission di hui h including manager vo usko change na kar paye).." A MARK THAT EXISTS BELONGS TO ADMIN. A permission holder's job is now exactly one thing: mark somebody who is NOT yet marked. The moment a record exists for that person on that day -- their own tap, a manager's, an admin's -- only admin may change it. Both directions, present to absent and absent to present, and re-stating the same answer is refused too: the test is that a RECORD EXISTS, never what it says. A rule written against the markedByAdmin flag would have missed the commonest case of all, somebody who marked themselves. THE WHOLE FEATURE IS ONE WORD REMOVED FROM ONE LINE OF FIRESTORE.RULES. Round 33 gave every person-day exactly one document, so the first mark of the day is a CREATE and every change to it is an UPDATE. marksForOthers() comes off `allow update` and stays on `allow create`, and that is the rule -- no condition to write, nothing to keep in step. Round 66 had put it on update for a reason recorded there (without it a manager could only mark people nobody had touched); that turned out to be precisely what the owner wanted, stated in the shape the data already had. THE SCREEN AGREES RATHER THAN DECIDES. The team card used to show a lit "Present" and a live "Absent" on somebody already present -- it was offering the one action that is now refused. A marked row now carries no buttons at all and says "Mark ho chuka -- sirf admin badal sakta hai", because two buttons that would both be refused read as a broken screen rather than as a rule. markAttendanceForUser re-checks it anyway, for the stale render and the second device. ADMIN IS UNTOUCHED: flip either way, any past date, and clear a day entirely. THE COST, SAID PLAINLY: a manager who marks somebody Absent by mistake cannot take it back, and that person stays locked out of the app until an admin fixes it. That is the direct meaning of what was asked, and the owner chose it over a correction-request flow. 7 mutants, every one caught -- including making the document id random again, which would have turned every change back into a create and quietly undone the rules change. 23 new assertions, 836 green. FIRESTORE.RULES CHANGED -- DEPLOY IT.
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -3229,6 +3229,9 @@ const I18N = {
     'View only.':'सिर्फ़ देखने के लिए.', 'Editing or deleting stays available until it\'s booked.':'बुक होने तक बदलना या हटाना संभव है.',
     '⚠️ Previous Entry Not Booked':'⚠️ पिछली एंट्री बुक नहीं हुई', 'days':'दिन',
     '🖨️ Print this day':'🖨️ यह दिन प्रिंट करें', '⏰ Entry window':'⏰ एंट्री का समय',
+    // ROUND 69 -- a mark that exists belongs to admin
+    'Mark ho chuka — sirf admin badal sakta hai':'मार्क हो चुका — अब सिर्फ एडमिन बदल सकता है',
+    'Inki attendance pehle hi lag chuki hai. Ab sirf admin ise badal sakta hai.':'इनकी हाज़िरी पहले ही लग चुकी है. अब सिर्फ एडमिन इसे बदल सकता है.',
     // ROUND 67 -- a real holiday is closed
     'Aaj kaam ho raha ho to admin is din ko Working Day bana de — phir attendance normal lagegi.':'आज काम हो रहा हो तो एडमिन इस दिन को Working Day बना दे — फिर हाज़िरी आम दिनों जैसी लगेगी.',
     'Aaj chhutti hai — attendance nahi lagti. Kaam ho raha ho to admin is din ko Working Day bana de.':'आज छुट्टी है — हाज़िरी नहीं लगती. काम हो रहा हो तो एडमिन इस दिन को Working Day बना दे.',
@@ -3702,6 +3705,9 @@ const I18N = {
     'View only.':'صرف دیکھنے کے لیے۔', 'Editing or deleting stays available until it\'s booked.':'بک ہونے تک تبدیل یا حذف کرنا ممکن ہے۔',
     '⚠️ Previous Entry Not Booked':'⚠️ پچھلا اندراج بک نہیں ہوا', 'days':'دن',
     '🖨️ Print this day':'🖨️ یہ دن پرنٹ کریں', '⏰ Entry window':'⏰ اندراج کا وقت',
+    // ROUND 69 -- a mark that exists belongs to admin
+    'Mark ho chuka — sirf admin badal sakta hai':'مارک ہو چکا — اب صرف ایڈمن بدل سکتا ہے',
+    'Inki attendance pehle hi lag chuki hai. Ab sirf admin ise badal sakta hai.':'ان کی حاضری پہلے ہی لگ چکی ہے۔ اب صرف ایڈمن اسے بدل سکتا ہے۔',
     // ROUND 67 -- a real holiday is closed
     'Aaj kaam ho raha ho to admin is din ko Working Day bana de — phir attendance normal lagegi.':'آج کام ہو رہا ہو تو ایڈمن اس دن کو Working Day بنا دے — پھر حاضری عام دنوں جیسی لگے گی۔',
     'Aaj chhutti hai — attendance nahi lagti. Kaam ho raha ho to admin is din ko Working Day bana de.':'آج چھٹی ہے — حاضری نہیں لگتی۔ کام ہو رہا ہو تو ایڈمن اس دن کو Working Day بنا دے۔',
@@ -19034,16 +19040,22 @@ function attendanceTeamCardHtml(){
     <table><thead><tr><th>${esc(t('Name'))}</th><th></th></tr></thead><tbody>
     ${team.map(u=>{
       const rec = attendanceRecordFor(u.username, todayKey);
-      const isP = !!(rec && rec.type === 'present');
-      const isA = !!(rec && rec.type === 'absent');
+      // ROUND 69: once a mark exists it belongs to admin. Offering two
+      // buttons that would both be refused is worse than offering none --
+      // it reads as a broken screen rather than as a rule. So the cell says
+      // the rule instead, and markAttendanceForUser re-checks it anyway for
+      // the stale-render case.
+      const actionCell = rec
+        ? `<span class="desc" style="margin:0;font-size:11px;display:block;text-align:right;">${esc(t('Mark ho chuka — sirf admin badal sakta hai'))}</span>`
+        : `<div style="display:flex;gap:5px;justify-content:flex-end;flex-wrap:nowrap;">
+            <button type="button" class="btn btn-sm btn-outline" data-team-att="present|${esc(u.username)}" style="white-space:nowrap;">${esc(t('Present'))}</button>
+            <button type="button" class="btn btn-sm btn-outline" data-team-att="absent|${esc(u.username)}" style="white-space:nowrap;">${esc(t('Absent'))}</button>
+          </div>`;
       return `<tr>
         <td><b>${esc(u.name)}</b>
           <div class="desc" style="margin:2px 0 0;font-size:11px;">${esc(t(ROLES[u.role]?ROLES[u.role].label:u.role))}</div>
           <div style="margin-top:4px;">${statusChip(rec)}</div></td>
-        <td style="text-align:right;"><div style="display:flex;gap:5px;justify-content:flex-end;flex-wrap:nowrap;">
-          <button type="button" class="btn btn-sm ${isP?'btn-success':'btn-outline'}" data-team-att="present|${esc(u.username)}"${isP?' disabled':''} style="white-space:nowrap;">${esc(t('Present'))}</button>
-          <button type="button" class="btn btn-sm ${isA?'btn-danger':'btn-outline'}" data-team-att="absent|${esc(u.username)}"${isA?' disabled':''} style="white-space:nowrap;">${esc(t('Absent'))}</button>
-        </div></td>
+        <td style="text-align:right;">${actionCell}</td>
       </tr>`;
     }).join('')}
     </tbody></table>`}
@@ -19324,6 +19336,24 @@ function markAttendanceForUser(username, dateStr, status){
     if(username === me.username) return 'Apni khud ki attendance aap nahi badal sakte — admin se kahiye.';
     if(u.role === 'admin') return 'Admin ki attendance aap nahi laga sakte.';
     if(status === 'clear') return 'Mark hatane ka ikhtiyar sirf admin ke paas hai.';
+    // ROUND 69 (explicit user request -- "Ik bar Jiski Attendance mark ho gyi
+    // Absent ya present, either by self or by permitted person ya admin ...
+    // admin k alawa jisko admin ne permission di hui h including manager vo
+    // usko change na kar paye").
+    //
+    // A permission holder's job is to mark somebody who is NOT yet marked.
+    // The moment a record exists for that person on that day -- however it got
+    // there, their own tap included -- it is admin's to change and nobody
+    // else's. Present to absent and absent to present are both covered: this
+    // tests only that a record EXISTS, never what it says.
+    //
+    // firestore.rules carries the same rule in the shape the data already
+    // has: Round 33 gave every person-day exactly ONE document, so the first
+    // mark is a create and every change is an update -- and update is admin
+    // only. That is the real enforcement; this is the honest message.
+    if(attendanceRecordFor(username, dateStr)){
+      return 'Inki attendance pehle hi lag chuki hai. Ab sirf admin ise badal sakta hai.';
+    }
   }
   if(status !== 'present' && status !== 'absent' && status !== 'clear') return 'Unknown status.';
   // ROUND 67. Round 66 lifted the working-day refusal that used to stand
