@@ -10,7 +10,7 @@
      the whole 1.35 MB down again on a phone. Up here it lands inside the
      first kilobyte, so the check costs a few KB instead of the entire app.
      The two can never be allowed to drift -- test_round60 fails if they do. -->
-<meta name="app-build" content="2026-10-07-firestore-preview93">
+<meta name="app-build" content="2026-10-07-firestore-preview95">
 <meta name="theme-color" content="#1E3F1B">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -2140,7 +2140,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-10-07-firestore-preview93"; // ROUND 65 (2026-10-07). Owner: "For orders having more than 2 items ... jb order ko in packing se Ready to dispatch kiya jata hai, waha ik Check list dal do (so that har ik item add ho jaaye, jane wle goods me). also inki jb booking hoti hai ... 3-3 items show hon, ik added ka button ho, added ho jaye to vo hat kr agla item ajaye." and "order ko process krne k rights permission manager me dal do. so that packing team bhi order ko process kar sake. agar manager na ho." TWO GATES, ONE CHECKLIST. A 3+ item order now has to be ticked off item by item before it can move -- in front of Mark Ready to Dispatch (are the goods actually in the load?) and in front of Daily Work's per-order Book (is every line typed into the accounting software?). Three pending items on screen at a time; the one just ticked leaves, the next arrives; the real action button stays disabled until the last tick. 1-2 item orders are waved through untouched. THE GATE IS IN THE ACTION, NOT IN A CLICK HANDLER. markOrderPacked and toggleEntryBooked hold it themselves, so the tile button, the stat-count modal and the notification list all pass through the same test and a route added later gets it for free. "Book all remaining" was the fourth door and would have been a one-click bypass -- it now holds those orders back and says how many. A TICK STORES A QUANTITY, NOT A YES. The stored shape is [{k:itemKey,q:qtyWhenTicked}], so editing a line after ticking it VOIDS that tick and the item comes back: 50 pc ticked and 200 pc shipped is the realistic way a checklist turns into a lie. An item removed from the order leaves the list; one added reopens it; stale ticks are pruned on every write. Everything is derived live from the order's own items, so there is nothing to migrate and nothing to keep in sync. ONE RENDERER, AS A RULE NOW. Packing and billing differ only in a config object -- wording, and whether a line prints money. The renderer cannot see which mode it is drawing, and the suite fails if it can. The per-line money comes from orderLineMrp, extracted this round so orderMrpValue is nothing but its sum: Round 64 was four copies of one money formula and three of them had drifted. THE PERMISSION. The order-stage actions -- Mark Ready to Dispatch, its undo, Processed & Dispatched, its undo, and the LR photo that belongs to the dispatch -- were hard-coded to admin+manager in six places. They now read one Permission Manager key, entry_order_stage, defaulting to manager and nobody else, so nothing changes until an admin ticks it for the Packaging team. openDispatchModal had NO role guard of its own at all (the markup was the only thing keeping anyone out, the exact gap Round 22 closed elsewhere); it has one now. The Permission Manager's confirm step warns when the right is granted without the Orders view, because the buttons live on that screen. FIRESTORE.RULES CHANGED THIS ROUND -- DEPLOY IT. A new branch lets entry_order_stage write exactly the fields those actions touch and nothing else (never items, customer, booked or bookChecked), and bookChecked/packChecked were added to the dispatch-lock exemption list: without that, an order dispatched the same day it was created could never finish its billing checklist, could therefore never be booked, and the reconciliation banner would nag forever -- the identical failure that list already exists to prevent, and the same shape as the Round 25 updatedByUsername incident. 12 mutants, every one caught. 61 new assertions, 693 green. The behavioural half clicks the real modal in a real browser.
+const APP_BUILD = "2026-10-07-firestore-preview95"; // ROUND 67 (2026-10-07). Owner, on reading Round 66: "Sunday agar Chutti h to Attendance mark krne ka Option q dena h? Or Agar Koi aya hai to admin khud usko working day bna dega." and "Also Attendence window k andr hi rkha h na?" A REAL HOLIDAY IS NOW REALLY CLOSED. Round 66 left a Mark button on a Sunday for exactly one reason: the lock applies on holidays, so without it a Sunday would have locked the company out with no way back in. The owner's route is better than mine -- the way back in is the DAY. Nobody self-marks on a closed day, nobody marks anybody, the manager's team card shows no buttons, and the Daily Work entry window was already shut. If work is happening, the admin switches that date to Working Day (Round 58) and every ordinary rule returns, verified end to end in a browser. A CLOSED DAY MUST ALWAYS NAME THE CONTROL THAT OPENS IT. Four places refuse -- the check-in card, the lock card, the mark window, the team card -- and each one says "Working Day" rather than only "no". A refusal that does not say what to do instead is how a closed day becomes a phone call to the owner; the suite checks for the words, not just the refusal. The lock card in particular no longer tells somebody to mark their attendance on a day nothing can be marked. CLEARING A DAY STAYS OPEN, as it has since Round 33: a day can BECOME a holiday after somebody was marked on it, and a mark that can be neither corrected nor removed is worse than the wrong mark. A HIDDEN BUTTON IS NOT A RULE. The self-marking window (10:00-12:00, admin-configurable) was enforced only by the screen choosing not to draw the button. recordPresent now re-checks the day AND the window at the moment of writing, admin exempt exactly as the screen is, and the refusal states the actual times. Reachable two ways, both real: a screen painted at 11:58 whose button is pressed at 12:01, and a second phone holding an older render -- the same gap Round 22 found on markOrderPacked and Round 33 found on this very function. NOT A HARNESS SHIM: every write check in Rounds 66 and 67 now opens its own day explicitly, so the suite cannot pass or fail by what day of the week it happens to run on -- the Round 58 lesson. 8 mutants, every one caught. 29 new assertions, 774 green. firestore.rules UNCHANGED this round.
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -2586,7 +2586,7 @@ function resolveItemFromText(text){
 const S = {
   loaded:false,
   loadFailed:false,
-  users:[], orders:[], customers:[], attendance:[], tasks:[], loginLog:[],
+  users:[], orders:[], customers:[], attendance:[], attendanceTeam:[], tasks:[], loginLog:[],
   // ROUND 36 (explicit user request -- "har order k liye ik Note dalne ka bhi
   // option do (Sirf Admins Ko) jo Visible ho All Other Employees ko"). A note
   // is deliberately its OWN collection, doc id = the order's id, rather than
@@ -2792,6 +2792,7 @@ function slugifyTeamName(name){
 const ENTRY_MODULES = [
   {key:'entry_order', label:'Create orders'},
   {key:'entry_order_stage', label:'Move orders forward (Ready to Dispatch · Dispatched)'},
+  {key:'entry_attendance_others', label:"Mark other staff's attendance (today)"},
   {key:'entry_purchase', label:'Record purchase (raw)'},
   {key:'entry_filling', label:'Record filling'},
   {key:'entry_packing', label:'Record packing'},
@@ -2801,11 +2802,11 @@ const ENTRY_MODULES = [
   {key:'entry_batch', label:'Quick Action: Batch'},
 ];
 const DEFAULT_ENTRY_PERMS = {
-  admin:    {entry_order:true, entry_order_stage:true, entry_purchase:true, entry_filling:true, entry_packing:true, entry_domino:true, entry_retail:true, entry_samples:true, entry_batch:true},
-  manager:  {entry_order:true, entry_order_stage:true, entry_purchase:true, entry_filling:true, entry_packing:true, entry_domino:true, entry_retail:true, entry_samples:true, entry_batch:true},
-  sales:    {entry_order:true, entry_order_stage:false, entry_purchase:false, entry_filling:false, entry_packing:false, entry_domino:false, entry_retail:false, entry_samples:false, entry_batch:false},
-  filling:  {entry_order:false, entry_order_stage:false, entry_purchase:false, entry_filling:true, entry_packing:false, entry_domino:false, entry_retail:false, entry_samples:false, entry_batch:false},
-  packaging:{entry_order:false, entry_order_stage:false, entry_purchase:false, entry_filling:false, entry_packing:true, entry_domino:true, entry_retail:false, entry_samples:false, entry_batch:false},
+  admin:    {entry_order:true, entry_order_stage:true, entry_attendance_others:true, entry_purchase:true, entry_filling:true, entry_packing:true, entry_domino:true, entry_retail:true, entry_samples:true, entry_batch:true},
+  manager:  {entry_order:true, entry_order_stage:true, entry_attendance_others:true, entry_purchase:true, entry_filling:true, entry_packing:true, entry_domino:true, entry_retail:true, entry_samples:true, entry_batch:true},
+  sales:    {entry_order:true, entry_order_stage:false, entry_attendance_others:false, entry_purchase:false, entry_filling:false, entry_packing:false, entry_domino:false, entry_retail:false, entry_samples:false, entry_batch:false},
+  filling:  {entry_order:false, entry_order_stage:false, entry_attendance_others:false, entry_purchase:false, entry_filling:true, entry_packing:false, entry_domino:false, entry_retail:false, entry_samples:false, entry_batch:false},
+  packaging:{entry_order:false, entry_order_stage:false, entry_attendance_others:false, entry_purchase:false, entry_filling:false, entry_packing:true, entry_domino:true, entry_retail:false, entry_samples:false, entry_batch:false},
 };
 function canDoEntry(role, key){
   if(role==='admin') return true;
@@ -2834,6 +2835,32 @@ function canDoEntry(role, key){
 function canMoveOrderStage(role){
   if(role==='admin') return true;
   return canDoEntry(role, 'entry_order_stage');
+}
+// ROUND 66 (explicit user request -- "if manager ne attendance mark krdi hai
+// apni to usko is bat ka access dedo ke vo other employees ki attendance mark
+// kr ske either absent or present. (if manager hi absent hai to sb kuch
+// locked hi hoga)").
+//
+// TWO conditions, and the second one is the point. Holding the permission is
+// not enough: the person must themselves be marked PRESENT today. Somebody
+// sitting at home must not be able to mark the factory present -- that would
+// hand the whole gate back to whoever wanted to defeat it.
+//
+// Split in two deliberately. The permission half is a pure function of the
+// role and is what decides which LISTENER to attach at login (see
+// attachRoleGatedListeners -- you cannot know whether you are present until
+// you have read your own attendance, so the subscription cannot depend on
+// it). The full check is what decides whether the BUTTONS appear.
+function hasMarkOthersPermission(role){
+  if(role === 'admin') return true;
+  return canDoEntry(role, 'entry_attendance_others');
+}
+function canMarkOthersAttendance(user){
+  const u = user || S.currentUser;
+  if(!u) return false;
+  if(u.role === 'admin') return true;
+  if(!hasMarkOthersPermission(u.role)) return false;
+  return isPresentToday(u.username);
 }
 // Non-admin staff may only record a NEW entry (purchase / filling /
 // packaging / expense / retail sale) on a working day, inside the
@@ -3178,6 +3205,27 @@ const I18N = {
     'View only.':'सिर्फ़ देखने के लिए.', 'Editing or deleting stays available until it\'s booked.':'बुक होने तक बदलना या हटाना संभव है.',
     '⚠️ Previous Entry Not Booked':'⚠️ पिछली एंट्री बुक नहीं हुई', 'days':'दिन',
     '🖨️ Print this day':'🖨️ यह दिन प्रिंट करें', '⏰ Entry window':'⏰ एंट्री का समय',
+    // ROUND 67 -- a real holiday is closed
+    'Aaj kaam ho raha ho to admin is din ko Working Day bana de — phir attendance normal lagegi.':'आज काम हो रहा हो तो एडमिन इस दिन को Working Day बना दे — फिर हाज़िरी आम दिनों जैसी लगेगी.',
+    'Aaj chhutti hai — attendance nahi lagti. Kaam ho raha ho to admin is din ko Working Day bana de.':'आज छुट्टी है — हाज़िरी नहीं लगती. काम हो रहा हो तो एडमिन इस दिन को Working Day बना दे.',
+    // ROUND 66 -- the attendance gate
+    'Checking your attendance…':'आपकी हाज़िरी देख रहे हैं…',
+    'One moment — reading today’s record.':'एक पल — आज का रिकॉर्ड पढ़ रहे हैं.',
+    'You are not present in the factory':'आप फैक्ट्री में प्रेज़ेंट नहीं हैं',
+    'Aap abhi factory me present nahi hain — isliye yahan kuch nahi dikhega.':'आप अभी फैक्ट्री में प्रेज़ेंट नहीं हैं — इसलिए यहाँ कुछ नहीं दिखेगा.',
+    'Aaj aapko Absent mark kiya gaya hai. Galti lage to admin ya manager se kehkar theek karwa lijiye.':'आज आपको Absent मार्क किया गया है. गलती लगे तो एडमिन या मैनेजर से कहकर ठीक करवा लीजिए.',
+    'Pehle apni attendance mark kijiye — uske baad sab kuch khul jaayega.':'पहले अपनी हाज़िरी लगाइए — उसके बाद सब खुल जाएगा.',
+    'Ask an admin or manager to mark it for you if you missed this window.':'यह समय निकल गया हो तो एडमिन या मैनेजर से लगवा लीजिए.',
+    '📍 Mark my attendance':'📍 मेरी हाज़िरी लगाएं',
+    'Open Attendance':'हाज़िरी खोलें',
+    'Chhutti hai — attendance zaroori nahi. Lekin aaj kaam par ho to laga lijiye.':'छुट्टी है — हाज़िरी ज़रूरी नहीं. लेकिन आज काम पर हों तो लगा लीजिए.',
+    'Team attendance':'टीम की हाज़िरी',
+    'present':'प्रेज़ेंट',
+    'Jo log aaye hain unhe Present kijiye. Jab tak mark na ho, unki app band rahegi.':'जो लोग आए हैं उन्हें Present कीजिए. जब तक मार्क न हो, उनकी ऐप बंद रहेगी.',
+    'No other staff to mark.':'मार्क करने के लिए कोई और स्टाफ नहीं.',
+    'Not marked':'मार्क नहीं',
+    'ko aaj Absent mark karein? Unki app band ho jaayegi.':'को आज Absent मार्क करें? उनकी ऐप बंद हो जाएगी.',
+    'Mark Absent':'Absent मार्क करें',
     // ROUND 65 -- item checklist (packing / billing)
     '📦 Packing checklist':'📦 पैकिंग चेकलिस्ट', '🧾 Billing checklist':'🧾 बिलिंग चेकलिस्ट',
     '✓ Added':'✓ डाल दिया', '✓ Entered':'✓ एंट्री हो गई',
@@ -3630,6 +3678,27 @@ const I18N = {
     'View only.':'صرف دیکھنے کے لیے۔', 'Editing or deleting stays available until it\'s booked.':'بک ہونے تک تبدیل یا حذف کرنا ممکن ہے۔',
     '⚠️ Previous Entry Not Booked':'⚠️ پچھلا اندراج بک نہیں ہوا', 'days':'دن',
     '🖨️ Print this day':'🖨️ یہ دن پرنٹ کریں', '⏰ Entry window':'⏰ اندراج کا وقت',
+    // ROUND 67 -- a real holiday is closed
+    'Aaj kaam ho raha ho to admin is din ko Working Day bana de — phir attendance normal lagegi.':'آج کام ہو رہا ہو تو ایڈمن اس دن کو Working Day بنا دے — پھر حاضری عام دنوں جیسی لگے گی۔',
+    'Aaj chhutti hai — attendance nahi lagti. Kaam ho raha ho to admin is din ko Working Day bana de.':'آج چھٹی ہے — حاضری نہیں لگتی۔ کام ہو رہا ہو تو ایڈمن اس دن کو Working Day بنا دے۔',
+    // ROUND 66 -- the attendance gate
+    'Checking your attendance…':'آپ کی حاضری دیکھ رہے ہیں…',
+    'One moment — reading today’s record.':'ایک لمحہ — آج کا ریکارڈ پڑھ رہے ہیں۔',
+    'You are not present in the factory':'آپ فیکٹری میں پریزنٹ نہیں ہیں',
+    'Aap abhi factory me present nahi hain — isliye yahan kuch nahi dikhega.':'آپ ابھی فیکٹری میں پریزنٹ نہیں ہیں — اس لیے یہاں کچھ نہیں دکھے گا۔',
+    'Aaj aapko Absent mark kiya gaya hai. Galti lage to admin ya manager se kehkar theek karwa lijiye.':'آج آپ کو Absent مارک کیا گیا ہے۔ غلطی لگے تو ایڈمن یا مینیجر سے کہکر ٹھیک کروا لیجیے۔',
+    'Pehle apni attendance mark kijiye — uske baad sab kuch khul jaayega.':'پہلے اپنی حاضری لگائیے — اس کے بعد سب کھل جائے گا۔',
+    'Ask an admin or manager to mark it for you if you missed this window.':'یہ وقت نکل گیا ہو تو ایڈمن یا مینیجر سے لگوا لیجیے۔',
+    '📍 Mark my attendance':'📍 میری حاضری لگائیں',
+    'Open Attendance':'حاضری کھولیں',
+    'Chhutti hai — attendance zaroori nahi. Lekin aaj kaam par ho to laga lijiye.':'چھٹی ہے — حاضری ضروری نہیں۔ لیکن آج کام پر ہوں تو لگا لیجیے۔',
+    'Team attendance':'ٹیم کی حاضری',
+    'present':'پریزنٹ',
+    'Jo log aaye hain unhe Present kijiye. Jab tak mark na ho, unki app band rahegi.':'جو لوگ آئے ہیں انہیں Present کیجیے۔ جب تک مارک نہ ہو، ان کی ایپ بند رہے گی۔',
+    'No other staff to mark.':'مارک کرنے کے لیے کوئی اور سٹاف نہیں۔',
+    'Not marked':'مارک نہیں',
+    'ko aaj Absent mark karein? Unki app band ho jaayegi.':'کو آج Absent مارک کریں؟ ان کی ایپ بند ہو جائے گی۔',
+    'Mark Absent':'Absent مارک کریں',
     // ROUND 65 -- item checklist (packing / billing)
     '📦 Packing checklist':'📦 پیکنگ چیک لسٹ', '🧾 Billing checklist':'🧾 بلنگ چیک لسٹ',
     '✓ Added':'✓ ڈال دیا', '✓ Entered':'✓ اندراج ہو گیا',
@@ -6216,6 +6285,15 @@ function fsDetachAllListeners(){
   _roleGatedUnsubs = [];
   _chatUnsubs = [];
   _expenseBalancesLoaded = false;
+  // ROUND 66, for exactly the reason stated just above. fsLoaded.attendance
+  // is what tells the gate "I have read today's record"; leaving it true
+  // across a logout would let the next person's first render be judged
+  // against the previous person's rows. S.attendanceTeam goes with it, and
+  // the index cache is dropped so nothing can be answered from either.
+  fsLoaded.attendance = false;
+  S.attendanceTeam = [];
+  _lastMarkOthersBinding = null;
+  invalidateAttendanceIndex();
   // Round 19: also cancel any pending chatMessages auto-retry timers (see
   // attachChatMessagesListeners) -- otherwise a retry scheduled just before
   // logout would still fire later and needlessly re-bind against a
@@ -6760,6 +6838,27 @@ function attachRoleGatedListeners(){
   } else if(S.currentUser && S.currentUser.username){
     fsBindCollection('attendance', fsDb.collection('attendance').where('username','==', S.currentUser.username), (a,b)=>a.timestamp-b.timestamp);
     S.loginLog = [];
+    // ROUND 66. Someone who may mark OTHER people's attendance has to be able
+    // to SEE it, and Round 56 deliberately narrowed a non-admin to their own
+    // rows (19,579 documents per session at 400 staff was the bill it was
+    // fixing). So this is a second, tiny subscription rather than a widening
+    // of the first: TODAY only, everybody -- a few hundred documents at the
+    // company's full size, not sixty days of them.
+    // Deliberately no orderBy: a single inequality uses Firestore's automatic
+    // index, while adding a sort would need a composite index deployed by
+    // hand, and a missing composite index is a listener that fails outright.
+    // fsBindCollection sorts client-side anyway.
+    // The decision is made from the PERMISSION, never from "am I present" --
+    // you cannot know whether you are present until your own attendance has
+    // loaded, and a subscription that waited for that would never attach.
+    if(hasMarkOthersPermission(role)){
+      fsBindCollection('attendanceTeam',
+        fsDb.collection('attendance').where('timestamp','>=', startOfTodayTs()),
+        (a,b)=>a.timestamp-b.timestamp);
+    } else {
+      S.attendanceTeam = [];
+    }
+    _lastMarkOthersBinding = hasMarkOthersPermission(role);
   }
   if(role!=='admin' && role!=='manager'){
     // expenses/expenseBalances stay admin+manager only -- any other role
@@ -6899,7 +6998,21 @@ function attachFirestoreListeners(){
   // notificationPrefs just above.
   fsBindDoc('attendanceSettings','current', data=>{ S.attendanceSettings = data || {}; });
 
-  fsBindStaticCollection('rolePermissions', obj=>{ S.rolePermissions = obj; applyRolePermissionsToROLES(); });
+  fsBindStaticCollection('rolePermissions', obj=>{
+    S.rolePermissions = obj;
+    applyRolePermissionsToROLES();
+    // ROUND 66: permissions arrive after login, so a team that has just been
+    // granted "Mark other staff's attendance" was bound without the team
+    // subscription. Re-attach, but ONLY on an actual change of answer --
+    // detachRoleGatedListeners tears down the expenses listeners too, and
+    // churning those on every unrelated permission edit would be worse than
+    // the problem it fixes.
+    const role = S.currentUser && S.currentUser.role;
+    if(role && role !== 'admin' && _lastMarkOthersBinding !== null
+       && hasMarkOthersPermission(role) !== _lastMarkOthersBinding){
+      attachRoleGatedListeners();
+    }
+  });
   fsBindStaticCollection('holidays', obj=>{ S.holidays = obj; });
   fsBindStaticCollection('dailyRecordMarks', obj=>{ S.dailyRecordMarks = obj; });
   fsBindStaticCollection('batchReferences', obj=>{
@@ -9981,6 +10094,17 @@ function myNotifCount(stockAlerts){
 }
 function renderShell(){
   const role = roleDef(S.currentUser.role);
+  // ROUND 66. The owner asked for the lock as a card on every screen rather
+  // than a takeover, and the nav stays -- but a BELL IS DATA. "3 pending
+  // orders", "5 items low", an unread count: those are exactly the details
+  // somebody who is not in the factory is not supposed to be reading, and
+  // leaving them on would have made the lock a curtain with a window in it.
+  // So while the gate is shut the bells go, their panels cannot be left
+  // hanging open from before, and the Attendance tab is forced into the nav
+  // even for a team whose permissions never included it -- otherwise the one
+  // screen that can unlock them is the one screen they cannot reach.
+  const shellGate = attendanceGate();
+  const shellLocked = shellGate.locked || shellGate.state === 'pending';
   const stockAlerts = getStockAlerts();
   const notifCount = myNotifCount(stockAlerts);
   // BUGFIX (Round 19, live report "No Notification bell (no of messages)"):
@@ -9992,9 +10116,10 @@ function renderShell(){
   // Home had zero indication a new message/announcement existed. This adds
   // a dedicated, always-visible 💬 badge in the topbar itself (every
   // screen, not just Home), mirroring how the other topbar bells work.
-  const msgUnread = unreadMessageCount();
-  const tiers = myAlertTiers(stockAlerts);
-  const { primary, overflow } = navSplit(role.tabs);
+  const msgUnread = shellLocked ? 0 : unreadMessageCount();
+  const tiers = shellLocked ? { urgentCount:0, lowCount:0, recCount:0, showRecommended:false } : myAlertTiers(stockAlerts);
+  const shellTabs = shellLocked && !role.tabs.includes('checkin') ? [...role.tabs, 'checkin'] : role.tabs;
+  const { primary, overflow } = navSplit(shellTabs);
   const overflowActive = overflow.includes(S.view);
 
   return `
@@ -10015,8 +10140,8 @@ function renderShell(){
         ${tiers.urgentCount>0?`<button class="bell bell-sm bell-urgent" id="urgentBellBtn" title="Urgent stock">🚨<span class="badge" data-badge-key="urgentBell">${tiers.urgentCount}</span></button>`:''}
         ${tiers.lowCount>0?`<button class="bell bell-sm bell-low" id="lowBellBtn" title="Low stock">⚠️<span class="badge" data-badge-key="lowBell">${tiers.lowCount}</span></button>`:''}
         ${tiers.showRecommended?`<button class="bell bell-sm bell-rec" id="recBellBtn" title="Recommended">💡<span class="badge" data-badge-key="recBell">${tiers.recCount}</span></button>`:''}
-        <button class="bell" id="msgBellBtn" title="Messages">💬${msgUnread>0?`<span class="badge" data-badge-key="msgBell">${msgUnread}</span>`:''}</button>
-        <button class="bell" id="bellBtn" title="Notifications">🔔${notifCount>0?`<span class="badge" data-badge-key="mainBell">${notifCount}</span>`:''}</button>
+        ${shellLocked?'':`<button class="bell" id="msgBellBtn" title="Messages">💬${msgUnread>0?`<span class="badge" data-badge-key="msgBell">${msgUnread}</span>`:''}</button>`}
+        ${shellLocked?'':`<button class="bell" id="bellBtn" title="Notifications">🔔${notifCount>0?`<span class="badge" data-badge-key="mainBell">${notifCount}</span>`:''}</button>`}
         <button class="avatar-btn" id="avatarBtn" title="${esc(S.currentUser.name)}">${S.currentUser.photo?`<img src="${esc(S.currentUser.photo)}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;" />`:esc((S.currentUser.name||'?').trim().charAt(0).toUpperCase())}</button>
       </div>
     </div>
@@ -10024,8 +10149,8 @@ function renderShell(){
       ${renderView()}
     </div>
     ${renderBottomNav(primary, overflow, overflowActive)}
-    ${S.notifOpen ? renderSheet(renderNotifPanel(stockAlerts), 'closeNotif') : ''}
-    ${S.alertPanelOpen ? renderSheet(renderAlertTierPanel(S.alertPanelOpen, tiers), 'closeAlertPanel') : ''}
+    ${(S.notifOpen && !shellLocked) ? renderSheet(renderNotifPanel(stockAlerts), 'closeNotif') : ''}
+    ${(S.alertPanelOpen && !shellLocked) ? renderSheet(renderAlertTierPanel(S.alertPanelOpen, tiers), 'closeAlertPanel') : ''}
     ${S.moreOpen ? renderSheet(renderMorePanel(overflow), 'closeMore') : ''}
     ${S.profileOpen ? renderSheet(renderProfilePanel(role), 'closeProfile') : ''}
     ${S.toast ? `<div class="app-toast" data-toast-id="${S.toast.id}" style="position:absolute;bottom:calc(var(--navbar-h) + var(--sab) + 14px);left:50%;transform:translateX(-50%);background:${S.toast.isErr?'var(--danger)':'var(--ink)'};color:#fff;padding:9px 16px;border-radius:30px;font-size:0.78125rem;z-index:200;max-width:88%;text-align:center;">${esc(S.toast.msg)}</div>` : ''}
@@ -11405,6 +11530,16 @@ function ackTask(id, kind){
 
 /* ============================= VIEW DISPATCH ============================= */
 function renderView(){
+  // ROUND 66. The lock lives HERE, at the one place every screen in the app
+  // is chosen, rather than as a line inside each of the fifteen renderers.
+  // A screen added later is covered the day it is added; one of fifteen
+  // copies quietly missing its line is how this would otherwise fail, and
+  // it would fail silently -- a screen that still shows the stock.
+  // The Attendance (mark) screen is the single exception, because it is the
+  // way out. Lock that too and the lock has no exit.
+  const _gate = attendanceGate();
+  if(_gate.locked && S.view !== 'checkin') return attendanceLockCardHtml(_gate);
+  if(_gate.state === 'pending' && S.view !== 'checkin') return attendanceLockCardHtml(_gate);
   switch(S.view){
     case 'home': return renderHome();
     case 'orders': return renderOrders();
@@ -11425,6 +11560,8 @@ function renderView(){
   }
 }
 function bindView(){
+  const _gate = attendanceGate();
+  if((_gate.locked || _gate.state === 'pending') && S.view !== 'checkin') return bindAttendanceLockCard();
   switch(S.view){
     case 'home': return bindHome();
     case 'orders': return bindOrders();
@@ -15703,6 +15840,15 @@ function openPermissionConfirm(role, viewChecked, entryChecked){
     <div>
       ${entryChecked.length? entryChecked.map(m=>`<div style="padding:4px 0;font-size:0.8125rem;">✅ ${esc(m.label)}</div>`).join('') : `<div class="desc" style="margin:0;">No data-entry rights.</div>`}
     </div>
+    ${(entryChecked.some(m=>m.key==='entry_attendance_others') && !viewChecked.some(v=>v.key==='checkin')) ? `
+    <!-- ROUND 66: same reasoning as the Orders note below. The team card
+         lives ON the Attendance (mark) screen, so granting the right without
+         that screen is a right nobody can reach. -->
+    <div style="margin-top:12px;padding:9px 11px;border-radius:10px;background:var(--warning-bg);border:1px solid var(--warning);font-size:0.75rem;line-height:1.45;">
+      ⚠️ <b>Mark other staff's attendance</b> is ticked but <b>Attendance (mark)</b> is not.
+      The team list lives on that screen, so this team won't be able to use it
+      until you also tick <b>Attendance (mark)</b> under “Can view”.
+    </div>` : ''}
     ${(entryChecked.some(m=>m.key==='entry_order_stage') && !viewChecked.some(v=>v.key==='orders')) ? `
     <!-- ROUND 65: "Move orders forward" grants the ACTIONS; the buttons live
          on the Orders screen. Granted without the Orders view it is a right
@@ -15882,7 +16028,7 @@ async function performResetAllDataExceptUsers(){
     showAlert('Could not reset data: ' + ((e && e.message) || 'unknown error') + '. Make sure the Cloud Functions are deployed (see CLOUD_FUNCTIONS_DEPLOY.md) and try again. Nothing was changed.');
     return;
   }
-  S.orders = []; S.customers = []; S.attendance = []; S.tasks = []; S.loginLog = [];
+  S.orders = []; S.customers = []; S.attendance = []; S.attendanceTeam = []; S.tasks = []; S.loginLog = [];
   S.rawMaterial = {}; S.filledStock = {}; S.readyStock = {};
   S.expenses = []; S.activityLog = []; S.stockTasks = []; S.dominoPrints = []; S.chatMessages = []; S.retailSales = []; S.trackingViewLogs = []; S.siteVisitLogs = []; S.stockMovementLog = [];
   S.lowStock = {raw:{}, filled:{}, ready:{}};
@@ -18157,9 +18303,24 @@ function renderCheckin(){
     : insecure ? `<div class="alert-banner" style="margin-bottom:12px;"><b>${t("⚠ Location won't work here")}</b>${t('This page needs to be opened over <b>https://</b> for GPS to work. Ask whoever hosts this app to switch it to HTTPS.')}</div>` : ''}
   <div class="card" style="text-align:center;padding:30px 18px;">
     <div style="font-size:0.8125rem;color:var(--ink-soft);margin-bottom:10px;">${esc(t('Today'))}</div>
+    ${/* ROUND 67 (the owner: "Sunday agar Chutti h to Attendance mark krne
+         ka Option q dena h? Or Agar Koi aya hai to admin khud usko working
+         day bna dega.").
+         Round 66 kept a Mark button on a holiday for one reason only: the
+         lock applies on holidays, so without a button a Sunday would have
+         locked the company out with no way back in. The owner's answer is
+         better than mine -- the way back in is the day itself. If work is
+         happening, the admin switches that date to Working Day (Round 58)
+         and every normal rule returns. So a genuine holiday is now genuinely
+         closed: nobody self-marks, nobody marks anybody, and the one control
+         that opens it is named everywhere it is refused -- on this card, in
+         the admin's mark window, on the manager's team card, and on the lock
+         card itself. A refusal that does not say what to do instead is how a
+         closed day becomes a support call. */''}
     ${(isSunday || holidayLabel) ? `
       <div style="font-size:1.25rem;font-weight:800;color:var(--ink-soft);margin-bottom:4px;">🏖️ ${holidayLabel ? `${esc(t('Holiday'))} — ${esc(holidayLabel)}` : esc(t('Week Off (Sunday)'))}</div>
       <p class="desc" style="margin:6px 0 0;">${esc(t('No attendance needed today.'))}</p>
+      <p class="desc" style="margin:6px 0 0;">${esc(t('Aaj kaam ho raha ho to admin is din ko Working Day bana de — phir attendance normal lagegi.'))}</p>
     ` : (myRecord && myRecord.type==='absent') ? `
       <div style="font-size:1.25rem;font-weight:800;color:var(--danger);margin-bottom:4px;">${esc(t('⛔ Marked absent today'))}</div>
       <p class="desc" style="margin:6px 0 0;">${esc(t('Admin ne aaj aapko absent mark kiya hai. Galti lage to admin se kehkar theek karwa lijiye.'))}</p>
@@ -18178,6 +18339,7 @@ function renderCheckin(){
       <div id="geoMsg" class="mono" style="font-size:0.71875rem;color:var(--ink-soft);margin-top:10px;"></div>
     `}
   </div>
+  ${attendanceTeamCardHtml()}
   <div class="card">
     <h2>${esc(t('Your attendance history'))}</h2>
     ${mine.length===0?`<div class="empty">${esc(t('Nothing marked yet.'))}</div>`:`
@@ -18221,6 +18383,31 @@ function recordPresent(lat, lng, note, fieldLocation){
       : t('Aaj ki attendance already lag chuki hai.'), true);
     return;
   }
+  // ROUND 67. Two rules that the SCREEN already applies, re-applied HERE, at
+  // the moment of writing -- which is the only place they are actually true.
+  // Hiding a button is not a rule; it is a rule shaped like a rule. Exactly
+  // the gap Round 22 found on markOrderPacked and Round 33 found on this very
+  // function (the `existing` check just above), and it is reachable the same
+  // two ways: a screen painted at 11:58 whose button is pressed at 12:01, and
+  // a second device holding an older render.
+  //  1. the day. A Sunday or a declared holiday is closed to attendance
+  //     entirely (ROUND 67, the owner: "Sunday agar Chutti h to Attendance
+  //     mark krne ka Option q dena h ... admin khud usko working day bna
+  //     dega"). A Sunday the admin has switched on is an ordinary day and
+  //     passes, which is the whole point of that control.
+  //  2. the self-marking window. Admin is exempt from it, exactly as the
+  //     screen's own outsideMarkWindow is.
+  if(!isWorkingDay(todayKey)){
+    render();
+    showToast(t('Aaj chhutti hai — attendance nahi lagti. Kaam ho raha ho to admin is din ko Working Day bana de.'), true);
+    return;
+  }
+  const _att = getAttendanceSettings();
+  if(S.currentUser.role !== 'admin' && !isWithinTimeWindow(_att.selfMarkStart, _att.selfMarkEnd)){
+    render();
+    showToast(`${t('Attendance can only be self-marked between')} ${fmtHHMMOfDay(_att.selfMarkStart)} ${t('and')} ${fmtHHMMOfDay(_att.selfMarkEnd)}.`, true);
+    return;
+  }
   const entry = {
     // ROUND 33: a DETERMINISTIC id -- one person, one date, one document.
     // With uid() here, every mark appended a brand-new record and the
@@ -18239,6 +18426,7 @@ function recordPresent(lat, lng, note, fieldLocation){
   render(); showToast('Marked present ✅');
 }
 function bindCheckin(){
+  bindAttendanceTeamCard(); // ROUND 66 -- bound before the early return below
   const btn = document.getElementById('checkBtn');
   if(!btn) return; // already marked present today, holiday/Sunday, or outside the self-marking window (Round 14) -- nothing to bind in any of those cases
   const attemptGetPosition = (opts)=> new Promise((resolve,reject)=>{
@@ -18436,20 +18624,36 @@ function attendanceDayId(username, dateKey){
 // write does `S.attendance = S.attendance.filter(...)` followed by a push
 // (new identity AND a new length). invalidateAttendanceIndex() is exported for
 // any future path that mutates a record in place without doing either.
-let _attIndex = null, _attIndexSrc = null, _attIndexLen = -1;
-function invalidateAttendanceIndex(){ _attIndex = null; _attIndexSrc = null; _attIndexLen = -1; }
+// ROUND 66: there are now TWO slices to index. A non-admin subscribes only to
+// their OWN attendance (Round 56's cost fix, which is what keeps 400 staff
+// from pulling 19,579 documents each); someone who may mark OTHER people's
+// attendance also gets S.attendanceTeam -- TODAY only, everybody -- which is
+// a few hundred documents at most. The two overlap on that person's own row
+// for today, so the index dedupes by document id: a record must never appear
+// twice, or attendanceRecordFor's "most recent admin mark wins" ordering and
+// the duplicate-cleanup path below it would both be reasoning about phantoms.
+let _attIndex = null, _attIndexSrcA = null, _attIndexLenA = -1, _attIndexSrcB = null, _attIndexLenB = -1;
+function invalidateAttendanceIndex(){
+  _attIndex = null; _attIndexSrcA = null; _attIndexLenA = -1; _attIndexSrcB = null; _attIndexLenB = -1;
+}
 function attendanceIndex(){
   const arr = S.attendance || [];
-  if(_attIndex && _attIndexSrc === arr && _attIndexLen === arr.length) return _attIndex;
+  const team = S.attendanceTeam || [];
+  if(_attIndex && _attIndexSrcA === arr && _attIndexLenA === arr.length
+     && _attIndexSrcB === team && _attIndexLenB === team.length) return _attIndex;
   const m = new Map();
-  for(let i=0;i<arr.length;i++){
-    const a = arr[i];
-    if(!a || !a.username) continue;
+  const seenIds = new Set();
+  const add = a => {
+    if(!a || !a.username) return;
+    if(a.id != null){ if(seenIds.has(a.id)) return; seenIds.add(a.id); }
     const k = a.username + '__' + localDateKey(a.timestamp);
     const bucket = m.get(k);
     if(bucket) bucket.push(a); else m.set(k, [a]);
-  }
-  _attIndex = m; _attIndexSrc = arr; _attIndexLen = arr.length;
+  };
+  for(let i=0;i<arr.length;i++) add(arr[i]);
+  for(let i=0;i<team.length;i++) add(team[i]);
+  _attIndex = m; _attIndexSrcA = arr; _attIndexLenA = arr.length;
+  _attIndexSrcB = team; _attIndexLenB = team.length;
   return m;
 }
 // Every record this person has for this date, newest write first.
@@ -18486,6 +18690,184 @@ function attendanceRecordFor(username, dk){
 // whether it was the admin or they themselves who marked it.
 function attendanceLockedFor(username, dk){
   return !!attendanceRecordFor(username, dk);
+}
+/* ================= THE ATTENDANCE GATE (ROUND 66) ======================
+   Explicit user request: "agar koi bhi person absent hai (ya phir usne
+   attendance mark nhi kri hai) us case me usko Stock/order ya koi details na
+   dikhe. sb jagah ye aana chahiye you are not present in factory. Present
+   hone k baad hi data show ho usko ... if nahi kro uske liye sari chize lock
+   rkho or bar bar usko bolo you are absent."
+
+   Until now attendance only gated WRITING -- entryAttendanceBlockReason has
+   blocked new Daily Work entries since 2026-09-03. This gates READING too.
+
+   THE GATE IS LIVE, NOT A LOGIN SNAPSHOT. The owner described it as a check
+   on the day's first login, and that is when it first bites, but a snapshot
+   taken at login would be wrong within the minute: the person marks their
+   attendance and must get in immediately, without signing out and back in.
+   It is therefore evaluated on every render, from the same records the
+   Attendance screen reads. The same property runs the other way -- an admin
+   marking somebody absent at noon locks them out at noon.
+
+   THREE STATES, NOT TWO. "I don't know yet" is its own answer. A non-admin
+   subscribes to their own attendance over the network, and on a cold start
+   that snapshot has not arrived yet. Treating "no record loaded" as "absent"
+   would accuse a present person of being absent for the first second of
+   every launch -- the worst possible failure for this feature. So the gate
+   says `pending` until fsLoaded.attendance is true, and the screen says it
+   is checking rather than guessing.
+
+   ADMIN IS NEVER GATED. Admin has no Attendance (mark) tab to unlock itself
+   with, and admin is who marks everyone else -- an admin locked out is an
+   app nobody can get back into.
+*/
+function attendanceGate(user){
+  const u = user || S.currentUser;
+  if(!u) return { state:'open', locked:false };
+  if(u.role === 'admin') return { state:'open', locked:false };
+  if(!fsLoaded.attendance) return { state:'pending', locked:false };
+  const rec = attendanceRecordFor(u.username, localDateKey(Date.now()));
+  if(rec && rec.type === 'present') return { state:'open', locked:false, record:rec };
+  return { state: rec && rec.type === 'absent' ? 'absent' : 'unmarked', locked:true, record:rec || null };
+}
+function startOfTodayTs(){
+  const d = new Date(); d.setHours(0,0,0,0); return d.getTime();
+}
+// Remembers which way the attendanceTeam decision went last time the
+// role-gated listeners were attached. rolePermissions arrives over the
+// network AFTER login, so a team the admin has just been given this right
+// cannot have had the subscription at attach time -- see the rolePermissions
+// listener, which re-attaches exactly when (and only when) this flips.
+let _lastMarkOthersBinding = null;
+function isPresentToday(username){
+  if(!username) return false;
+  const rec = attendanceRecordFor(username, localDateKey(Date.now()));
+  return !!(rec && rec.type === 'present');
+}
+// ONE card, drawn for every screen the lock covers. Written once on purpose:
+// three rounds in a row were lost to the same row existing in two places.
+function attendanceLockCardHtml(gate){
+  if(gate.state === 'pending'){
+    return `<div class="card" style="text-align:center;padding:34px 18px;">
+      <div style="font-size:2.25rem;line-height:1;margin-bottom:10px;">⏳</div>
+      <div style="font-size:1.0625rem;font-weight:800;margin-bottom:6px;">${esc(t('Checking your attendance…'))}</div>
+      <p class="desc" style="margin:0;">${esc(t('One moment — reading today’s record.'))}</p>
+    </div>`;
+  }
+  const settings = getAttendanceSettings();
+  const inWindow = isWithinTimeWindow(settings.selfMarkStart, settings.selfMarkEnd);
+  const todayKey = localDateKey(Date.now());
+  const marked = attendanceLockedFor(S.currentUser.username, todayKey);
+  // ROUND 67: on a real holiday NOTHING can be marked -- not by this person,
+  // not by an admin. Telling them to mark their attendance would be an
+  // instruction they cannot carry out, so the card names the one control
+  // that actually opens the day.
+  const holidayToday = !isWorkingDay(todayKey);
+  const why = holidayToday
+    ? `${isDeclaredHoliday(todayKey) ? `${t('Holiday')} — ${holidayLabelFor(todayKey)}` : t('Week Off (Sunday)')}. ${t('Aaj kaam ho raha ho to admin is din ko Working Day bana de — phir attendance normal lagegi.')}`
+    : gate.state === 'absent'
+      ? t('Aaj aapko Absent mark kiya gaya hai. Galti lage to admin ya manager se kehkar theek karwa lijiye.')
+      : inWindow
+        ? t('Pehle apni attendance mark kijiye — uske baad sab kuch khul jaayega.')
+        : `${t('Attendance can only be self-marked between')} ${fmtHHMMOfDay(settings.selfMarkStart)} ${t('and')} ${fmtHHMMOfDay(settings.selfMarkEnd)}. ${t('Ask an admin or manager to mark it for you if you missed this window.')}`;
+  // The button is only offered when pressing it could actually achieve
+  // something. A holiday, marked absent, already marked, or outside the
+  // self-mark window: the way out is a person or a setting, not a button,
+  // and saying so is kinder than a button that refuses.
+  const canSelfMark = !holidayToday && gate.state === 'unmarked' && !marked && inWindow;
+  return `<div class="card" style="text-align:center;padding:34px 18px;">
+    <div style="font-size:2.5rem;line-height:1;margin-bottom:10px;">⛔</div>
+    <div style="font-size:1.125rem;font-weight:800;color:var(--danger);margin-bottom:6px;">${esc(t('You are not present in the factory'))}</div>
+    <p class="desc" style="margin:0 0 4px;">${esc(t('Aap abhi factory me present nahi hain — isliye yahan kuch nahi dikhega.'))}</p>
+    <p class="desc" style="margin:0 0 16px;">${esc(why)}</p>
+    ${canSelfMark
+      ? `<button class="btn btn-primary" id="gotoCheckinBtn" style="padding:13px 26px;font-size:0.9375rem;width:auto;">${esc(t('📍 Mark my attendance'))}</button>`
+      : `<button class="btn btn-outline" id="gotoCheckinBtn" style="padding:13px 26px;font-size:0.9375rem;width:auto;">${esc(t('Open Attendance'))}</button>`}
+  </div>`;
+}
+function bindAttendanceLockCard(){
+  const b = document.getElementById('gotoCheckinBtn');
+  if(b) b.addEventListener('click', ()=>{ S.view = 'checkin'; render(); });
+}
+// ROUND 66 -- the team card. Shown on the Attendance (mark) screen to anyone
+// who holds "Mark other staff's attendance" AND is themselves present today.
+// Today only, and never their own row: both rules live in
+// markAttendanceForUser, which is also what the admin modal calls, so the
+// buttons here cannot drift away from what the write actually permits.
+function attendanceTeamCardHtml(){
+  if(!canMarkOthersAttendance()) return '';
+  const me = S.currentUser;
+  const todayKey = localDateKey(Date.now());
+  const team = (S.users||[])
+    .filter(u => u && u.role !== 'admin' && u.username !== me.username)
+    .slice()
+    .sort((a,b)=>String(a.name||'').localeCompare(String(b.name||'')));
+  const statusChip = rec => !rec
+    ? `<span class="badge badge-pending">${esc(t('Not marked'))}</span>`
+    : rec.type === 'absent'
+      ? `<span class="badge badge-rejected">${esc(t('Absent'))}</span>`
+      : `<span class="badge badge-approved">${esc(t('Present'))}</span>`;
+  const presentCount = team.filter(u=>isPresentToday(u.username)).length;
+  // ROUND 67: a holiday is closed to marking, so every button here would be
+  // refused. The card names what opens the day instead of offering controls
+  // that cannot work.
+  if(!isWorkingDay(todayKey)){
+    const dayName = isDeclaredHoliday(todayKey)
+      ? `${t('Holiday')} — ${holidayLabelFor(todayKey)}`
+      : t('Week Off (Sunday)');
+    return `<div class="card">
+      <h2>👥 ${esc(t('Team attendance'))} — ${esc(t('Today'))}</h2>
+      <div class="empty">${esc(dayName)}. ${esc(t('Aaj kaam ho raha ho to admin is din ko Working Day bana de — phir attendance normal lagegi.'))}</div>
+    </div>`;
+  }
+  return `<div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+      <div>
+        <h2>👥 ${esc(t('Team attendance'))} — ${esc(t('Today'))}</h2>
+        <p class="desc">${esc(t('Jo log aaye hain unhe Present kijiye. Jab tak mark na ho, unki app band rahegi.'))}</p>
+      </div>
+      <div class="stat" style="min-width:92px;"><div class="n">${presentCount}/${team.length}</div><div class="l">${esc(t('present'))}</div></div>
+    </div>
+    ${team.length===0 ? `<div class="empty">${esc(t('No other staff to mark.'))}</div>` : `
+    ${/* TWO columns, not three. On a 390px phone a third column squeezed the
+         two buttons onto separate lines and each row stood three lines tall;
+         the status belongs under the name, where there is room for it. */''}
+    <table><thead><tr><th>${esc(t('Name'))}</th><th></th></tr></thead><tbody>
+    ${team.map(u=>{
+      const rec = attendanceRecordFor(u.username, todayKey);
+      const isP = !!(rec && rec.type === 'present');
+      const isA = !!(rec && rec.type === 'absent');
+      return `<tr>
+        <td><b>${esc(u.name)}</b>
+          <div class="desc" style="margin:2px 0 0;font-size:11px;">${esc(t(ROLES[u.role]?ROLES[u.role].label:u.role))}</div>
+          <div style="margin-top:4px;">${statusChip(rec)}</div></td>
+        <td style="text-align:right;"><div style="display:flex;gap:5px;justify-content:flex-end;flex-wrap:nowrap;">
+          <button type="button" class="btn btn-sm ${isP?'btn-success':'btn-outline'}" data-team-att="present|${esc(u.username)}"${isP?' disabled':''} style="white-space:nowrap;">${esc(t('Present'))}</button>
+          <button type="button" class="btn btn-sm ${isA?'btn-danger':'btn-outline'}" data-team-att="absent|${esc(u.username)}"${isA?' disabled':''} style="white-space:nowrap;">${esc(t('Absent'))}</button>
+        </div></td>
+      </tr>`;
+    }).join('')}
+    </tbody></table>`}
+  </div>`;
+}
+function bindAttendanceTeamCard(){
+  document.querySelectorAll('[data-team-att]').forEach(b=>b.addEventListener('click', ()=>{
+    const [status, username] = b.dataset.teamAtt.split('|');
+    const u = (S.users||[]).find(x=>x.username===username);
+    if(!u) return;
+    const apply = ()=>{
+      const refusal = markAttendanceForUser(username, localDateKey(Date.now()), status);
+      if(refusal){ showAlert(t(refusal)); render(); return; }
+      render();
+      showToast(`${u.name} — ${t(status==='absent'?'Absent':'Present')}`);
+    };
+    // Marking somebody ABSENT now locks them out of the whole app for the
+    // day, so it asks first. Present does not: it only ever opens something.
+    if(status === 'absent'){
+      showConfirm(`${u.name} ${t('ko aaj Absent mark karein? Unki app band ho jaayegi.')}`, apply,
+        {danger:true, confirmLabel:t('Mark Absent')});
+    } else apply();
+  }));
 }
 function attendanceStatusFor(username, dk){
   // ROUND 58 -- order matters here. A declared holiday is checked FIRST, so a
@@ -18710,6 +19092,85 @@ function bindAttendanceMap(){
 // pre-filled with that person and that date, and because the write now uses
 // the day's deterministic document id (see attendanceDayId), saving really
 // does replace what is there instead of stacking another record on top.
+// ROUND 66. The write that marks SOMEBODY ELSE present or absent, extracted
+// out of the admin modal's click handler so the new team card uses the same
+// one. Two callers writing attendance two ways is the Round 62/63/64 defect
+// class applied to the record that decides a day's pay and, as of this round,
+// whether a person can open the app at all.
+//
+// It returns a reason string when it refuses and null when it wrote, so the
+// caller can say why; it does NOT close a window, repaint or toast -- the two
+// callers need different things there.
+function markAttendanceForUser(username, dateStr, status){
+  const me = S.currentUser;
+  if(!me) return 'Not signed in.';
+  const isAdmin = me.role === 'admin';
+  if(!canMarkOthersAttendance(me)) {
+    // Mirrors the UI, re-checked at the moment of writing: a stale button on a
+    // screen rendered before the marker was themselves marked absent must not
+    // still work. (Round 22's lesson, applied here.)
+    return hasMarkOthersPermission(me.role)
+      ? 'Aap khud aaj present mark nahi hain — pehle apni attendance lagaiye.'
+      : 'You do not have permission to mark attendance for others.';
+  }
+  const u = S.users.find(x=>x.username===username);
+  if(!u) return 'Pick the employee first.';
+  const today = localDateKey(Date.now());
+  if(!isAdmin){
+    // A past date is a payroll correction, not a day's work. Admin keeps it.
+    if(dateStr !== today) return 'Sirf aaj ki attendance laga sakte hain. Purani date ke liye admin se kahiye.';
+    // And nobody but admin may change their OWN record: a manager who marks
+    // himself absent locks himself out of the one screen that could undo it.
+    if(username === me.username) return 'Apni khud ki attendance aap nahi badal sakte — admin se kahiye.';
+    if(u.role === 'admin') return 'Admin ki attendance aap nahi laga sakte.';
+    if(status === 'clear') return 'Mark hatane ka ikhtiyar sirf admin ke paas hai.';
+  }
+  if(status !== 'present' && status !== 'absent' && status !== 'clear') return 'Unknown status.';
+  // ROUND 67. Round 66 lifted the working-day refusal that used to stand
+  // here, because the lock applied on holidays and nobody could then be let
+  // back in. The owner's route is better: the admin switches the DAY. So the
+  // refusal is back -- but it now names that control instead of just saying
+  // no, which is the difference between a rule and a dead end.
+  // 'clear' stays exempt, as it has since Round 33: a day can BECOME a
+  // holiday after somebody was marked on it, and a mark that can be neither
+  // corrected nor removed is worse than the wrong mark.
+  if(status !== 'clear' && !isWorkingDay(dateStr)){
+    return 'Ye din chhutti / week-off hai. Kaam hua hai to pehle is din ko Working Day banaiye, phir attendance lagegi.';
+  }
+  const dayId = attendanceDayId(username, dateStr);
+  const priorRecords = attendanceRecordsForDay(username, dateStr);
+  if(status === 'clear'){
+    S.attendance = S.attendance.filter(a=>!(a.username===username && localDateKey(a.timestamp)===dateStr));
+    S.attendanceTeam = (S.attendanceTeam||[]).filter(a=>!(a.username===username && localDateKey(a.timestamp)===dateStr));
+    invalidateAttendanceIndex();
+    priorRecords.forEach(r=>{ deletePartitionItem('attendance', r.id).catch(()=>{}); });
+    return null;
+  }
+  // Midday avoids any date-boundary ambiguity, and -- since the most recent
+  // record per user+day wins (see attendanceStatusFor) -- this correctly
+  // overrides an earlier record for the same day if a mistake is being
+  // corrected. For TODAY use the real current time so "most recent wins"
+  // compares fairly against a genuine same-day self-mark.
+  const ts = dateStr === today ? Date.now() : dateKeyToTs(dateStr);
+  const entry = { id:dayId, username, name:u.name, type:status, lat:0, lng:0, timestamp:ts,
+    note:'', fieldLocation:'', markedByAdmin:true, markedByName:me.name,
+    markedByUsername:me.username, markedAt: Date.now() };
+  const drop = arr => (arr||[]).filter(a=>!(a.username===username && localDateKey(a.timestamp)===dateStr));
+  S.attendance = drop(S.attendance);
+  S.attendanceTeam = drop(S.attendanceTeam);
+  // The optimistic local copy goes into whichever slice this person's own
+  // listener will refresh: admin subscribes to the whole of `attendance`,
+  // everyone else to their own rows plus today's `attendanceTeam`. Putting it
+  // in the other one would make the row vanish on the next snapshot.
+  if(isAdmin) S.attendance.push(entry); else S.attendanceTeam.push(entry);
+  invalidateAttendanceIndex();
+  savePartitionForItem('attendance', entry);
+  // Best-effort cleanup of pre-Round-33 duplicates. firestore.rules allows
+  // delete to admin only, so for anyone else these simply fail; the read-side
+  // collapse in attendanceRecordFor keeps every screen correct regardless.
+  priorRecords.filter(r=>r.id!==dayId).forEach(r=>{ deletePartitionItem('attendance', r.id).catch(()=>{}); });
+  return null;
+}
 function openMarkForOthersModal(prefillUsername, prefillDate){
   const employees = S.users.filter(u=>u.role!=='admin');
   const today = localDateKey(Date.now());
@@ -18767,50 +19228,23 @@ function openMarkForOthersModal(prefillUsername, prefillDate){
     // "clear". A day can become a holiday AFTER someone was marked on it,
     // and refusing to clear it would leave a mark that can be neither
     // corrected nor removed.
-    if(status!=='clear' && !isWorkingDay(dateStr)){ showAlert(t('This date is a week-off/holiday — attendance doesn\'t apply.')); return; }
-    confirmBtnEl.disabled = true; // committed from here on -- every path below is synchronous and ends in closeModal(), which removes the button
-    // Midday avoids any date-boundary ambiguity, and — since the most
-    // recent record per user+day wins (see attendanceStatusFor) — this
-    // correctly overrides an earlier record for the same day if the admin
-    // is correcting a mistake, while a genuine later self-mark (which
-    // would carry a real, later timestamp) still wins over this instead.
-    // For TODAY, use the real current time so "most recent wins" compares
-    // fairly against a genuine self-mark from earlier or later today —
-    // a fixed noon timestamp could otherwise incorrectly outrank (or lose
-    // to) a real same-day self-mark depending purely on what time of day
-    // it happened. For a PAST date there's no "real time" to compare
-    // against, so noon remains a reasonable stand-in there.
-    const ts = dateStr===today ? Date.now() : dateKeyToTs(dateStr);
-    // ROUND 33 -- one person, one date, ONE document. See attendanceDayId.
-    // Before this, an admin "correcting" a mark did not correct anything: it
-    // appended a second record and relied on the readers preferring the
-    // newer one, leaving both on screen. Writing the deterministic id makes
-    // the correction an actual correction -- which is also what makes
-    // "admin usko Edit zrur kr skta hai" true rather than approximately true.
-    const dayId = attendanceDayId(username, dateStr);
-    const priorRecords = attendanceRecordsForDay(username, dateStr);
+    // ROUND 66: the working-day refusal that used to stand here is GONE.
+    // It read "This date is a week-off/holiday -- attendance doesn't apply",
+    // which was true while attendance only gated data entry. The owner has
+    // now asked for the lock to apply on holidays too, so a holiday on which
+    // nobody could be marked present would have been a day the entire company
+    // was locked out of the app with no control anywhere able to fix it. A
+    // holiday can carry attendance now; the check-in screen says so in a note
+    // rather than refusing (see renderCheckin's matching comment).
+    confirmBtnEl.disabled = true; // committed from here on -- every path below ends in closeModal(), which removes the button
+    // ROUND 66: ONE write path, shared with the team card on the Attendance
+    // screen. This handler used to carry its own copy of the whole thing.
+    const refusal = markAttendanceForUser(username, dateStr, status);
+    if(refusal){ confirmBtnEl.disabled = false; showAlert(t(refusal)); return; }
     if(status==='clear'){
-      // ROUND 33: admin can also take a mark back off a day entirely --
-      // otherwise a wrong entry could be changed but never undone, and the
-      // day could never return to the honest "Not marked" state.
-      S.attendance = S.attendance.filter(a=>!(a.username===username && localDateKey(a.timestamp)===dateStr));
-      invalidateAttendanceIndex();
-      priorRecords.forEach(r=>{ deletePartitionItem('attendance', r.id).catch(()=>{}); });
-      closeModal(); render(); showToast(`${u.name} — ${dateStr} attendance cleared`);
+      closeModal(); render(); showToast(`${u.name} \u2014 ${dateStr} attendance cleared`);
       return;
     }
-    const entry = { id:dayId, username, name:u.name, type:status, lat:0, lng:0, timestamp:ts, note:'', fieldLocation:'', markedByAdmin:true, markedByName:S.currentUser.name, markedAt: Date.now() };
-    S.attendance = S.attendance.filter(a=>!(a.username===username && localDateKey(a.timestamp)===dateStr));
-    S.attendance.push(entry);
-    invalidateAttendanceIndex();
-    savePartitionForItem('attendance', entry);
-    // Self-heal the duplicates already sitting in Firestore from before this
-    // round. Best-effort and deliberately silent: firestore.rules has no
-    // `allow delete` on attendance today, so on a build where the rules have
-    // not been updated these simply fail and the read-side collapse in
-    // attendanceRecordFor keeps the screens correct anyway. Nothing depends
-    // on this succeeding.
-    priorRecords.filter(r=>r.id!==dayId).forEach(r=>{ deletePartitionItem('attendance', r.id).catch(()=>{}); });
     closeModal(); render(); showToast(`${u.name} marked ${status} for ${dateStr}`);
   });
 }
