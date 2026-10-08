@@ -10,7 +10,7 @@
      the whole 1.35 MB down again on a phone. Up here it lands inside the
      first kilobyte, so the check costs a few KB instead of the entire app.
      The two can never be allowed to drift -- test_round60 fails if they do. -->
-<meta name="app-build" content="2026-10-07-firestore-preview98">
+<meta name="app-build" content="2026-10-08-firestore-preview99">
 <meta name="theme-color" content="#1E3F1B">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -2164,7 +2164,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-10-07-firestore-preview98"; // ROUND 70 (2026-10-07). Owner: "firestore pr koi be wja to data aa ja nhi rha na. kahi be wja pese badhe ja rhe ho. ik bar check kr lo." -> "ok krdo, pehla wala (heartbeat) or Baaki teen saath me kar do." THE MOST EXPENSIVE LINE IN THE APP, AND IT COST NOTHING TODAY. startHeartbeat() writes one activeSessions document per device per MINUTE -- the only machine-generated write in this app -- and every device was listening to that whole collection, so each heartbeat was delivered to, and billed on, every other device. With D devices online that is D x 480 writes a day and D x D x 480 reads. At ten people: 48,000 reads a day, which sits just inside Firestore's 50,000/day free tier, which is precisely why it had never appeared on a bill. At 400: 76.8 MILLION reads a day, about $23 a day. Quadratic -- doubling the staff quadruples it. Exactly ONE screen reads other people's sessions: renderAttendanceMap's "Active now" list, admin-only and not grantable (attendance is not in CHECKLIST_MODULES). Everyone else needs one document, their own, for checkSessionStillValid's single-device logout -- so that is what they take now. Reads fall from 76.8M/day to about 576,000 (each device's own echo, plus the admins), roughly 130x, around $5 a month instead of $690. Same shape as Round 56's attendance fix, applied to the one collection that fires every sixty seconds. THREE MORE COLLECTIONS WERE ON ALL 400 SHOP-FLOOR PHONES FOR SCREENS ONLY SOME ROLES CAN OPEN. trackingViewLogs and siteVisitLogs are read by two admin-gated buttons and nothing else -- admin only now. retailSales keeps its full 180 days, because that width is deliberate (the monthly PDF lets an admin pick any of the last six months and warns when the window stops covering it) -- what narrowed is the AUDIENCE: admin, manager, or whoever holds entry_retail/entry_samples. stockMovementLog follows whoever can actually see a stock pool, plus the Data Log tab. Round 56 did this for attendance and loginLog and stopped; these are the four it missed. THE LAST TWO UNBOUNDED QUERIES. tasks and stockTasks had no filter of any kind -- every task ever created, on every login, forever, and nothing in Firestore is ever deleted. Both now carry a 120-day floor on createdAt, which every document they have ever written sets; that matters more than it looks, because a `where` on a field a document LACKS silently excludes it, so bounding on a usually-present field would have quietly hidden real work. A single inequality, no orderBy: a composite index that was never deployed is a listener that fails outright for everybody. customers is deliberately left whole -- a party that last ordered two years ago can order tomorrow, and the order picker needs the list. Bounding it would be a correctness bug dressed as a saving. THE RE-ATTACH GUARD IS NOW A SIGNATURE. Permissions arrive after login, so every listener decision made from them is provisional until they land -- and there are four such decisions now, not one. Round 66's single boolean became listenerSignature(role), so a permission-derived listener added later is covered by one line in that function rather than by remembering to add another comparison. CHECKED AND CLEARED while in here: no write happens on render (every render*/bind* function scanned -- all writes sit inside click handlers); the old 4-second polling loop is dead; the offline queue flushes only on the `online` event; reconcileStockTasks writes once per open->done flip and then stops, so there is no feedback loop; stock task CREATION is admin/manager-only, so it cannot storm across 400 devices. 9 mutants, every one caught -- including moving the new blocks below the manager-only early return, which would have silently stripped all four listeners from every non-manager. 31 new assertions, 867 green. firestore.rules UNCHANGED: rules restrict reads, they never require them, so asking for less is always allowed.
+const APP_BUILD = "2026-10-08-firestore-preview99"; // ROUND 71 (2026-10-08). Owner: "attendance kisne mark kri uska nam ana chahiye na. by admin q likha arha hai." THE APP WAS SHOWING A JOB TITLE WHERE A NAME BELONGED. Six screens printed the literal word "Admin" for any record somebody else had marked -- the check-in card's present and absent lines, the employee's own history, the "already marked" toast, the attendance map's status chip and its two Location cells, and the admin's edit banner. That wording was true until Round 66, which let a manager (or anyone holding entry_attendance_others) mark the team. Since then it has been naming the wrong person on the record that decides a day's pay and, since Round 66, whether somebody can open the app at all. NOTHING HAD TO BE COLLECTED, ONLY READ. markAttendanceForUser has written markedByName on every mark it has ever made, and markedByUsername since Round 66; six renderers simply never looked. So the round is one helper plus six call sites -- a helper rather than six edits precisely because Rounds 62, 63 and 64 were each one sentence written twice and allowed to drift. attendanceMarkedByName gives the name; attendanceMarkedByCell gives the table cell the three Location columns share, so those three cannot come out looking different from each other. THE OLD ROW IS HANDLED, AND HONESTLY. A record written before the field existed carries no name -- and back then only an admin COULD mark somebody else, so "Admin" is the correct answer for exactly those rows and for no others. A fallback that is true, not merely safe. NAME FIRST, because that is the word order that reads in all three languages: "Rafiq ne aaj aapki attendance laga di hai" works in English, Hindi and Urdu, where "Marked by " + name does not. The Location cell shows the person with the full sentence as its title, since a column headed Location now holds a person. A self-mark is untouched: it names nobody, keeps its GPS link, and keeps the Round 14 rule that only a genuine self-mark shows a marking time. The name is escaped in both the body and the title attribute -- a quote in a staff name would otherwise close the attribute and everything after it would become real markup. 6 mutants, every one caught. 21 new assertions, 888 green. firestore.rules UNCHANGED.
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -3229,6 +3229,11 @@ const I18N = {
     'View only.':'सिर्फ़ देखने के लिए.', 'Editing or deleting stays available until it\'s booked.':'बुक होने तक बदलना या हटाना संभव है.',
     '⚠️ Previous Entry Not Booked':'⚠️ पिछली एंट्री बुक नहीं हुई', 'days':'दिन',
     '🖨️ Print this day':'🖨️ यह दिन प्रिंट करें', '⏰ Entry window':'⏰ एंट्री का समय',
+    // ROUND 71 -- the name of whoever marked it
+    'Marked by':'लगाई गई —',
+    'ne aaj aapko Absent mark kiya hai. Galti lage to admin se kehkar theek karwa lijiye.':'ने आज आपको Absent मार्क किया है. गलती लगे तो एडमिन से कहकर ठीक करवा लीजिए.',
+    'ne aaj aapki attendance laga di hai — aapko dobara lagane ki zarurat nahi.':'ने आज आपकी हाज़िरी लगा दी है — आपको दोबारा लगाने की ज़रूरत नहीं.',
+    'ne aaj ki attendance pehle hi laga di hai.':'ने आज की हाज़िरी पहले ही लगा दी है.',
     // ROUND 69 -- a mark that exists belongs to admin
     'Mark ho chuka — sirf admin badal sakta hai':'मार्क हो चुका — अब सिर्फ एडमिन बदल सकता है',
     'Inki attendance pehle hi lag chuki hai. Ab sirf admin ise badal sakta hai.':'इनकी हाज़िरी पहले ही लग चुकी है. अब सिर्फ एडमिन इसे बदल सकता है.',
@@ -3705,6 +3710,11 @@ const I18N = {
     'View only.':'صرف دیکھنے کے لیے۔', 'Editing or deleting stays available until it\'s booked.':'بک ہونے تک تبدیل یا حذف کرنا ممکن ہے۔',
     '⚠️ Previous Entry Not Booked':'⚠️ پچھلا اندراج بک نہیں ہوا', 'days':'دن',
     '🖨️ Print this day':'🖨️ یہ دن پرنٹ کریں', '⏰ Entry window':'⏰ اندراج کا وقت',
+    // ROUND 71 -- the name of whoever marked it
+    'Marked by':'لگائی گئی —',
+    'ne aaj aapko Absent mark kiya hai. Galti lage to admin se kehkar theek karwa lijiye.':'نے آج آپ کو Absent مارک کیا ہے۔ غلطی لگے تو ایڈمن سے کہکر ٹھیک کروا لیجیے۔',
+    'ne aaj aapki attendance laga di hai — aapko dobara lagane ki zarurat nahi.':'نے آج آپ کی حاضری لگا دی ہے — آپ کو دوبارہ لگانے کی ضرورت نہیں۔',
+    'ne aaj ki attendance pehle hi laga di hai.':'نے آج کی حاضری پہلے ہی لگا دی ہے۔',
     // ROUND 69 -- a mark that exists belongs to admin
     'Mark ho chuka — sirf admin badal sakta hai':'مارک ہو چکا — اب صرف ایڈمن بدل سکتا ہے',
     'Inki attendance pehle hi lag chuki hai. Ab sirf admin ise badal sakta hai.':'ان کی حاضری پہلے ہی لگ چکی ہے۔ اب صرف ایڈمن اسے بدل سکتا ہے۔',
@@ -18610,10 +18620,10 @@ function renderCheckin(){
       <p class="desc" style="margin:6px 0 0;">${esc(t('Aaj kaam ho raha ho to admin is din ko Working Day bana de — phir attendance normal lagegi.'))}</p>
     ` : (myRecord && myRecord.type==='absent') ? `
       <div style="font-size:1.25rem;font-weight:800;color:var(--danger);margin-bottom:4px;">${esc(t('⛔ Marked absent today'))}</div>
-      <p class="desc" style="margin:6px 0 0;">${esc(t('Admin ne aaj aapko absent mark kiya hai. Galti lage to admin se kehkar theek karwa lijiye.'))}</p>
+      <p class="desc" style="margin:6px 0 0;">${esc(attendanceMarkedByName(myRecord) || t('Admin'))} ${esc(t('ne aaj aapko Absent mark kiya hai. Galti lage to admin se kehkar theek karwa lijiye.'))}</p>
     ` : (myRecord && myRecord.markedByAdmin) ? `
-      <div style="font-size:1.25rem;font-weight:800;color:var(--success);margin-bottom:4px;">${esc(t('✅ Marked present by Admin'))}</div>
-      <p class="desc" style="margin:6px 0 0;">${esc(t('Aaj ki attendance admin ne laga di hai — aapko dobara lagane ki zarurat nahi.'))}</p>
+      <div style="font-size:1.25rem;font-weight:800;color:var(--success);margin-bottom:4px;">${esc(t('✅ Marked present today'))}</div>
+      <p class="desc" style="margin:6px 0 0;"><b>${esc(attendanceMarkedByName(myRecord))}</b> ${esc(t('ne aaj aapki attendance laga di hai — aapko dobara lagane ki zarurat nahi.'))}</p>
     ` : already ? `
       <div class="${_consumeAttStamp()}" style="font-size:1.25rem;font-weight:800;color:var(--success);margin-bottom:4px;">${esc(t('✅ Marked present today'))}</div>
       <p class="desc" style="margin:6px 0 0;">${esc(t('You can mark attendance again tomorrow.'))}</p>
@@ -18639,7 +18649,7 @@ function renderCheckin(){
       // finding #5's orderLat/orderLng fix).
       const geoLatA = safeGeoCoord(a.lat), geoLngA = safeGeoCoord(a.lng);
       const hasLoc = geoLatA!=null && geoLngA!=null;
-      const locCell = a.markedByAdmin ? `<span class="mono">${esc(t('Marked by Admin'))}</span>` : (hasLoc?`<a href="https://www.google.com/maps?q=${encodeURIComponent(geoLatA)},${encodeURIComponent(geoLngA)}" target="_blank" rel="noopener" class="mono" style="color:var(--primary);">${esc(t('📍 view'))}</a>`:`<span class="mono">${esc(t('no location'))}</span>`);
+      const locCell = a.markedByAdmin ? attendanceMarkedByCell(a) : (hasLoc?`<a href="https://www.google.com/maps?q=${encodeURIComponent(geoLatA)},${encodeURIComponent(geoLngA)}" target="_blank" rel="noopener" class="mono" style="color:var(--primary);">${esc(t('📍 view'))}</a>`:`<span class="mono">${esc(t('no location'))}</span>`);
       const timeCell = (a.type==='present' && !a.markedByAdmin) ? fmtTime(a.timestamp) : '—';
       // ROUND 33: there was NO status column at all, so an admin marking
       // someone ABSENT showed in their own history as a row with "—" and
@@ -18666,7 +18676,7 @@ function recordPresent(lat, lng, note, fieldLocation){
   if(existing){
     render();
     showToast(existing.markedByAdmin
-      ? t('Aaj ki attendance admin ne pehle hi laga di hai.')
+      ? `${attendanceMarkedByName(existing)} ${t('ne aaj ki attendance pehle hi laga di hai.')}`
       : t('Aaj ki attendance already lag chuki hai.'), true);
     return;
   }
@@ -19182,6 +19192,37 @@ function bindAttendanceTeamCard(){
     } else apply();
   }));
 }
+// ROUND 71 (the owner: "attendance kisne mark kri uska nam ana chahiye na.
+// by admin q likha arha hai").
+//
+// Six screens printed the literal word "Admin" for any record somebody else
+// had marked. That was true until Round 66, when a manager -- or anyone the
+// admin hands the permission to -- became able to mark the team. Since then
+// the app has been telling people the wrong person's job title instead of
+// the right person's name, on the record that decides a day's pay.
+//
+// The name was already in the document all along: markAttendanceForUser has
+// written markedByName (and, since Round 66, markedByUsername) on every mark
+// it has ever made. Nothing had to be collected -- only read.
+//
+// ONE helper, because the alternative is the same sentence written six
+// times, which is the defect that cost Rounds 62, 63 and 64.
+function attendanceMarkedByName(rec){
+  if(!rec || !rec.markedByAdmin) return '';
+  const name = rec.markedByName && String(rec.markedByName).trim();
+  // A record with no name is from before this field existed -- and back then
+  // only an admin COULD mark somebody else, so "Admin" is the honest answer
+  // for exactly those rows and for no others.
+  return name || t('Admin');
+}
+// The table cell three screens show in their Location column. A person, not
+// a place -- so it says the person, and the title attribute carries the
+// sentence that no longer fits in the column.
+function attendanceMarkedByCell(rec){
+  const name = attendanceMarkedByName(rec);
+  if(!name) return '';
+  return `<span class="mono" title="${esc(t('Marked by'))} ${esc(name)}">👤 ${esc(name)}</span>`;
+}
 function attendanceStatusFor(username, dk){
   // ROUND 58 -- order matters here. A declared holiday is checked FIRST, so a
   // holiday that falls on a Sunday reads as the holiday rather than as the
@@ -19255,7 +19296,7 @@ function renderAttendanceMap(){
         ${p.entries.map(e=>{
           let statusCell, locCell, timeCell;
           if(e.status==='present'){
-            statusCell = `<span class="badge badge-approved">Present</span>${e.record.markedByAdmin?' <span class="mono" style="font-size:0.6875rem;">(by admin)</span>':''}`;
+            statusCell = `<span class="badge badge-approved">Present</span>${e.record.markedByAdmin?` <span class="mono" style="font-size:0.6875rem;">(${esc(attendanceMarkedByName(e.record))})</span>`:''}`;
             // Round 14 (user request): "admin ko Self marked attendance me
             // location k sath time of marking b dikhni chahiye" -- only a
             // genuine self-mark has a real "moment they tapped the button"
@@ -19268,13 +19309,13 @@ function renderAttendanceMap(){
             // SECURITY FIX (2026-08-21 audit, finding #7) -- see safeGeoCoord's comment.
             const geoLatE = safeGeoCoord(e.record.lat), geoLngE = safeGeoCoord(e.record.lng);
             const hasLoc = geoLatE!=null && geoLngE!=null;
-            const gpsLine = e.record.markedByAdmin ? `<span class="mono">Marked by Admin</span>` : (hasLoc ? `<a href="https://www.google.com/maps?q=${encodeURIComponent(geoLatE)},${encodeURIComponent(geoLngE)}" target="_blank" rel="noopener" class="mono" style="color:var(--primary);">📍 view</a>` : `<span class="mono">no location</span>`);
+            const gpsLine = e.record.markedByAdmin ? attendanceMarkedByCell(e.record) : (hasLoc ? `<a href="https://www.google.com/maps?q=${encodeURIComponent(geoLatE)},${encodeURIComponent(geoLngE)}" target="_blank" rel="noopener" class="mono" style="color:var(--primary);">📍 view</a>` : `<span class="mono">no location</span>`);
             const flLine = e.record.fieldLocation ? `<div class="mono" style="font-size:0.75rem;color:var(--ink-soft);margin-top:2px;">Field Location - ${esc(e.record.fieldLocation)}</div>` : '';
             locCell = gpsLine + flLine;
           } else if(e.status==='absent'){
             statusCell = `<span class="badge badge-rejected">Absent</span>`;
             timeCell = `<span class="mono">—</span>`;
-            locCell = `<span class="mono">Marked by Admin</span>`;
+            locCell = attendanceMarkedByCell(e.record);
           } else {
             statusCell = `<span class="mono">—</span>`;
             timeCell = `<span class="mono">—</span>`;
@@ -19511,7 +19552,7 @@ function openMarkForOthersModal(prefillUsername, prefillDate){
   showModal(`
     <h3>${esc(isEdit ? t('✏️ Edit attendance') : t('📍 Mark attendance for someone'))}</h3>
     <p class="desc" style="margin-top:-6px;">${esc(t('Recorded as marked by you, not GPS-verified.'))}</p>
-    ${isEdit ? `<div class="alert-banner" style="margin-bottom:10px;">${esc(t('Currently'))}: <b>${esc(t(existing.type==='absent'?'Absent':'Present'))}</b>${existing.markedByAdmin?` — ${esc(t('Marked by Admin'))}${existing.markedByName?` (${esc(existing.markedByName)})`:''}`:` — ${esc(t('self-marked'))} ${esc(fmtTime(existing.timestamp))}`}</div>` : ''}
+    ${isEdit ? `<div class="alert-banner" style="margin-bottom:10px;">${esc(t('Currently'))}: <b>${esc(t(existing.type==='absent'?'Absent':'Present'))}</b>${existing.markedByAdmin?` — ${esc(t('Marked by'))} ${esc(attendanceMarkedByName(existing))}`:` — ${esc(t('self-marked'))} ${esc(fmtTime(existing.timestamp))}`}</div>` : ''}
     <div class="field"><label>${esc(t('Employee'))}</label>
       ${/* ROUND 57 (bug hunt, the owner: "Is trah ke or bhi Bugs find kro").
            SAME DEFECT AS THE TASK ASSIGNEE, in a worse place. Opened from the
