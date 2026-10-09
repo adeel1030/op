@@ -10,7 +10,7 @@
      the whole 1.35 MB down again on a phone. Up here it lands inside the
      first kilobyte, so the check costs a few KB instead of the entire app.
      The two can never be allowed to drift -- test_round60 fails if they do. -->
-<meta name="app-build" content="2026-10-08-firestore-preview99">
+<meta name="app-build" content="2026-10-08-firestore-preview106">
 <meta name="theme-color" content="#1E3F1B">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -861,6 +861,44 @@
   .stat-card-v2:nth-child(4n+2){background:var(--tile-highlight), linear-gradient(150deg, var(--tile2-a), var(--tile2-b));}
   .stat-card-v2:nth-child(4n+3){background:var(--tile-highlight), linear-gradient(150deg, var(--tile3-a), var(--tile3-b));}
   .stat-card-v2:nth-child(4n+4){background:var(--tile-highlight), linear-gradient(150deg, var(--tile4-a), var(--tile4-b));}
+  /* ROUND 72 -- the four rules above colour a tile by its POSITION in the
+     grid: 1st, 2nd, 3rd, 4th, repeating. For the pipeline tiles that is right
+     -- New, Processing, In packing and Ready to Dispatch are four stages, not
+     four verdicts, and giving them four distinct colours is what lets a glance
+     tell them apart. For the two STOCK tiles it was wrong. "Short stock"
+     landed on tile1's mint and "Low stock" on tile2's olive purely because
+     they happened to be 5th and 6th in the list, so the screen showed a
+     shortage in the same calm green as everything else, and the colour a
+     person had learned to read as "fine" was sitting on the one tile that
+     means "you have promised goods you do not have".
+     These three rules give those two tiles their state instead. They are
+     placed after the position rules deliberately: a class and a :nth-child()
+     carry identical specificity, so order is what decides, and state must win.
+     Every colour here is an EXISTING semantic token -- danger, warning and
+     success are declared by :root and by all eight theme blocks and are
+     deliberately not rotated per theme (see the theme note above), so this
+     needs no new token and cannot leave a theme half-painted.
+     The bar is an ::before with logical insets rather than a border or an
+     inset box-shadow: a border would change the tile's size, and a physical
+     `left` would sit on the wrong edge in Urdu, where the shell flips. */
+  .stat-card-v2.sev{position:relative;overflow:hidden;}
+  .stat-card-v2.sev::before{content:'';position:absolute;inset-block:0;inset-inline-start:0;width:4px;}
+  .stat-card-v2.sev-bad{background:var(--tile-highlight), linear-gradient(150deg, var(--danger-bg), var(--danger-bg));}
+  .stat-card-v2.sev-bad::before{background:var(--danger);}
+  .stat-card-v2.sev-bad .n{color:var(--danger);}
+  .stat-card-v2.sev-warn{background:var(--tile-highlight), linear-gradient(150deg, var(--state-mild-bg), var(--state-mild-bg));}
+  .stat-card-v2.sev-warn::before{background:var(--warning);}
+  .stat-card-v2.sev-warn .n{color:var(--warning);}
+  .stat-card-v2.sev-ok{background:var(--tile-highlight), linear-gradient(150deg, var(--success-bg), var(--success-bg));}
+  .stat-card-v2.sev-ok::before{background:var(--success);}
+  /* ROUND 72 -- sev-ok deliberately does NOT recolour its number, for two
+     reasons that point the same way. Measured across all eight themes,
+     --success on --success-bg comes out between 2.76:1 and 5.33:1, and the
+     light palettes sit under 3:1 -- a figure nobody could read. And a zero
+     has no business shouting: the calm green ground is the whole message, and
+     the number keeps the ordinary --ink-brand every other tile uses. Red and
+     amber DO take their state colour, and both clear 3:1 in every theme
+     (danger 3.67 at worst, warning 3.97) -- asserted below, not assumed. */
   .stat-card-v2:active{transform:scale(0.96);}
   .stat-card-v2 .row-top{display:flex;justify-content:space-between;align-items:flex-start;}
   .stat-card-v2 .icon-badge{background:var(--plate);}
@@ -894,9 +932,129 @@
      of floating in a sea of padding. */
   .qa-tile{flex:1 1 0;min-width:0;max-width:var(--qa-tile-max, 104px);aspect-ratio:1/1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;background:var(--tile-highlight), var(--plate);border:1px solid var(--plate-line);border-radius:18px;padding:8px 4px;text-align:center;cursor:pointer;transition:transform .08s ease;box-shadow:0 1.5px 0 var(--plate-inset) inset, 0 -12px 16px -8px rgba(0,0,0,0.20) inset, 0 5px 12px -6px rgba(0,0,0,0.32);}
   .qa-tile:active{transform:scale(0.94);}
-  .qa-tile .icon-badge{margin:0;background:var(--plate-strong);width:52px;height:52px;font-size:1.625rem;flex:0 0 auto;}
+  /* ROUND 73 -- this rule used to set `background:var(--plate-strong)` as
+     well, which quietly killed a colour system that was already being fed.
+     quickActionIcons() has always passed a colour per tile -- Purchase green,
+     Filling blue, Packing orange, Domino purple -- and .icon-badge.green and
+     its four siblings have always been declared. But this selector carries the
+     same specificity and sits later in the file, so it won, and all eight
+     tiles rendered as the same pale plate. The size change this rule exists
+     for (see the note above) is kept; only the background is handed back. */
+  .qa-tile .icon-badge{margin:0;width:52px;height:52px;font-size:1.625rem;flex:0 0 auto;}
+  /* The plate stays the fallback for a tile that names no colour. */
+  .qa-tile .icon-badge:not(.green):not(.orange):not(.blue):not(.purple):not(.red){background:var(--plate-strong);}
   .qa-tile .title{font-size:0.78125rem;font-weight:800;color:var(--ink);line-height:1.2;}
   .qa-tile .sub{display:none;}
+
+  /* ---------- ROUND 73: the Orders filter row ----------
+     Five controls stood here in three shapes across three lines: two filled
+     pills, two outlined boxes of a different height, and a third box with its
+     count in brackets instead of after a colon. The shapes did encode
+     something real -- the pills were <span>s that could not be tapped at all
+     while the boxes could -- but a filled pill reads as MORE tappable than an
+     outline, so the encoding was backwards, and nothing on screen said which
+     was which. All five are buttons now, in one shape, with the count in one
+     place. The two that could not be tapped open the list they have always
+     counted: openStatModal already handles every stage and bindOrders already
+     binds [data-stat], so this needed no new handler.
+     They still WRAP rather than scroll sideways: a chip that has scrolled off
+     the edge of a phone is a chip nobody knows is there. */
+  .ofilter-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
+  .ofilter{
+    display:inline-flex;align-items:center;gap:6px;white-space:nowrap;
+    background:var(--surface);border:1.5px solid var(--border);color:var(--ink);
+    border-radius:20px;padding:5px 10px 5px 9px;font-size:0.71875rem;font-weight:700;
+    font-family:var(--font-body);cursor:pointer;min-height:30px;
+    transition:transform .08s ease, background .15s ease;
+  }
+  .ofilter:active{transform:scale(0.96);}
+  .ofilter .cnt{
+    font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-weight:800;
+    background:var(--bg);color:var(--ink);border-radius:20px;padding:1px 7px;font-size:0.6875rem;
+  }
+  /* A filter with nothing behind it is still reachable -- it just stops
+     competing for attention with the ones that have something in them. */
+  .ofilter.is-zero{opacity:0.5;}
+  .ofilter.is-zero .cnt{color:var(--ink-soft);}
+
+  /* ROUND 73 -- the shortage chip. Deliberately NOT .badge: that class is
+     uppercase at weight 800 with letter-spacing, which made "SHORT BY 3 CASES"
+     louder and wider than the item name it qualifies -- the exact fault this
+     change set out to fix, moved three words to the right. A qualifier should
+     be quieter than the thing it qualifies. */
+  .ot-short{
+    display:inline-block;white-space:nowrap;background:var(--danger-bg);color:var(--danger);
+    border-radius:20px;padding:1px 7px;font-size:0.6875rem;font-weight:700;
+    text-transform:none;letter-spacing:0;
+  }
+
+  /* ROUND 75 -- the balance audit rows. Each one is a small record, not a
+     table row: the three figures it compares are the point, and a 430px
+     table cannot show three money columns and a button without breaking one
+     of them (which is the whole lesson of batch A). */
+  .ba-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--border);}
+  .ba-row:last-child{border-bottom:none;}
+  .ba-row-block{display:block;}
+  .ba-row-block .btn{margin-top:8px;}
+  .ba-name{font-weight:800;font-size:0.875rem;flex:1 1 auto;min-width:0;}
+  .ba-figs{display:flex;flex-wrap:wrap;gap:4px 14px;margin:4px 0 2px;font-size:0.78125rem;}
+  .ba-figs b{font-family:var(--font-mono);font-variant-numeric:tabular-nums;}
+  .ba-diff{color:var(--danger);}
+
+  /* ROUND 78 -- the day stepper. The arrows stay at their own width and the
+     input takes the rest, so the field is the same height it always was. */
+  .date-step{display:flex;align-items:stretch;gap:8px;}
+  .date-step input{flex:1 1 auto;min-width:0;}
+  .date-step .btn{flex:0 0 auto;min-width:40px;font-size:1.125rem;line-height:1;padding:8px 10px;}
+
+  /* ROUND 77 -- the danger zone. Closed by default, and it looks like a
+     disclosure rather than a card, so it reads as something you open on
+     purpose rather than as the next section of the screen. */
+  .danger-zone{
+    border:1.5px solid var(--state-alert-border);background:var(--state-alert-bg);
+    border-radius:14px;padding:4px 14px 14px;margin-bottom:12px;
+  }
+  .danger-zone > summary{
+    cursor:pointer;list-style:none;padding:10px 0;
+    font-weight:800;font-size:0.84375rem;color:var(--danger);
+  }
+  .danger-zone > summary::-webkit-details-marker{display:none;}
+  /* A closed <details> hides its children through the user agent, and the UA
+     rule loses to any explicit display on a child -- .btn is display:inline-flex,
+     so the reset button was still laid out and still tappable inside a zone
+     that LOOKED shut. Measured, not assumed: the browser check below found it
+     with a rect while details.open was false. This rule carries (0,2,0) against
+     .btn's (0,1,0), so it wins on specificity without !important. */
+  .danger-zone:not([open]) > *:not(summary){display:none;}
+  .danger-zone > summary::after{content:' \25BE';}
+  .danger-zone[open] > summary::after{content:' \25B4';}
+  .danger-zone .desc{margin-top:0;}
+
+  /* ROUND 74 -- see the note at the call site in renderDailyWork. The status
+     line deliberately has no border, no background and no block padding: what
+     made it read as a button was wearing a button's clothes at a button's
+     width. .is-done is the one case where it earns a tint, because "everything
+     is booked" is the outcome the screen is working towards. */
+  .dw-tools{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;}
+  /* Content-width, not stretched. Batch A made .btn nowrap, so "Entry window
+     (12:00 AM-11:59 PM)" cannot shrink and the pair genuinely does not fit one
+     430px line -- stretching them only made each one look like the primary
+     button underneath. Sized to their labels they read as the secondary
+     controls they are, whether they end up on one row or two. */
+  .dw-tools .btn{flex:0 1 auto;}
+  .dw-booked{
+    display:flex;align-items:center;gap:6px;margin:0 0 10px;
+    font-size:0.78125rem;font-weight:700;color:var(--ink-soft);
+  }
+  .dw-booked.is-done{color:var(--success);}
+
+  /* ROUND 73 -- see the note at the call site in renderDailyWork. */
+  .dw-unbooked{
+    display:flex;flex-wrap:wrap;align-items:center;gap:8px;
+    background:var(--state-alert-bg);border:1.5px solid var(--state-alert-border);
+    border-radius:10px;padding:7px 10px;margin:10px 0;font-size:0.78125rem;
+  }
+  .dw-unbooked-lbl{font-weight:800;color:var(--danger);}
 
   .promo-banner{background:linear-gradient(120deg, var(--chrome-dark), var(--primary-dark));border-radius:16px;padding:16px;display:flex;align-items:center;gap:12px;color:#fff;margin-bottom:12px;box-shadow:0 8px 20px -10px rgba(18,74,46,0.5);}
   .promo-banner .pico{font-size:1.875rem;flex:0 0 auto;}
@@ -1014,6 +1172,13 @@
     border:none;border-radius:12px;padding:13px 16px;font-size:0.9375rem;font-weight:700;
     cursor:pointer;font-family:var(--font-body);letter-spacing:0.01em;transition:transform .08s ease, box-shadow .15s ease, background .15s ease;
     min-height:44px;
+    /* ROUND 72 -- a button label is a NAME, not prose, so it never breaks.
+       Without this, `td{overflow-wrap:anywhere}` below reached inside the
+       button and the Tasks screen rendered "Mar k don e" / "Una ssig n" /
+       "Dele te", each one a 72px-tall stack of broken syllables. The rule
+       that makes a long customer name wrap inside a cell must not be allowed
+       to apply to the four fixed words on the buttons beside it. */
+    white-space:nowrap;
   }
   .btn:active{transform:scale(0.96);}
   .btn-primary{background:linear-gradient(135deg, var(--primary), var(--primary-dark));color:#fff;width:100%;box-shadow:0 4px 12px -4px rgba(18,74,46,0.45);}
@@ -1115,8 +1280,22 @@
      updates at every badge call site below. */
   .notif-dot.notif-pulse{animation:bellBadgePulse .4s cubic-bezier(.3,1.5,.5,1);}
   .bell-sm{width:30px;height:30px;font-size:0.8125rem;}
+  /* ROUND 73 -- five circular badges sat in this row, all the same size, and
+     only ONE of them had a colour of its own. .bell-urgent was declared;
+     .bell-low and .bell-rec never were, so both fell through to the default
+     --accent amber -- and so did the message bell and the notification bell.
+     Four different meanings arriving in two colours, and the one pairing that
+     happened to look right (amber for "low") was an accident of the default
+     rather than a decision. Each tier states its colour now, from the same
+     semantic tokens the Home tiles use, so the bell and the tile that open
+     the SAME sheet cannot disagree about how serious it is. */
   .bell-urgent{border-color:rgba(255,255,255,0.5);}
   .bell-urgent .badge{background:var(--danger);color:#fff;}
+  .bell-low .badge{background:var(--warning);color:#fff;}
+  .bell-rec .badge{background:var(--info);color:#fff;}
+  /* And the avatar is a person, not a sixth alert. It was sharing .bell's
+     gold ring, so the row read as six alerts in a line with no end to it. */
+  .avatar-btn{border-color:rgba(255,255,255,0.28);background:rgba(255,255,255,0.10);}
 
   .pulse{
     background:var(--pulse-bg);color:var(--pulse-ink);font-family:var(--font-mono);font-size:0.6875rem;
@@ -1145,12 +1324,55 @@
   .stat .n{font-family:var(--font-mono);font-size:1.4375rem;font-weight:800;color:var(--ink-brand);}
   .stat .l{font-size:0.6875rem;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.03em;margin-top:3px;line-height:1.3;}
 
-  /* Tables: no forced min-width -> no right-swipe needed. Everything fits the screen. */
-  table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:0.84375rem;}
-  th{text-align:left;font-size:0.71875rem;text-transform:uppercase;letter-spacing:0.03em;color:var(--ink-soft);padding:7px 4px;border-bottom:1.5px solid var(--border);word-break:break-word;}
+  /* Tables: no forced min-width -> no right-swipe needed. Everything fits the screen.
+     ROUND 72 -- `table-layout:fixed` was what made that true, but it also gave
+     every column an EQUAL share of 430px regardless of what was in it. A
+     6-column table therefore handed ~70px to a column holding four buttons and
+     ~70px to one holding a single dash, and the header "ASSIGNED TO" came out
+     as "ASSIGN ED TO". `auto` sizes each column to its content instead, and the
+     table still cannot overflow: every td keeps `overflow-wrap:anywhere`, so a
+     text column's minimum width is one character and it always has somewhere to
+     give. The buttons are what set the action column's width now, which is the
+     right way round. */
+  table{width:100%;table-layout:auto;border-collapse:collapse;font-size:0.84375rem;}
+  /* A header is two or three short words. It may wrap BETWEEN them; breaking
+     inside one ("ASSIGN ED") turns a label into nonsense. overflow-wrap only
+     steps in for a single word with nowhere else to go. */
+  th{text-align:left;font-size:0.71875rem;text-transform:uppercase;letter-spacing:0.03em;color:var(--ink-soft);padding:7px 4px;border-bottom:1.5px solid var(--border);word-break:normal;overflow-wrap:anywhere;}
   td{padding:10px 4px;border-bottom:1px solid var(--border);vertical-align:top;word-break:break-word;overflow-wrap:anywhere;}
+  th, td{min-width:3.2em;}
+  /* ROUND 74 raised the identity column from 5.5em to 6em. "CATEGORY" is the
+     longest header in the app and measured 76px against a 74px floor, so it
+     was breaking into "CATEGOR Y" by two pixels. Re-measured on eight screens
+     at 430px after the change: still no table wider than its card, still no
+     sideways scroll anywhere. */
+  th:first-child, td:first-child{min-width:6em;}
+  /* ROUND 72 -- `overflow-wrap:anywhere` tells the layout engine a text column
+     can shrink to ONE CHARACTER. Under the old fixed layout that never showed,
+     because every column got the same width regardless. Under `auto` it does:
+     the engine happily squeezed the task title to 41px to pay for the buttons
+     beside it, and "Carton stock ginti karo" came out as a vertical ladder.
+     The first column of every table in this app is the identity column -- the
+     task, the item, the person, the party -- so it gets a floor. 5.5em is wide
+     enough for the longest ordinary word in it and small enough that six of
+     these still leave room for an action column on a 360px phone. */
   tr:last-child td{border-bottom:none;}
+  /* ROUND 72 -- what .mono is FOR, written down because it had drifted.
+     A monospaced face exists to make FIGURES line up and to make a digit
+     unmistakable: counts, money, dates, times, and identifiers that are typed
+     or compared character by character (username, phone, order number, build).
+     It was being used as "small grey text" instead, so people's names, city
+     names, and whole sentences were coming out in it -- and a sentence set in
+     a typewriter face beside a sentence set in the body face reads as two
+     different applications on one screen. Two primitives split the two jobs:
+       .note -- small, soft PROSE. Body face. What most of the old .mono
+                paragraphs actually wanted.
+       .num  -- figures inside an otherwise normal line. Changes the face and
+                turns on tabular digits, and touches nothing else, so it can
+                be put on a <b> without flattening it to grey 12px. */
   .mono{font-family:var(--font-mono);font-size:0.75rem;color:var(--ink-soft);}
+  .note{font-size:0.75rem;color:var(--ink-soft);line-height:1.55;}
+  .num{font-family:var(--font-mono);font-variant-numeric:tabular-nums;}
   .stockneg{color:var(--danger)!important;font-weight:800;}
   .stocklow{color:var(--stock-low-ink)!important;font-weight:800;}
   /* ROUND 44 -- the stock level bar (see stockBarHtml). aria-hidden on the
@@ -1170,6 +1392,18 @@
   .ot-step:first-child::before{display:none;}
   .ot-step i{width:10px;height:10px;border-radius:50%;background:var(--border);position:relative;z-index:1;display:block;}
   .ot-step em{font-style:normal;font-size:0.625rem;line-height:1.2;color:var(--ink-soft);text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;}
+  /* ROUND 73 -- all five names used to print under all five dots on EVERY
+     card. On a thirty-order list that is a hundred and fifty words of chrome
+     saying the same five things over and over, and the stage this order is
+     actually at -- the only one that differs between cards -- had to be found
+     among them. The dots still draw the whole pipeline, so the shape of the
+     journey is unchanged; only the repeated labels go. Geometry is untouched:
+     .ot-step is flex:1 1 0, so every step keeps exactly a fifth of the rail
+     whether or not it carries text, and idx is never -1 here, so there is
+     always exactly one .now to carry the one label. The full sentence is
+     still read aloud -- it lives on the container's aria-label, which is why
+     the rail is role="img" and these <em>s were never announced separately. */
+  .ot-step:not(.now) em{display:none;}
   .ot-step.done i, .ot-step.done::before{background:var(--success);}
   .ot-step.now::before{background:var(--success);}
   .ot-step.now i{background:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb, var(--primary) 25%, transparent);width:12px;height:12px;margin-top:-1px;}
@@ -1203,8 +1437,26 @@
      no second rule to out-specify and no reliance on source order: .ot-open
      simply stops the hiding, and the buttons fall back to .btn's own
      display:inline-flex. Do not split this back into a pair. */
-  .order-tile .ot-actions:not(.ot-open) > .btn:not([data-ot-primary]):not(.ot-more-btn){display:none;}
+  /* ROUND 74 -- the selector lost its `.order-tile ` prefix so a TABLE CELL
+     can fold the same way. The mechanism is unchanged and deliberately so:
+     bindOrderTileActions already finds every .ot-actions in the document, is
+     already called on every render and again inside showModal, is already
+     idempotent via data-ot-bound, and already deletes the ⋯ when nothing is
+     actually hidden. Reusing it is also what keeps the Round 47 bug fixed in
+     one place rather than two -- read the note above before touching it.
+     WHAT FOLDING IS NOT: it is not a permission. Every button in a folded row
+     was rendered because the role was allowed it; the row only decides how
+     many are on screen at once. Nothing here can reveal a control a person was
+     not already given, and the write-time guards behind each one are untouched. */
+  .ot-actions:not(.ot-open) > .btn:not([data-ot-primary]):not(.ot-more-btn){display:none;}
   .ot-more-btn{flex:0 0 auto;font-family:var(--font-mono);letter-spacing:0.04em;}
+  /* In a table cell the row must stay on one line and the ⋯ must not be the
+     thing that wraps. */
+  /* wrap, not nowrap: measured at 430px, forcing the primary and the ⋯ onto
+     one line pushes the six-column Tasks table 5px past its card. The ⋯
+     dropping to a second line costs nothing; a table that scrolls sideways
+     costs the column widths this whole batch bought. */
+  td.ot-actions{display:flex;flex-wrap:wrap;align-items:flex-start;gap:6px;}
   /* The primary stretches only while the row is FOLDED, where it is the one
      thing on the line. Once the row is open it is one button among seven,
      and a stretched one in the middle of a wrapped row reads as a mistake. */
@@ -1415,7 +1667,10 @@
   .alert-item-tile .ait-team{font-size:0.6875rem;opacity:0.75;margin-top:2px;}
 
 
-  .badge{display:inline-block;font-size:0.6875rem;font-weight:800;text-transform:uppercase;letter-spacing:0.03em;padding:3px 8px;border-radius:20px;transition:background-color .3s ease, color .3s ease;}
+  /* ROUND 72 -- nowrap for the same reason as .btn: a status chip is a single
+     label. "OPEN" broken across two lines reads as "OPE N", which is not a
+     status. */
+  .badge{display:inline-block;white-space:nowrap;font-size:0.6875rem;font-weight:800;text-transform:uppercase;letter-spacing:0.03em;padding:3px 8px;border-radius:20px;transition:background-color .3s ease, color .3s ease;}
   .badge-pending{background:var(--warning-bg);color:var(--warning);}
   .badge-processing{background:var(--info-bg);color:var(--info);}
   .badge-ready{background:var(--badge-ready-bg);color:var(--badge-ready-ink);}
@@ -2164,7 +2419,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-10-08-firestore-preview99"; // ROUND 71 (2026-10-08). Owner: "attendance kisne mark kri uska nam ana chahiye na. by admin q likha arha hai." THE APP WAS SHOWING A JOB TITLE WHERE A NAME BELONGED. Six screens printed the literal word "Admin" for any record somebody else had marked -- the check-in card's present and absent lines, the employee's own history, the "already marked" toast, the attendance map's status chip and its two Location cells, and the admin's edit banner. That wording was true until Round 66, which let a manager (or anyone holding entry_attendance_others) mark the team. Since then it has been naming the wrong person on the record that decides a day's pay and, since Round 66, whether somebody can open the app at all. NOTHING HAD TO BE COLLECTED, ONLY READ. markAttendanceForUser has written markedByName on every mark it has ever made, and markedByUsername since Round 66; six renderers simply never looked. So the round is one helper plus six call sites -- a helper rather than six edits precisely because Rounds 62, 63 and 64 were each one sentence written twice and allowed to drift. attendanceMarkedByName gives the name; attendanceMarkedByCell gives the table cell the three Location columns share, so those three cannot come out looking different from each other. THE OLD ROW IS HANDLED, AND HONESTLY. A record written before the field existed carries no name -- and back then only an admin COULD mark somebody else, so "Admin" is the correct answer for exactly those rows and for no others. A fallback that is true, not merely safe. NAME FIRST, because that is the word order that reads in all three languages: "Rafiq ne aaj aapki attendance laga di hai" works in English, Hindi and Urdu, where "Marked by " + name does not. The Location cell shows the person with the full sentence as its title, since a column headed Location now holds a person. A self-mark is untouched: it names nobody, keeps its GPS link, and keeps the Round 14 rule that only a genuine self-mark shows a marking time. The name is escaped in both the body and the title attribute -- a quote in a staff name would otherwise close the attribute and everything after it would become real markup. 6 mutants, every one caught. 21 new assertions, 888 green. firestore.rules UNCHANGED.
+const APP_BUILD = "2026-10-08-firestore-preview106"; // ROUND 78 (2026-10-08), the STRUCTURAL batch -- last of the three ("Or phir structural"). THREE THINGS. (1) THE FOLD REACHED THE CARD GRIDS. Batch C taught every TABLE row to keep its primary action and put the rest behind a dots button; the Clients and Users card grids were left stacking theirs into a column, which is why a three-customer screen carried twelve buttons and a user card was taller than the data in it. Same rowActionsHtml, same shared binder, same guarantee: every button is still produced by its own permission test, so folding decides how many are on screen and has never decided which exist. The three conditions on the Users card -- not yourself for Force logout, and not-the-last-admin / not-yourself / not the literal "admin" account for Delete -- are untouched, and the Round 17 and Round 18 reasoning behind them was carried across as comments rather than dropped with the markup it used to sit in. (2) PHONE NUMBERS DIAL. A directory on a telephone whose numbers could not be called. telLinkHtml keeps the typed text exactly as typed and strips everything but digits and + out of the href, so a note like "9811111111 (Rakesh)" cannot smuggle anything into the URL; under six digits it stays plain text, because a half-entered field should not offer a call. (3) ONE DAY AT A TIME. Reaching yesterday on Daily Work meant opening the phone date picker, finding the day and confirming it. Two arrows do it in a tap. shiftDateKey goes through dateKeyToTs and localDateKey with noon as the anchor rather than adding 86,400,000 ms, for the reason homePrevDayStart already records: a day is not reliably that long, and a daylight shift would land on the wrong date. Stepping past today returns null and the forward arrow is absent rather than disabled, since the input's own max already says today is the end. 2 harness lists updated (R36 builds the customer card in a vm and now needs the two shared helpers -- extracted, not stubbed, so it keeps exercising the real folding). firestore.rules UNCHANGED.
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -3060,7 +3315,7 @@ const I18N = {
     // Nav tab labels
     'Home':'होम', 'Orders':'ऑर्डर', 'Customers':'ग्राहक', 'Attendance':'हाज़िरी', 'Users':'स्टाफ़', 'Tasks':'काम', 'Mark Attendance':'हाज़िरी लगाएं', 'Stock':'स्टॉक', 'Expenses':'खर्चा', 'Data Log':'डेटा लॉग', 'Domino Printing':'डोमिनो प्रिंटिंग', 'Daily Work':'रोज़ का काम',
     // Home tab
-    'Welcome back':'वापसी पर स्वागत है', 'New Orders':'नए ऑर्डर', 'Pending orders':'रुके हुए ऑर्डर', '— Pick who it is for —':'— किसको देना है —', 'pc ordered':'पीस ऑर्डर हुए', 'the rest is already in stock':'बाकी पहले से स्टॉक में है', 'Everything that needs doing now.':'जो अभी करना है, सब कुछ।', 'Nothing to do right now.':'अभी कुछ करने को नहीं।', 'Added automatically — closes itself once the stock is back':'अपने आप जुड़ा — स्टॉक वापस आते ही खुद बंद हो जाएगा', 'Running low — fill before it runs out':'कम हो रहा है — खत्म होने से पहले भर लें', 'Running low — pack before it runs out':'कम हो रहा है — खत्म होने से पहले पैक कर लें', 'Nothing is waiting on these yet. Anything urgent is in My Assigned Tasks above.':'इन पर अभी कुछ रुका नहीं है। ज़रूरी काम ऊपर My Assigned Tasks में है।', 'Nothing running low.':'कुछ कम नहीं हो रहा।', 'Assigned by':'किसने दिया', 'Assigned automatically':'अपने आप दिए गए काम', 'Given out by the system, not by a person — and closed by it too, as soon as the stock is back.':'सिस्टम ने दिए हैं, किसी व्यक्ति ने नहीं — और स्टॉक वापस आते ही सिस्टम ही बंद कर देगा।', 'Nothing short right now.':'अभी कुछ कम नहीं है।', 'Filling team':'फिलिंग टीम', 'Packing team':'पैकिंग टीम', 'vs all of yesterday':'कल पूरे दिन से तुलना', 'A newer version is ready.':'नया वर्ज़न तैयार है।', 'Update':'अपडेट करें', 'Not now':'अभी नहीं', 'Reason (optional)':'वजह (ज़रूरी नहीं)', 'This is already a normal working day — saving removes any change made to it.':'यह पहले से सामान्य कार्य दिवस है — सेव करने पर इस पर किया गया कोई भी बदलाव हट जाएगा।', 'This is already a week off — saving removes any change made to it.':'यह पहले से साप्ताहिक अवकाश है — सेव करने पर इस पर किया गया कोई भी बदलाव हट जाएगा।', 'This week-off will count as a working day — attendance and entries both apply.':'यह अवकाश कार्य दिवस गिना जाएगा — हाज़िरी और एंट्री दोनों लागू होंगी।', 'This is already a normal working day — nothing to change.':'यह पहले से सामान्य कार्य दिवस है — बदलने को कुछ नहीं।', 'This is already a week off — nothing to change.':'यह पहले से साप्ताहिक अवकाश है — बदलने को कुछ नहीं।', 'Changed back to normal':'सामान्य पर वापस किया गया', 'Set day type':'दिन का प्रकार सेट करें', '🗓️ Set day type':'🗓️ दिन का प्रकार सेट करें', 'Applies to everyone for that date.':'उस तारीख़ के लिए सभी पर लागू होगा।', 'This day is':'यह दिन है', 'Normal':'सामान्य', 'week off (Sunday)':'साप्ताहिक अवकाश (रविवार)', 'a working day':'कार्य दिवस', 'Holiday — nobody works':'छुट्टी — कोई काम नहीं', 'Working day — everyone works':'कार्य दिवस — सब काम करेंगे', 'e.g. Diwali, or Month-end stock taking':'जैसे दिवाली, या महीने के अंत की स्टॉक गिनती', 'Any override is removed — this date goes back to being a week off.':'बदलाव हट जाएगा — यह तारीख़ फिर से साप्ताहिक अवकाश होगी।', 'Any override is removed — this date goes back to being a working day.':'बदलाव हट जाएगा — यह तारीख़ फिर से कार्य दिवस होगी।', 'This Sunday will count as a working day — attendance and entries both apply.':'यह रविवार कार्य दिवस गिना जाएगा — हाज़िरी और एंट्री दोनों लागू होंगी।', 'This date is already a working day by default; this also clears any holiday on it.':'यह तारीख़ वैसे भी कार्य दिवस है; इससे उस दिन की छुट्टी भी हट जाएगी।', 'Nobody works. Attendance is not needed and entries are blocked.':'कोई काम नहीं। हाज़िरी ज़रूरी नहीं और एंट्री बंद रहेंगी।', 'This date has no override to remove.':'इस तारीख़ पर कोई बदलाव नहीं है जिसे हटाया जाए।', 'Day type cleared':'दिन का प्रकार हटाया गया', 'Marked as a working day':'कार्य दिवस के रूप में सेट किया गया', 'Working day — set by admin':'कार्य दिवस — एडमिन द्वारा सेट', '— Pick the employee —':'— कर्मचारी चुनें —', 'Pick the employee first.':'पहले कर्मचारी चुनें।', '— Pick the oil —':'— कौन सा तेल, चुनें —', 'Pick which oil this purchase is for.':'यह खरीद किस तेल की है, चुनें।', 'Pick who this task is for.':'पहले चुनें कि यह टास्क किसके लिए है।', 'Short stock':'स्टॉक कम पड़ गया', 'Low stock':'स्टॉक कम हो रहा', 'Promised more than there is':'जितना है उससे ज्यादा वादा हो चुका', 'Running out soon':'जल्द खत्म होगा', 'Fill now':'अभी भरना है', 'Pack now':'अभी पैक करना है', 'Waiting for you':'आपका इंतज़ार है', 'Items ready, being packed':'सामान तैयार, पैकिंग चल रही है', 'Nothing logged yet today.':'आज अभी कुछ दर्ज नहीं हुआ।', 'Everything you have logged since midnight.':'आज रात 12 बजे से अब तक का सब काम।', 'Detail':'विवरण', 'Show more orders':'और ऑर्डर दिखाएं', 'Showing the newest':'सबसे नए', 'Showing the last':'पिछले', 'day(s)':'दिन', 'people per day.':'लोग रोज़।', 'Show 30 days':'30 दिन दिखाएं', 'Showing':'दिखा रहे हैं', 'Show all':'सभी दिखाएं', 'In packing':'पैकिंग में', 'Items ready, not yet packed':'सामान तैयार है, पैक नहीं हुआ', 'Ready to Dispatch':'भेजने के लिए तैयार', 'Packed & ready to ship':'पैक हो गया, भेजने के लिए तैयार', 'Recent orders':'हाल के ऑर्डर', 'Your recent activity':'आपका हाल का काम', 'Quick access':'आसान पहुंच',
+    'Welcome back':'वापसी पर स्वागत है', 'New Orders':'नए ऑर्डर', 'Pending orders':'रुके हुए ऑर्डर', '— Pick who it is for —':'— किसको देना है —', 'pc ordered':'पीस ऑर्डर हुए', 'the rest is already in stock':'बाकी पहले से स्टॉक में है', 'Everything that needs doing now.':'जो अभी करना है, सब कुछ।', 'Nothing to do right now.':'अभी कुछ करने को नहीं।', 'Added automatically — closes itself once the stock is back':'अपने आप जुड़ा — स्टॉक वापस आते ही खुद बंद हो जाएगा', 'Running low — fill before it runs out':'कम हो रहा है — खत्म होने से पहले भर लें', 'Running low — pack before it runs out':'कम हो रहा है — खत्म होने से पहले पैक कर लें', 'Nothing is waiting on these yet. Anything urgent is in My Assigned Tasks above.':'इन पर अभी कुछ रुका नहीं है। ज़रूरी काम ऊपर My Assigned Tasks में है।', 'Nothing running low.':'कुछ कम नहीं हो रहा।', 'Assigned by':'किसने दिया', 'Assigned automatically':'अपने आप दिए गए काम', 'Given out by the system, not by a person — and closed by it too, as soon as the stock is back.':'सिस्टम ने दिए हैं, किसी व्यक्ति ने नहीं — और स्टॉक वापस आते ही सिस्टम ही बंद कर देगा।', 'Nothing short right now.':'अभी कुछ कम नहीं है।', 'Filling team':'फिलिंग टीम', 'Packing team':'पैकिंग टीम', 'vs all of yesterday':'कल पूरे दिन से तुलना', 'all new':'सब आज का', 'Previous day':'पिछला दिन', 'Next day':'अगला दिन', '⚠️ Danger zone':'⚠️ खतरनाक काम', '💵 Cash settlement':'💵 कैश सेटलमेंट', 'Marking window':'मार्किंग विंडो', 'Self-marking':'खुद मार्क करने का समय', 'Entries allowed':'एंट्री का समय', 'Mark ho chuka':'मार्क हो चुका', 'Ek baar mark ho jaane ke baad sirf admin use badal sakta hai.':'एक बार मार्क हो जाने के बाद सिर्फ एडमिन उसे बदल सकता है।', '🩺 Check balances':'🩺 बैलेंस जाँचें', 'Check balances':'बैलेंस जाँचें', 'Compares each recorded balance against the entries behind it. Nothing is changed until you press a button.':'हर दर्ज बैलेंस को उसकी एंट्रियों से मिलाता है। जब तक आप बटन न दबाएं, कुछ नहीं बदलेगा।', 'Check':'जाँचें', 'Checking…':'जाँच हो रही है…', 'Try again':'फिर कोशिश करें', 'Could not read this history.':'यह हिस्ट्री पढ़ी नहीं जा सकी।', 'You are offline — this needs a live connection.':'आप ऑफ़लाइन हैं — इसके लिए इंटरनेट चाहिए।', 'No balance recorded yet.':'अभी कोई बैलेंस दर्ज नहीं है।', 'Recorded':'दर्ज', 'From entries':'एंट्रियों से', 'Difference':'फ़र्क़', 'Counted':'गिनी गईं', 'entries since the checkpoint of':'एंट्रियाँ, चेकपॉइंट', 'This balance is correct.':'यह बैलेंस सही है।', 'There is no recorded balance to correct.':'ठीक करने के लिए कोई दर्ज बैलेंस ही नहीं है।', 'Correct it to':'इसे ठीक करके करें', 'Cannot be checked from here — no Opening Balance checkpoint survives for this person, and entries older than 90 days are deleted automatically. Set an Opening Balance from the real cash position instead.':'यहाँ से जाँच नहीं हो सकती — इनका कोई Opening Balance चेकपॉइंट बाकी नहीं है, और 90 दिन से पुरानी एंट्रियाँ अपने आप मिट जाती हैं। असली कैश के हिसाब से Opening Balance लगाइए।', 'Set this balance to':'इस बैलेंस को कर दें', 'The entries are not changed — only the running total is corrected.':'एंट्रियाँ नहीं बदलतीं — सिर्फ चलता हुआ जोड़ ठीक होता है।', 'Corrected':'ठीक किया गया', 'Correct it':'ठीक कर दें', 'Balance corrected.':'बैलेंस ठीक कर दिया गया।', 'This balance changed while you were looking at it — check it again.':'देखते-देखते यह बैलेंस बदल गया — दोबारा जाँचें।', 'Could not correct this balance.':'यह बैलेंस ठीक नहीं हो सका।', 'A newer version is ready.':'नया वर्ज़न तैयार है।', 'Update':'अपडेट करें', 'Not now':'अभी नहीं', 'Reason (optional)':'वजह (ज़रूरी नहीं)', 'This is already a normal working day — saving removes any change made to it.':'यह पहले से सामान्य कार्य दिवस है — सेव करने पर इस पर किया गया कोई भी बदलाव हट जाएगा।', 'This is already a week off — saving removes any change made to it.':'यह पहले से साप्ताहिक अवकाश है — सेव करने पर इस पर किया गया कोई भी बदलाव हट जाएगा।', 'This week-off will count as a working day — attendance and entries both apply.':'यह अवकाश कार्य दिवस गिना जाएगा — हाज़िरी और एंट्री दोनों लागू होंगी।', 'This is already a normal working day — nothing to change.':'यह पहले से सामान्य कार्य दिवस है — बदलने को कुछ नहीं।', 'This is already a week off — nothing to change.':'यह पहले से साप्ताहिक अवकाश है — बदलने को कुछ नहीं।', 'Changed back to normal':'सामान्य पर वापस किया गया', 'Set day type':'दिन का प्रकार सेट करें', '🗓️ Set day type':'🗓️ दिन का प्रकार सेट करें', 'Applies to everyone for that date.':'उस तारीख़ के लिए सभी पर लागू होगा।', 'This day is':'यह दिन है', 'Normal':'सामान्य', 'week off (Sunday)':'साप्ताहिक अवकाश (रविवार)', 'a working day':'कार्य दिवस', 'Holiday — nobody works':'छुट्टी — कोई काम नहीं', 'Working day — everyone works':'कार्य दिवस — सब काम करेंगे', 'e.g. Diwali, or Month-end stock taking':'जैसे दिवाली, या महीने के अंत की स्टॉक गिनती', 'Any override is removed — this date goes back to being a week off.':'बदलाव हट जाएगा — यह तारीख़ फिर से साप्ताहिक अवकाश होगी।', 'Any override is removed — this date goes back to being a working day.':'बदलाव हट जाएगा — यह तारीख़ फिर से कार्य दिवस होगी।', 'This Sunday will count as a working day — attendance and entries both apply.':'यह रविवार कार्य दिवस गिना जाएगा — हाज़िरी और एंट्री दोनों लागू होंगी।', 'This date is already a working day by default; this also clears any holiday on it.':'यह तारीख़ वैसे भी कार्य दिवस है; इससे उस दिन की छुट्टी भी हट जाएगी।', 'Nobody works. Attendance is not needed and entries are blocked.':'कोई काम नहीं। हाज़िरी ज़रूरी नहीं और एंट्री बंद रहेंगी।', 'This date has no override to remove.':'इस तारीख़ पर कोई बदलाव नहीं है जिसे हटाया जाए।', 'Day type cleared':'दिन का प्रकार हटाया गया', 'Marked as a working day':'कार्य दिवस के रूप में सेट किया गया', 'Working day — set by admin':'कार्य दिवस — एडमिन द्वारा सेट', '— Pick the employee —':'— कर्मचारी चुनें —', 'Pick the employee first.':'पहले कर्मचारी चुनें।', '— Pick the oil —':'— कौन सा तेल, चुनें —', 'Pick which oil this purchase is for.':'यह खरीद किस तेल की है, चुनें।', 'Pick who this task is for.':'पहले चुनें कि यह टास्क किसके लिए है।', 'Short stock':'स्टॉक कम पड़ गया', 'Low stock':'स्टॉक कम हो रहा', 'Promised more than there is':'जितना है उससे ज्यादा वादा हो चुका', 'Running out soon':'जल्द खत्म होगा', 'Fill now':'अभी भरना है', 'Pack now':'अभी पैक करना है', 'Waiting for you':'आपका इंतज़ार है', 'Items ready, being packed':'सामान तैयार, पैकिंग चल रही है', 'Nothing logged yet today.':'आज अभी कुछ दर्ज नहीं हुआ।', 'Everything you have logged since midnight.':'आज रात 12 बजे से अब तक का सब काम।', 'Detail':'विवरण', 'Show more orders':'और ऑर्डर दिखाएं', 'Showing the newest':'सबसे नए', 'Showing the last':'पिछले', 'day(s)':'दिन', 'people per day.':'लोग रोज़।', 'Show 30 days':'30 दिन दिखाएं', 'Showing':'दिखा रहे हैं', 'Show all':'सभी दिखाएं', 'In packing':'पैकिंग में', 'Items ready, not yet packed':'सामान तैयार है, पैक नहीं हुआ', 'Ready to Dispatch':'भेजने के लिए तैयार', 'Packed & ready to ship':'पैक हो गया, भेजने के लिए तैयार', 'Recent orders':'हाल के ऑर्डर', 'Your recent activity':'आपका हाल का काम', 'Quick access':'आसान पहुंच',
     // Order tile actions + status badges
     'Accept':'मंज़ूर करें', 'Reject':'नामंज़ूर करें', 'Mark Ready':'तैयार करें', '🚚 Mark Ready to Dispatch':'🚚 भेजने के लिए तैयार करें', 'Processed & Dispatched':'भेज दिया गया', 'Edit':'बदलें', 'Delete':'हटाएं',
     'New':'नया', 'Processing':'काम चल रहा है', 'Rejected':'नामंज़ूर',
@@ -3590,7 +3845,7 @@ const I18N = {
     'Pick a product to see every size at once — packed, filled, and how much oil is left.':'کسی پروڈکٹ پر ٹیپ کریں — اس کے تمام سائز ایک ساتھ: پیک، بھرا ہوا، اور تیل کتنا بچا ہے۔',
     'Change app language to':'ایپ کی زبان تبدیل کریں', 'Yes, change it':'ہاں، تبدیل کریں', 'Cancel':'منسوخ کریں',
     'Home':'ہوم', 'Orders':'آرڈر', 'Customers':'گاہک', 'Attendance':'حاضری', 'Users':'عملہ', 'Tasks':'کام', 'Mark Attendance':'حاضری لگائیں', 'Stock':'اسٹاک', 'Expenses':'خرچہ', 'Data Log':'ڈیٹا لاگ', 'Domino Printing':'ڈومینو پرنٹنگ', 'Daily Work':'روزانہ کا کام',
-    'Welcome back':'واپسی پر خوش آمدید', 'New Orders':'نئے آرڈر', 'Pending orders':'رکے ہوئے آرڈر', '— Pick who it is for —':'— کس کو دینا ہے —', 'pc ordered':'پیس آرڈر ہوئے', 'the rest is already in stock':'باقی پہلے سے اسٹاک میں ہے', 'Everything that needs doing now.':'جو ابھی کرنا ہے، سب کچھ۔', 'Nothing to do right now.':'ابھی کچھ کرنے کو نہیں۔', 'Added automatically — closes itself once the stock is back':'خود بخود شامل ہوا — اسٹاک واپس آتے ہی خود بند ہو جائے گا', 'Running low — fill before it runs out':'کم ہو رہا ہے — ختم ہونے سے پہلے بھر لیں', 'Running low — pack before it runs out':'کم ہو رہا ہے — ختم ہونے سے پہلے پیک کر لیں', 'Nothing is waiting on these yet. Anything urgent is in My Assigned Tasks above.':'ان پر ابھی کچھ رکا نہیں ہے۔ ضروری کام اوپر My Assigned Tasks میں ہے۔', 'Nothing running low.':'کچھ کم نہیں ہو رہا۔', 'Assigned by':'کس نے دیا', 'Assigned automatically':'خود بخود دیے گئے کام', 'Given out by the system, not by a person — and closed by it too, as soon as the stock is back.':'سسٹم نے دیے ہیں، کسی شخص نے نہیں — اور اسٹاک واپس آتے ہی سسٹم ہی بند کر دے گا۔', 'Nothing short right now.':'ابھی کچھ کم نہیں ہے۔', 'Filling team':'فلنگ ٹیم', 'Packing team':'پیکنگ ٹیم', 'vs all of yesterday':'کل کے پورے دن سے موازنہ', 'A newer version is ready.':'نیا ورژن تیار ہے۔', 'Update':'اپ ڈیٹ کریں', 'Not now':'ابھی نہیں', 'Reason (optional)':'وجہ (اختیاری)', 'This is already a normal working day — saving removes any change made to it.':'یہ پہلے سے عام کام کا دن ہے — محفوظ کرنے پر اس پر کی گئی کوئی بھی تبدیلی ہٹ جائے گی۔', 'This is already a week off — saving removes any change made to it.':'یہ پہلے سے ہفتہ وار چھٹی ہے — محفوظ کرنے پر اس پر کی گئی کوئی بھی تبدیلی ہٹ جائے گی۔', 'This week-off will count as a working day — attendance and entries both apply.':'یہ چھٹی کام کا دن شمار ہوگی — حاضری اور انٹری دونوں لاگو ہوں گی۔', 'This is already a normal working day — nothing to change.':'یہ پہلے سے عام کام کا دن ہے — بدلنے کو کچھ نہیں۔', 'This is already a week off — nothing to change.':'یہ پہلے سے ہفتہ وار چھٹی ہے — بدلنے کو کچھ نہیں۔', 'Changed back to normal':'عام پر واپس کیا گیا', 'Set day type':'دن کی قسم مقرر کریں', '🗓️ Set day type':'🗓️ دن کی قسم مقرر کریں', 'Applies to everyone for that date.':'اس تاریخ کے لیے سب پر لاگو ہوگا۔', 'This day is':'یہ دن ہے', 'Normal':'عام', 'week off (Sunday)':'ہفتہ وار چھٹی (اتوار)', 'a working day':'کام کا دن', 'Holiday — nobody works':'چھٹی — کوئی کام نہیں', 'Working day — everyone works':'کام کا دن — سب کام کریں گے', 'e.g. Diwali, or Month-end stock taking':'جیسے دیوالی، یا مہینے کے آخر کی اسٹاک گنتی', 'Any override is removed — this date goes back to being a week off.':'تبدیلی ہٹ جائے گی — یہ تاریخ دوبارہ ہفتہ وار چھٹی ہوگی۔', 'Any override is removed — this date goes back to being a working day.':'تبدیلی ہٹ جائے گی — یہ تاریخ دوبارہ کام کا دن ہوگی۔', 'This Sunday will count as a working day — attendance and entries both apply.':'یہ اتوار کام کا دن شمار ہوگا — حاضری اور انٹری دونوں لاگو ہوں گی۔', 'This date is already a working day by default; this also clears any holiday on it.':'یہ تاریخ ویسے بھی کام کا دن ہے؛ اس سے اس دن کی چھٹی بھی ہٹ جائے گی۔', 'Nobody works. Attendance is not needed and entries are blocked.':'کوئی کام نہیں۔ حاضری ضروری نہیں اور انٹری بند رہیں گی۔', 'This date has no override to remove.':'اس تاریخ پر کوئی تبدیلی نہیں جسے ہٹایا جائے۔', 'Day type cleared':'دن کی قسم ہٹا دی گئی', 'Marked as a working day':'کام کے دن کے طور پر مقرر کیا گیا', 'Working day — set by admin':'کام کا دن — ایڈمن کی طرف سے', '— Pick the employee —':'— ملازم منتخب کریں —', 'Pick the employee first.':'پہلے ملازم منتخب کریں۔', '— Pick the oil —':'— کون سا تیل، منتخب کریں —', 'Pick which oil this purchase is for.':'یہ خریداری کس تیل کی ہے، منتخب کریں۔', 'Pick who this task is for.':'پہلے منتخب کریں کہ یہ ٹاسک کس کے لیے ہے۔', 'Short stock':'اسٹاک کم پڑ گیا', 'Low stock':'اسٹاک کم ہو رہا', 'Promised more than there is':'جتنا ہے اس سے زیادہ وعدہ ہو چکا', 'Running out soon':'جلد ختم ہو گا', 'Fill now':'ابھی بھرنا ہے', 'Pack now':'ابھی پیک کرنا ہے', 'Waiting for you':'آپ کا انتظار ہے', 'Items ready, being packed':'سامان تیار، پیکنگ جاری ہے', 'Nothing logged yet today.':'آج ابڈک کچھ درج نہیں ہوا۔', 'Everything you have logged since midnight.':'آج رات 12 بجے سے اب تک کا سب کام۔', 'Detail':'تفصیل', 'Show more orders':'مزید آرڈر دکھائیں', 'Showing the newest':'سب سے نئے', 'Showing the last':'پچھلے', 'day(s)':'دن', 'people per day.':'لوگ روزانہ۔', 'Show 30 days':'30 دن دکھائیں', 'Showing':'دکھا رہے ہیں', 'Show all':'سب دکھائیں', 'In packing':'پیکنگ میں', 'Items ready, not yet packed':'سامان تیار ہے، پیک نہیں ہوا', 'Ready to Dispatch':'بھیجنے کے لیے تیار', 'Packed & ready to ship':'پیک ہو گیا، بھیجنے کے لیے تیار', 'Recent orders':'حالیہ آرڈر', 'Your recent activity':'آپ کا حالیہ کام', 'Quick access':'آسان رسائی',
+    'Welcome back':'واپسی پر خوش آمدید', 'New Orders':'نئے آرڈر', 'Pending orders':'رکے ہوئے آرڈر', '— Pick who it is for —':'— کس کو دینا ہے —', 'pc ordered':'پیس آرڈر ہوئے', 'the rest is already in stock':'باقی پہلے سے اسٹاک میں ہے', 'Everything that needs doing now.':'جو ابھی کرنا ہے، سب کچھ۔', 'Nothing to do right now.':'ابھی کچھ کرنے کو نہیں۔', 'Added automatically — closes itself once the stock is back':'خود بخود شامل ہوا — اسٹاک واپس آتے ہی خود بند ہو جائے گا', 'Running low — fill before it runs out':'کم ہو رہا ہے — ختم ہونے سے پہلے بھر لیں', 'Running low — pack before it runs out':'کم ہو رہا ہے — ختم ہونے سے پہلے پیک کر لیں', 'Nothing is waiting on these yet. Anything urgent is in My Assigned Tasks above.':'ان پر ابھی کچھ رکا نہیں ہے۔ ضروری کام اوپر My Assigned Tasks میں ہے۔', 'Nothing running low.':'کچھ کم نہیں ہو رہا۔', 'Assigned by':'کس نے دیا', 'Assigned automatically':'خود بخود دیے گئے کام', 'Given out by the system, not by a person — and closed by it too, as soon as the stock is back.':'سسٹم نے دیے ہیں، کسی شخص نے نہیں — اور اسٹاک واپس آتے ہی سسٹم ہی بند کر دے گا۔', 'Nothing short right now.':'ابھی کچھ کم نہیں ہے۔', 'Filling team':'فلنگ ٹیم', 'Packing team':'پیکنگ ٹیم', 'vs all of yesterday':'کل کے پورے دن سے موازنہ', 'all new':'سب آج کا', 'Previous day':'پچھلا دن', 'Next day':'اگلا دن', '⚠️ Danger zone':'⚠️ خطرناک کام', '💵 Cash settlement':'💵 کیش سیٹلمنٹ', 'Marking window':'مارکنگ ونڈو', 'Self-marking':'خود مارک کرنے کا وقت', 'Entries allowed':'انٹری کا وقت', 'Mark ho chuka':'مارک ہو چکا', 'Ek baar mark ho jaane ke baad sirf admin use badal sakta hai.':'ایک بار مارک ہو جانے کے بعد صرف ایڈمن اسے بدل سکتا ہے۔', '🩺 Check balances':'🩺 بیلنس چیک کریں', 'Check balances':'بیلنس چیک کریں', 'Compares each recorded balance against the entries behind it. Nothing is changed until you press a button.':'ہر درج بیلنس کو اس کی انٹریز سے ملاتا ہے۔ جب تک آپ بٹن نہ دبائیں، کچھ نہیں بدلے گا۔', 'Check':'چیک کریں', 'Checking…':'چیک ہو رہا ہے…', 'Try again':'دوبارہ کوشش کریں', 'Could not read this history.':'یہ ہسٹری پڑھی نہیں جا سکی۔', 'You are offline — this needs a live connection.':'آپ آف لائن ہیں — اس کے لیے انٹرنیٹ چاہیے۔', 'No balance recorded yet.':'ابھی کوئی بیلنس درج نہیں۔', 'Recorded':'درج', 'From entries':'انٹریز سے', 'Difference':'فرق', 'Counted':'گنی گئیں', 'entries since the checkpoint of':'انٹریز، چیک پوائنٹ', 'This balance is correct.':'یہ بیلنس درست ہے۔', 'There is no recorded balance to correct.':'درست کرنے کے لیے کوئی درج بیلنس ہی نہیں۔', 'Correct it to':'اسے درست کر کے کریں', 'Cannot be checked from here — no Opening Balance checkpoint survives for this person, and entries older than 90 days are deleted automatically. Set an Opening Balance from the real cash position instead.':'یہاں سے جانچ نہیں ہو سکتی — ان کا کوئی Opening Balance چیک پوائنٹ باقی نہیں، اور 90 دن سے پرانی انٹریز خود بخود مٹ جاتی ہیں۔ اصل کیش کے حساب سے Opening Balance لگائیں۔', 'Set this balance to':'اس بیلنس کو کر دیں', 'The entries are not changed — only the running total is corrected.':'انٹریز نہیں بدلتیں — صرف چلتا ہوا جوڑ درست ہوتا ہے۔', 'Corrected':'درست کیا گیا', 'Correct it':'درست کر دیں', 'Balance corrected.':'بیلنس درست کر دیا گیا۔', 'This balance changed while you were looking at it — check it again.':'دیکھتے دیکھتے یہ بیلنس بدل گیا — دوبارہ چیک کریں۔', 'Could not correct this balance.':'یہ بیلنس درست نہیں ہو سکا۔', 'A newer version is ready.':'نیا ورژن تیار ہے۔', 'Update':'اپ ڈیٹ کریں', 'Not now':'ابھی نہیں', 'Reason (optional)':'وجہ (اختیاری)', 'This is already a normal working day — saving removes any change made to it.':'یہ پہلے سے عام کام کا دن ہے — محفوظ کرنے پر اس پر کی گئی کوئی بھی تبدیلی ہٹ جائے گی۔', 'This is already a week off — saving removes any change made to it.':'یہ پہلے سے ہفتہ وار چھٹی ہے — محفوظ کرنے پر اس پر کی گئی کوئی بھی تبدیلی ہٹ جائے گی۔', 'This week-off will count as a working day — attendance and entries both apply.':'یہ چھٹی کام کا دن شمار ہوگی — حاضری اور انٹری دونوں لاگو ہوں گی۔', 'This is already a normal working day — nothing to change.':'یہ پہلے سے عام کام کا دن ہے — بدلنے کو کچھ نہیں۔', 'This is already a week off — nothing to change.':'یہ پہلے سے ہفتہ وار چھٹی ہے — بدلنے کو کچھ نہیں۔', 'Changed back to normal':'عام پر واپس کیا گیا', 'Set day type':'دن کی قسم مقرر کریں', '🗓️ Set day type':'🗓️ دن کی قسم مقرر کریں', 'Applies to everyone for that date.':'اس تاریخ کے لیے سب پر لاگو ہوگا۔', 'This day is':'یہ دن ہے', 'Normal':'عام', 'week off (Sunday)':'ہفتہ وار چھٹی (اتوار)', 'a working day':'کام کا دن', 'Holiday — nobody works':'چھٹی — کوئی کام نہیں', 'Working day — everyone works':'کام کا دن — سب کام کریں گے', 'e.g. Diwali, or Month-end stock taking':'جیسے دیوالی، یا مہینے کے آخر کی اسٹاک گنتی', 'Any override is removed — this date goes back to being a week off.':'تبدیلی ہٹ جائے گی — یہ تاریخ دوبارہ ہفتہ وار چھٹی ہوگی۔', 'Any override is removed — this date goes back to being a working day.':'تبدیلی ہٹ جائے گی — یہ تاریخ دوبارہ کام کا دن ہوگی۔', 'This Sunday will count as a working day — attendance and entries both apply.':'یہ اتوار کام کا دن شمار ہوگا — حاضری اور انٹری دونوں لاگو ہوں گی۔', 'This date is already a working day by default; this also clears any holiday on it.':'یہ تاریخ ویسے بھی کام کا دن ہے؛ اس سے اس دن کی چھٹی بھی ہٹ جائے گی۔', 'Nobody works. Attendance is not needed and entries are blocked.':'کوئی کام نہیں۔ حاضری ضروری نہیں اور انٹری بند رہیں گی۔', 'This date has no override to remove.':'اس تاریخ پر کوئی تبدیلی نہیں جسے ہٹایا جائے۔', 'Day type cleared':'دن کی قسم ہٹا دی گئی', 'Marked as a working day':'کام کے دن کے طور پر مقرر کیا گیا', 'Working day — set by admin':'کام کا دن — ایڈمن کی طرف سے', '— Pick the employee —':'— ملازم منتخب کریں —', 'Pick the employee first.':'پہلے ملازم منتخب کریں۔', '— Pick the oil —':'— کون سا تیل، منتخب کریں —', 'Pick which oil this purchase is for.':'یہ خریداری کس تیل کی ہے، منتخب کریں۔', 'Pick who this task is for.':'پہلے منتخب کریں کہ یہ ٹاسک کس کے لیے ہے۔', 'Short stock':'اسٹاک کم پڑ گیا', 'Low stock':'اسٹاک کم ہو رہا', 'Promised more than there is':'جتنا ہے اس سے زیادہ وعدہ ہو چکا', 'Running out soon':'جلد ختم ہو گا', 'Fill now':'ابھی بھرنا ہے', 'Pack now':'ابھی پیک کرنا ہے', 'Waiting for you':'آپ کا انتظار ہے', 'Items ready, being packed':'سامان تیار، پیکنگ جاری ہے', 'Nothing logged yet today.':'آج ابڈک کچھ درج نہیں ہوا۔', 'Everything you have logged since midnight.':'آج رات 12 بجے سے اب تک کا سب کام۔', 'Detail':'تفصیل', 'Show more orders':'مزید آرڈر دکھائیں', 'Showing the newest':'سب سے نئے', 'Showing the last':'پچھلے', 'day(s)':'دن', 'people per day.':'لوگ روزانہ۔', 'Show 30 days':'30 دن دکھائیں', 'Showing':'دکھا رہے ہیں', 'Show all':'سب دکھائیں', 'In packing':'پیکنگ میں', 'Items ready, not yet packed':'سامان تیار ہے، پیک نہیں ہوا', 'Ready to Dispatch':'بھیجنے کے لیے تیار', 'Packed & ready to ship':'پیک ہو گیا، بھیجنے کے لیے تیار', 'Recent orders':'حالیہ آرڈر', 'Your recent activity':'آپ کا حالیہ کام', 'Quick access':'آسان رسائی',
     'Accept':'منظور کریں', 'Reject':'نامنظور کریں', 'Mark Ready':'تیار کریں', '🚚 Mark Ready to Dispatch':'🚚 بھیجنے کے لیے تیار کریں', 'Processed & Dispatched':'بھیج دیا گیا', 'Edit':'تبدیل کریں', 'Delete':'ہٹا دیں',
     'New':'نیا', 'Processing':'کام ہو رہا ہے', 'Rejected':'نامنظور',
     'Clients':'گاہک', 'Attend':'حاضری', 'Team':'ٹیم', 'Log':'لاگ', 'Domino':'ڈومینو', 'Daily':'روزانہ', 'More':'مزید',
@@ -6063,6 +6318,65 @@ async function fsDeleteExpenseAtomic(id){
     return { ok:true, username: result.owner, balance: result.balance };
   }catch(e){
     return { ok:false, error:(e && e.message) || 'transaction_failed', code:(e && e.code) || null, offline: fsIsOfflineLikeError(e) };
+  }
+}
+// ===================== ROUND 75: auditing a balance ======================
+// READ-ONLY. A one-off get(), never a listener: this runs when an admin asks
+// for it and bills reads once, rather than adding a permanent subscription to
+// a collection the app deliberately keeps on a 90-day window.
+//
+// The query is a single equality on byUsername, which Firestore serves from
+// its automatic index -- no composite index to hand-deploy, so this cannot
+// fail for everybody the way a missing index would. The rules already allow
+// it: expenses is `allow read: if isManagerOrAdmin()`.
+//
+// It deliberately returns the raw entries alongside the verdict, so the
+// decision (expenseAuditOf) stays a pure function that the tests can drive
+// without a network at all.
+async function fsAuditExpenseBalance(username){
+  if(!username) return { ok:false, error:'bad_username' };
+  try{
+    const snap = await fsDb.collection('expenses').where('byUsername','==',username).get();
+    const entries = [];
+    snap.forEach(doc=>{ const d = doc.data() || {}; entries.push(Object.assign({ id: doc.id }, d)); });
+    return { ok:true, entries, audit: expenseAuditOf(entries) };
+  }catch(e){
+    return { ok:false, error:(e && e.message) || 'read_failed',
+             code:(e && e.code) || null, offline: fsIsOfflineLikeError(e) };
+  }
+}
+// THE REPAIR. Writes the balance document and nothing else.
+//
+// It does NOT write a correcting expense entry, and that is the whole point:
+// an entry raises the stored balance AND the recomputed sum by the same
+// amount, so it can never close a gap between them. The entries are the
+// record of what happened and they are correct; it is the running total that
+// Round 64 corrupted, so the running total is what gets set.
+//
+// `expectedCurrent` is the figure the admin was actually looking at when they
+// pressed the button. If the document has moved since -- somebody logged an
+// expense while the sheet was open -- writing the audited total would silently
+// erase that entry's effect. So the transaction re-reads and refuses. This is
+// the same rule as everywhere else in this file: a screen is not a lock, and
+// what was true when it was drawn has to be re-checked at the moment of the
+// write.
+async function fsRepairExpenseBalance(username, expectedCurrent, auditedTotal){
+  if(!username) return { ok:false, error:'bad_username' };
+  if(typeof auditedTotal !== 'number' || !isFinite(auditedTotal)) return { ok:false, error:'bad_total' };
+  const ref = fsDb.collection('expenseBalances').doc(username);
+  try{
+    const result = await fsDb.runTransaction(async (tx)=>{
+      const snap = await tx.get(ref);
+      const current = (snap.exists && typeof snap.data().balance==='number') ? snap.data().balance : 0;
+      if(!balancesAgree(current, expectedCurrent)) return { stale:true, current };
+      tx.set(ref, { balance: auditedTotal }, { merge:true });
+      return { written:true, current, balance: auditedTotal };
+    });
+    if(result && result.stale) return { ok:false, stale:true, current: result.current };
+    return { ok:true, username, from: result.current, balance: result.balance };
+  }catch(e){
+    return { ok:false, error:(e && e.message) || 'transaction_failed',
+             code:(e && e.code) || null, offline: fsIsOfflineLikeError(e) };
   }
 }
 // ORDERS: ready stock and the order document, together.
@@ -9244,7 +9558,7 @@ function openEditLogModal(e, opts){
     ${isFilling ? `
     <div class="field"><label>${esc(t('Actual oil used (Liters)'))}</label>
       <input id="editLogActualL" type="number" min="0" step="0.01" value="${currentActualL}" />
-      <div class="mono" style="margin-top:6px;">${esc(t('Standard for this qty:'))} ${standardL} L. ${esc(t('Adjust here if more/less oil was actually used (spillage, wastage, etc.) — the difference is reflected in raw material stock.'))}</div>
+      <div class="note" style="margin-top:6px;">${esc(t('Standard for this qty:'))} ${standardL} L. ${esc(t('Adjust here if more/less oil was actually used (spillage, wastage, etc.) — the difference is reflected in raw material stock.'))}</div>
     </div>` : ''}
     ${adminDateFieldHtml('activityLog', e.at, 'Entry date')}
     <div class="modal-actions">
@@ -11824,19 +12138,27 @@ function renderDailyWork(){
   const actionCell = (e, source, canDelete, hideEdit) => {
     if(isManager) return '';
     if(isAdmin){
+      // ROUND 74 -- Book leads the row now. It is what this screen exists for
+      // ("book each as you update your accounting software"), it was being
+      // rendered last behind Edit and Delete, and batch A's rule is one filled
+      // button per row, at the front of it. Edit and Delete fold behind the ⋯.
+      // Undo is a single button and is left exactly as it was: a fold that
+      // hides nothing costs a tap and saves nothing.
       return e.booked
         ? `<button type="button" class="btn btn-sm btn-outline" data-book="${source}|${e.id}">${esc(t('↩ Undo'))}</button>`
-        : `<div class="row-actions" style="flex-wrap:wrap;gap:4px;">
-            ${hideEdit?'':`<button type="button" class="btn btn-sm btn-outline" data-edit-entry="${source}|${e.id}">${esc(t('Edit'))}</button>`}
-            ${canDelete?`<button type="button" class="btn btn-sm btn-danger" data-del-entry="${source}|${e.id}">${esc(t('Delete'))}</button>`:''}
-            <button type="button" class="btn btn-sm btn-accent" data-book="${source}|${e.id}">${esc(t('✅ Book'))}</button>
-          </div>`;
+        : rowActionsHtml([
+            `<button type="button" class="btn btn-sm btn-accent" data-book="${source}|${e.id}">${esc(t('✅ Book'))}</button>`,
+            hideEdit ? '' : `<button type="button" class="btn btn-sm btn-outline" data-edit-entry="${source}|${e.id}">${esc(t('Edit'))}</button>`,
+            canDelete ? `<button type="button" class="btn btn-sm btn-danger" data-del-entry="${source}|${e.id}">${esc(t('Delete'))}</button>` : '',
+          ]);
     }
     if(e.byUsername===myUsername && !e.booked){
-      return `<div class="row-actions" style="flex-wrap:wrap;gap:4px;">
-          <button type="button" class="btn btn-sm btn-outline" data-edit-entry="${source}|${e.id}">${esc(t('Edit'))}</button>
-          ${canDelete?`<button type="button" class="btn btn-sm btn-danger" data-del-entry="${source}|${e.id}">${esc(t('Delete'))}</button>`:''}
-        </div>`;
+      // Two at most, so this never folds -- and it never gains Book either,
+      // which is the whole point of this branch being separate.
+      return rowActionsHtml([
+        `<button type="button" class="btn btn-sm btn-outline" data-edit-entry="${source}|${e.id}">${esc(t('Edit'))}</button>`,
+        canDelete ? `<button type="button" class="btn btn-sm btn-danger" data-del-entry="${source}|${e.id}">${esc(t('Delete'))}</button>` : '',
+      ]);
     }
     return e.booked ? `<span class="mono" style="font-size:0.6875rem;opacity:0.7;">${esc(t('✅ Booked'))}</span>` : '';
   };
@@ -11930,17 +12252,47 @@ function renderDailyWork(){
     <p class="desc">${esc(restrictedToProduction
       ? t('Filling & Packing entries for the day, from everyone on the team. You can edit or delete your own entry until it\'s booked — once booked, it\'s locked.')
       : t('Every entry for the day, in one place — book each as you update your accounting software.')+(isManager?' '+t('View only.'):' '+t('Editing or deleting stays available until it\'s booked.')))}</p>
-    <div class="field"><label>${esc(t('Date'))}</label><input type="date" id="dwDateSel" value="${date}" max="${localDateKey(Date.now())}" /></div>
-    ${prevUnbookedDates.length ? `<div style="background:var(--state-alert-bg);border:1.5px solid var(--state-alert-border);border-radius:10px;padding:10px 12px;margin:10px 0;font-size:0.78125rem;">
-      <div style="font-weight:800;color:var(--danger);margin-bottom:6px;">${esc(t('⚠️ Previous Entry Not Booked'))}${prevUnbookedDates.length>1?` (${prevUnbookedDates.length} ${esc(t('days'))})`:''}</div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px;">
-        ${prevUnbookedDates.map(d=>`<button type="button" class="btn btn-sm btn-outline" style="border-color:var(--state-alert-border);color:var(--danger);" data-goto-dw-date="${d}">${fmtDateOnly(dateKeyToTs(d))}</button>`).join('')}
+    ${/* ROUND 78 -- the native date picker is still here and still the way to
+         reach any date. What it was NOT good at is the thing people actually
+         do, which is look at yesterday: three taps for the commonest case.
+         The forward arrow disappears on today rather than being disabled,
+         because the input's own max already says today is the end. */''}
+    <div class="field"><label>${esc(t('Date'))}</label>
+      <div class="date-step">
+        <button type="button" class="btn btn-sm btn-outline" data-dw-step="-1" aria-label="${esc(t('Previous day'))}">‹</button>
+        <input type="date" id="dwDateSel" value="${date}" max="${localDateKey(Date.now())}" />
+        ${shiftDateKey(date, 1, localDateKey(Date.now())) ? `<button type="button" class="btn btn-sm btn-outline" data-dw-step="1" aria-label="${esc(t('Next day'))}">›</button>` : ''}
       </div>
+    </div>
+    ${/* ROUND 73 -- this was a full-width red panel whose entire contents were
+         one short sentence and, usually, a single small date button. The panel
+         was bigger than the thing it was reporting, and on a day with one
+         unbooked date it took more vertical space than the whole entry list
+         below it. Same words, same buttons, same colour, one line: the warning
+         and the dates sit on one row and wrap only when there are genuinely
+         several days to catch up on. */''}
+    ${prevUnbookedDates.length ? `<div class="dw-unbooked">
+      <span class="dw-unbooked-lbl">${esc(t('⚠️ Previous Entry Not Booked'))}${prevUnbookedDates.length>1?` (${prevUnbookedDates.length} ${esc(t('days'))})`:''}</span>
+      ${prevUnbookedDates.map(d=>`<button type="button" class="btn btn-sm btn-outline" style="border-color:var(--state-alert-border);color:var(--danger);" data-goto-dw-date="${d}">${fmtDateOnly(dateKeyToTs(d))}</button>`).join('')}
     </div>` : ''}
-    <button type="button" class="btn btn-outline" id="dwPrintBtn" style="width:100%;margin-bottom:6px;">${esc(t('🖨️ Print this day'))}</button>
-    ${isAdmin ? `<button type="button" class="btn btn-outline" id="dwEntryWindowBtn" style="width:100%;margin-bottom:6px;">${esc(t('⏰ Entry window'))} (${fmtHHMMOfDay(getAttendanceSettings().entryStart)}–${fmtHHMMOfDay(getAttendanceSettings().entryEnd)})</button>` : ''}
-    ${totalCount>0 ? `<div style="background:${bookedCount===totalCount?'var(--success-bg)':'var(--bg)'};border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin:10px 0;font-size:0.78125rem;font-weight:700;">${bookedCount===totalCount?'✅':'📋'} ${bookedCount} ${esc(t('of'))} ${totalCount} ${esc(t('entries booked'))}</div>` : ''}
-    ${(isAdmin && totalCount>0 && bookedCount<totalCount) ? `<button type="button" class="btn btn-outline" id="dwBookAllBtn" style="width:100%;">${esc(t('✅ Book all remaining'))} (${totalCount-bookedCount})</button>` : ''}
+    ${/* ROUND 74 -- five full-width boxes used to stack here and only three of
+         them were actions. "0 of 5 entries booked" is a FACT about the day; it
+         was a <div> dressed in the same border, the same radius and the same
+         width as the buttons above and below it, so the screen offered five
+         things to press and two of them did nothing. It is a line of text now.
+         Print and Entry window are the day's secondary controls and share a
+         row; "Book all remaining" is the one thing this screen is for, so it
+         is the only full-width button and it is filled rather than outlined. */''}
+    <div class="dw-tools">
+      <button type="button" class="btn btn-outline btn-sm" id="dwPrintBtn">${esc(t('🖨️ Print this day'))}</button>
+      ${isAdmin ? `<button type="button" class="btn btn-outline btn-sm" id="dwEntryWindowBtn">${esc(t('⏰ Entry window'))}</button>` : ''}
+    </div>
+    ${/* ROUND 76 -- same change as the Attendance toolbar: the hours are a fact
+         about today, not part of the control's name. Keeping them in the label
+         made this button twice the width of the one beside it. */''}
+    ${isAdmin ? `<div class="note" style="margin:-4px 0 10px;">${esc(t('Entries allowed'))}: ${fmtHHMMOfDay(getAttendanceSettings().entryStart)}–${fmtHHMMOfDay(getAttendanceSettings().entryEnd)}</div>` : ''}
+    ${totalCount>0 ? `<div class="dw-booked${bookedCount===totalCount?' is-done':''}">${bookedCount===totalCount?'✅':'📋'} ${bookedCount} ${esc(t('of'))} ${totalCount} ${esc(t('entries booked'))}</div>` : ''}
+    ${(isAdmin && totalCount>0 && bookedCount<totalCount) ? `<button type="button" class="btn btn-primary" id="dwBookAllBtn" style="width:100%;">${esc(t('✅ Book all remaining'))} (${totalCount-bookedCount})</button>` : ''}
   </div>
   ${sections.map(s=>s.html).join('')}`;
 }
@@ -12081,6 +12433,14 @@ function bindDailyWork(){
   if(entryWindowBtn) entryWindowBtn.addEventListener('click', openEntryWindowModal);
   const dateSel = document.getElementById('dwDateSel');
   if(dateSel) dateSel.addEventListener('change', ()=>{ S.dailyWorkDate = dateSel.value; render(); });
+  document.querySelectorAll('[data-dw-step]').forEach(b=>b.addEventListener('click', ()=>{
+    // Re-read the value rather than trusting the render that drew the button:
+    // a background snapshot can redraw this screen between the two.
+    const from = (document.getElementById('dwDateSel') || {}).value || S.dailyWorkDate;
+    const next = shiftDateKey(from, Number(b.dataset.dwStep), localDateKey(Date.now()));
+    if(!next) return;
+    S.dailyWorkDate = next; render();
+  }));
   document.querySelectorAll('[data-goto-dw-date]').forEach(b=>b.addEventListener('click', ()=>{
     S.dailyWorkDate = b.dataset.gotoDwDate; render();
   }));
@@ -12364,8 +12724,10 @@ function renderCombinedList(showOil){
     </button>`;
   }).join('');
   return `<div class="card">
-    <h2>${esc(t('Combined stock'))}</h2>
-    <p class="desc">${esc(showOil ? t('Pick a product to see every size at once — packed, filled, and how much oil is left.') : t('Pick a product to see every size at once — packed and filled.'))}</p>
+    ${/* ROUND 74 -- heading dropped for the same reason as the other three
+         lanes: the selector directly above already names this view. The line
+         below is kept, because it says something the selector does not. */''}
+    <p class="desc" style="margin-top:0;">${esc(showOil ? t('Pick a product to see every size at once — packed, filled, and how much oil is left.') : t('Pick a product to see every size at once — packed and filled.'))}</p>
     <div class="cmb-list">${rowsHtml}</div>
   </div>`;
 }
@@ -12953,7 +13315,69 @@ function expenseEntryBadgeHtml(x, opts){
 // deliberately longer than the 30-day display window so there's a little
 // slack before a not-yet-cleaned-up entry actually disappears).
 const EXPENSE_VISIBLE_WINDOW_MS = 30*24*60*60*1000;
-function expenseEntryContribution(x){ return x ? ((x.type==='settlement' ? -x.amount : x.amount) || 0) : 0; }
+// ROUND 75 -- expenseEntryContribution was a SECOND copy of the rule that
+// decides the sign of money, character for character the same as
+// expenseContributionOf above. Round 64's own note says a third copy was
+// deleted "because two copies of this would cost real cash"; this one was
+// missed. It is now the one function, aliased so no call site has to change.
+const expenseEntryContribution = expenseContributionOf;
+// ===================== ROUND 75: the balance audit =======================
+// Owner, after batch C: "ok do" -- repair the balances Round 64's settlement
+// bug corrupted (editing a settlement moved the manager's balance by TWICE the
+// amount, in the wrong direction).
+//
+// WHY THIS IS NOT "SUM THE EXPENSES AND WRITE THAT DOWN".
+//
+// It is the obvious repair and it would destroy money. cleanupOldExpenses
+// (functions/index.js) permanently deletes expense documents older than 90
+// days, precisely BECAUSE the durable balance is what carries that history
+// forward. Re-summing whatever survives therefore produces a figure missing
+// every settlement and every checkpoint older than 90 days. The file already
+// records what that costs, in expenseBalanceFor: a manager with an April
+// opening balance of Rs 45,000 plus Rs 5,000 of recent expenses gets silently
+// reset to Rs 5,000, and every later delta then transacts against the wrong
+// number, so it never recovers.
+//
+// WHAT MAKES A RE-SUM TRUSTWORTHY.
+//
+// An opening_balance entry is a CHECKPOINT: it states what the balance was at
+// that moment, so everything before it is already folded into it. The sum is
+// only believable when it starts AT one and runs forward -- which is exactly
+// the window this returns. If no opening_balance survives in Firestore for
+// that person, the honest answer is "this cannot be checked from here", not a
+// number. The audit screen then offers no repair button at all; it sends the
+// owner to the Opening Balance control, where the figure comes from the
+// real-world cash position rather than from arithmetic over a history with
+// holes in it.
+//
+// Pure on purpose: no reading, no writing, no clock. Everything the decision
+// depends on arrives in the argument, so the decision can be tested directly.
+function expenseAuditOf(entries){
+  const list = (entries || []).filter(Boolean).slice().sort((a,b)=>(a.at||0)-(b.at||0));
+  let anchorIdx = -1;
+  for(let i = list.length - 1; i >= 0; i--){
+    if(isOpeningBalanceEntry(list[i])){ anchorIdx = i; break; }
+  }
+  const oldestAt = list.length ? list[0].at : null;
+  if(anchorIdx === -1){
+    return { trustworthy:false, reason:'no_checkpoint', total:null,
+             counted:0, totalEntries:list.length, oldestAt, anchorAt:null };
+  }
+  const window = list.slice(anchorIdx);
+  return {
+    trustworthy:true,
+    total: window.reduce((sum, x)=>sum + expenseContributionOf(x), 0),
+    counted: window.length,
+    totalEntries: list.length,
+    oldestAt,
+    anchorAt: list[anchorIdx].at,
+    anchorAmount: list[anchorIdx].amount || 0,
+  };
+}
+// Money compared as money: two figures that differ by less than half a paisa
+// are the same figure that has been through a float.
+const BALANCE_EPSILON = 0.005;
+function balancesAgree(a, b){ return Math.abs((Number(a)||0) - (Number(b)||0)) < BALANCE_EPSILON; }
 function computeVisibleExpenses(allForUser, durableBalance){
   const cutoff = Date.now() - EXPENSE_VISIBLE_WINDOW_MS;
   const visible = allForUser.filter(x=>x.at>=cutoff).sort((a,b)=>b.at-a.at);
@@ -12999,10 +13423,10 @@ function openOpeningBalanceModal(forUsername){
     <p class="desc" style="margin-top:-6px;">${esc(t('Isse aap manager ka balance ek sahi, jaani-hui figure par set kar dete ho -- ek checkpoint. Purani expense entries waisi ki waisi rehti hain, sirf running total yahan se aage sahi hota hai.'))}</p>
     <form id="openingBalForm">
       <div class="field"><label>${esc(t('Manager'))}</label><select id="obManager">${managers.map(u=>`<option value="${esc(u.username)}" ${u.username===selUsername?'selected':''}>${esc(u.name)}</option>`).join('')}</select></div>
-      <div class="field"><div class="mono" id="obCurrentBalance" style="font-size:0.8125rem;color:var(--ink-soft);">${esc(t('Current balance on record:'))} ₹${currentBalance.toLocaleString('en-IN')}</div></div>
+      <div class="field"><div class="note" id="obCurrentBalance" style="font-size:0.8125rem;color:var(--ink-soft);">${esc(t('Current balance on record:'))} ₹${currentBalance.toLocaleString('en-IN')}</div></div>
       <div class="field"><label>${esc(t('Ye checkpoint kis mahine ka hai'))}</label><input id="obMonthLabel" value="${esc(prevMonthLabel())}" required /></div>
       <div class="field"><label>${esc(t('Sahi balance (₹)'))}</label><input id="obTarget" type="number" step="0.01" required placeholder="${esc(t('jaise 45000'))}" /></div>
-      <div class="field"><div class="mono" id="obDeltaPreview" style="font-size:0.8125rem;color:var(--ink-soft);">${esc(t('Upar figure daalo to yahan pata chalega kitna badlega.'))}</div></div>
+      <div class="field"><div class="note" id="obDeltaPreview" style="font-size:0.8125rem;color:var(--ink-soft);">${esc(t('Upar figure daalo to yahan pata chalega kitna badlega.'))}</div></div>
       <div class="modal-actions">
         <button type="button" class="btn btn-outline" id="cancelModal">${esc(t('Cancel'))}</button>
         <button type="submit" class="btn btn-primary">${esc(t('Save checkpoint'))}</button>
@@ -13121,9 +13545,26 @@ function renderExpenses(){
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
       <div><h2>${t('Expenses & settlements')}</h2><p class="desc">${esc(t('Manager expenses & settlements. Sirf pichle 30 din dikhte hain.'))}</p></div>
       <div class="row-actions" style="flex-wrap:wrap;gap:6px;">
-        <button class="btn btn-outline btn-sm" id="newAdminExpBtn">${esc(t('+ Add expense'))}</button>
-        <button class="btn btn-primary btn-sm" id="newSettleBtn">${esc(t('+ Add entry'))}</button>
-        <button class="btn btn-accent btn-sm" id="newOpeningBalBtn">${esc(t('📌 Opening Balance'))}</button>
+        ${/* ROUND 77 -- THE NAMES. "+ Add expense" and "+ Add entry" sat side
+             by side and only one of them said what it did. "Add entry" is a
+             SETTLEMENT -- money going back TO the manager -- which is the
+             exact opposite direction from the button beside it, and nothing on
+             screen said so. An admin could not tell them apart without opening
+             one. It is named now, in the same words the manager's own screen
+             has always used for it ("Cash Settlement").
+             THE WEIGHT. Three buttons, two of them filled: solid green for the
+             settlement and solid orange -- the loudest colour in the app -- for
+             Opening Balance, which is a rare corrective used perhaps twice a
+             year. Recording money is what this screen is for, so the two
+             recording buttons are the ones that carry weight, and the
+             corrective is an outline like the audit beside it. */''}
+        <button class="btn btn-primary btn-sm" id="newAdminExpBtn">${esc(t('+ Add expense'))}</button>
+        <button class="btn btn-outline btn-sm" id="newSettleBtn">${esc(t('💵 Cash settlement'))}</button>
+        <button class="btn btn-outline btn-sm" id="newOpeningBalBtn">${esc(t('📌 Opening Balance'))}</button>
+        ${/* ROUND 75 -- the way in to the balance audit. Admin-only because
+             this screen already is, and because it reads every expense
+             document a person has. */''}
+        <button class="btn btn-outline btn-sm" id="balanceAuditBtn">${esc(t('🩺 Check balances'))}</button>
       </div>
     </div>
     ${managers.length===0?`<div class="empty">${esc(t('No managers yet.'))}</div>`:`
@@ -13131,7 +13572,13 @@ function renderExpenses(){
       ${managers.map(u=>`<option value="${esc(u.username)}" ${u.username===selUsername?'selected':''}>${esc(u.name)}</option>`).join('')}
     </select>
     <div class="stat" style="margin-bottom:12px;"><div class="n">₹${balance.toLocaleString('en-IN')}</div><div class="l">${balance>=0?esc(t('Still owed to this manager')):esc(t('Overpaid / advance given'))}</div></div>
-    ${list.length===0?`<div class="empty"><div class="big">💰</div>${esc(t('Nothing logged for this manager.'))}</div>`:
+    ${/* ROUND 76 -- an empty screen that offers the way off it. The app has
+         had emptyCtaHtml since Round 44 and uses it on Orders, Tasks and the
+         manager's own expense screen; the admin's view of the same ledger was
+         the one that just stated the fact and stopped. NOT added to the two
+         login logs: an empty login log is not something a button can fix, and
+         inventing an offer there would be worse than the plain sentence. */''}
+    ${list.length===0?`<div class="empty"><div class="big">💰</div>${esc(t('Nothing logged for this manager.'))}${emptyCtaHtml(t('+ Add expense'), '#newAdminExpBtn')}</div>`:
       groupByDate(list, x=>x.at).map(s=>dateGroupHeaderHtml(s.heading)+`<table><thead><tr><th>${esc(t('Entry'))}</th><th>${esc(t('Amount'))}</th><th>${esc(t('Time'))}</th><th></th></tr></thead><tbody>
       ${s.items.map(x=>`
         <tr>
@@ -13160,6 +13607,159 @@ function expenseSelectedManager(){
   if(S.expenseAdminSel && managers.some(u=>u.username===S.expenseAdminSel)) return S.expenseAdminSel;
   return (managers[0] && managers[0].username) || '';
 }
+/* ==================== ROUND 75: the balance audit screen =================
+   Three rules shape this screen, all of them learned the hard way in this
+   file:
+
+   1. IT READS THE BALANCE MAP DIRECTLY, never through expenseBalanceFor().
+      That function SEEDS a missing balance by re-summing the 90-day window
+      and WRITES the result -- the exact money-loss path its own comment
+      describes. An audit must never be able to cause the corruption it is
+      looking for.
+
+   2. A PERSON WITH NO SURVIVING CHECKPOINT GETS NO FIX BUTTON. Not a
+      disabled one, not a confirm dialog -- none. There is no figure to
+      offer, so offering one would be the bug.
+
+   3. IT CHECKS ONE PERSON AT A TIME, on demand. Each check is a full read of
+      that person's expense history, which costs reads; doing all of them
+      automatically on open would bill the whole team every time somebody is
+      curious. */
+function storedBalanceRaw(username){
+  const map = S.expenseBalances || {};
+  if(!Object.prototype.hasOwnProperty.call(map, username)) return null;
+  const n = Number(map[username]);
+  return isFinite(n) ? n : null;
+}
+function balanceAuditRows(){
+  return S.users
+    .filter(u=>u.role==='manager' || (S.expenses||[]).some(x=>x.byUsername===u.username)
+               || Object.prototype.hasOwnProperty.call(S.expenseBalances||{}, u.username))
+    .map(u=>({ username:u.username, name:u.name }));
+}
+function balanceAuditStateFor(username){
+  return (S.balanceAudit && S.balanceAudit[username]) || { state:'idle' };
+}
+function balanceAuditRowHtml(row){
+  const st = balanceAuditStateFor(row.username);
+  const stored = storedBalanceRaw(row.username);
+  const money = n => '₹' + (Number(n)||0).toLocaleString('en-IN');
+  const head = `<div class="ba-name">${esc(row.name)}</div>`;
+
+  if(st.state === 'checking')
+    return `<div class="ba-row">${head}<div class="note">${esc(t('Checking…'))}</div></div>`;
+
+  if(st.state === 'error')
+    return `<div class="ba-row">${head}<div class="note" style="color:var(--danger);">${esc(st.message || t('Could not read this history.'))}</div>`
+         + `<button type="button" class="btn btn-sm btn-outline" data-ba-check="${esc(row.username)}">${esc(t('Try again'))}</button></div>`;
+
+  if(st.state === 'fixed')
+    return `<div class="ba-row">${head}<div class="note" style="color:var(--success);">`
+         + `✅ ${esc(t('Corrected'))} — ${money(st.from)} → <b>${money(st.to)}</b></div></div>`;
+
+  if(st.state !== 'done')
+    return `<div class="ba-row">${head}`
+         + `<div class="note">${stored===null ? esc(t('No balance recorded yet.')) : esc(t('Recorded')) + ': ' + money(stored)}</div>`
+         + `<button type="button" class="btn btn-sm btn-outline" data-ba-check="${esc(row.username)}">${esc(t('Check'))}</button></div>`;
+
+  const a = st.audit || {};
+  if(!a.trustworthy){
+    // No surviving checkpoint. Say exactly why, and send them to the control
+    // that CAN fix it -- with a figure that comes from real cash, not from
+    // arithmetic over a history with holes in it.
+    return `<div class="ba-row ba-row-block">${head}
+      <div class="note">${esc(t('Recorded'))}: <b>${stored===null?'—':money(stored)}</b></div>
+      <div class="note">${esc(t('Cannot be checked from here — no Opening Balance checkpoint survives for this person, and entries older than 90 days are deleted automatically. Set an Opening Balance from the real cash position instead.'))}</div>
+      <button type="button" class="btn btn-sm btn-accent" data-ba-open="${esc(row.username)}">${esc(t('📌 Opening Balance'))}</button>
+    </div>`;
+  }
+  const diff = (stored === null ? null : stored - a.total);
+  const agrees = diff !== null && balancesAgree(stored, a.total);
+  return `<div class="ba-row ba-row-block">${head}
+    <div class="ba-figs">
+      <span>${esc(t('Recorded'))}: <b>${stored===null?'—':money(stored)}</b></span>
+      <span>${esc(t('From entries'))}: <b>${money(a.total)}</b></span>
+      ${diff===null?'':`<span class="${agrees?'':'ba-diff'}">${esc(t('Difference'))}: <b>${diff>0?'+':''}${money(diff)}</b></span>`}
+    </div>
+    <div class="note">${esc(t('Counted'))} ${a.counted} ${esc(t('entries since the checkpoint of'))} ${fmtDateOnly(a.anchorAt)}.</div>
+    ${agrees
+      ? `<div class="note" style="color:var(--success);">✅ ${esc(t('This balance is correct.'))}</div>`
+      : (stored===null
+         ? `<div class="note">${esc(t('There is no recorded balance to correct.'))}</div>`
+         : `<button type="button" class="btn btn-primary btn-sm" data-ba-fix="${esc(row.username)}">${esc(t('Correct it to'))} ${money(a.total)}</button>`)}
+  </div>`;
+}
+function balanceAuditBodyHtml(){
+  const rows = balanceAuditRows();
+  if(!rows.length) return `<div class="empty">${esc(t('No managers yet.'))}</div>`;
+  return rows.map(balanceAuditRowHtml).join('');
+}
+function refreshBalanceAudit(){
+  const host = document.getElementById('balAuditBody');
+  if(!host) return;
+  host.innerHTML = balanceAuditBodyHtml();
+  bindBalanceAuditBody();
+}
+function bindBalanceAuditBody(){
+  document.querySelectorAll('[data-ba-check]').forEach(b=>
+    b.addEventListener('click', ()=>runBalanceAuditFor(b.dataset.baCheck)));
+  document.querySelectorAll('[data-ba-open]').forEach(b=>
+    b.addEventListener('click', ()=>openOpeningBalanceModal(b.dataset.baOpen)));
+  document.querySelectorAll('[data-ba-fix]').forEach(b=>
+    b.addEventListener('click', ()=>confirmBalanceRepair(b.dataset.baFix)));
+}
+async function runBalanceAuditFor(username){
+  if(!username) return;
+  S.balanceAudit = S.balanceAudit || {};
+  S.balanceAudit[username] = { state:'checking' };
+  refreshBalanceAudit();
+  const res = await fsAuditExpenseBalance(username);
+  if(!res.ok){
+    S.balanceAudit[username] = { state:'error',
+      message: res.offline ? t('You are offline — this needs a live connection.') : t('Could not read this history.') };
+  } else {
+    S.balanceAudit[username] = { state:'done', audit: res.audit };
+  }
+  refreshBalanceAudit();
+}
+function confirmBalanceRepair(username){
+  const st = balanceAuditStateFor(username);
+  const a = st.audit;
+  if(!a || !a.trustworthy) return; // the button should not exist; refuse anyway
+  const stored = storedBalanceRaw(username);
+  if(stored === null) return;
+  const money = n => '₹' + (Number(n)||0).toLocaleString('en-IN');
+  // Not destructive, so not a red dialog: this restores a figure to what the
+  // entries already say. showConfirm defaults to danger because most confirms
+  // in this file guard a delete; this one does not.
+  showConfirm(`${t('Set this balance to')} ${money(a.total)}? ${t('The entries are not changed — only the running total is corrected.')}`,
+    async ()=>{
+      const res = await fsRepairExpenseBalance(username, stored, a.total);
+      if(res.ok){
+        S.balanceAudit[username] = { state:'fixed', from: res.from, to: res.balance };
+        refreshBalanceAudit();
+        showToast(t('Balance corrected.'));
+        return;
+      }
+      if(res.stale){
+        // Somebody logged something while this sheet was open. Re-check rather
+        // than write a total that would erase their entry.
+        S.balanceAudit[username] = { state:'idle' };
+        refreshBalanceAudit();
+        showToast(t('This balance changed while you were looking at it — check it again.'), true);
+        return;
+      }
+      showToast(res.offline ? t('You are offline — this needs a live connection.') : t('Could not correct this balance.'), true);
+    }, { danger:false, confirmLabel: t('Correct it') });
+}
+function openBalanceAuditModal(){
+  if(S.currentUser.role !== 'admin') return;
+  S.balanceAudit = {};
+  showModal(`<h3>🩺 ${esc(t('Check balances'))}</h3>
+    <p class="desc" style="margin-top:-6px;">${esc(t('Compares each recorded balance against the entries behind it. Nothing is changed until you press a button.'))}</p>
+    <div id="balAuditBody">${balanceAuditBodyHtml()}</div>`);
+  bindBalanceAuditBody();
+}
 function bindExpenses(){
   const isAdmin = S.currentUser.role==='admin';
   const btn = document.getElementById('newExpBtn');
@@ -13177,6 +13777,8 @@ function bindExpenses(){
   if(adminExpBtn) adminExpBtn.addEventListener('click', ()=>openExpenseModal(null,'expense', expenseSelectedManager()));
   const openingBalBtn = document.getElementById('newOpeningBalBtn');
   if(openingBalBtn) openingBalBtn.addEventListener('click', ()=>openOpeningBalanceModal(expenseSelectedManager()));
+  const auditBtn = document.getElementById('balanceAuditBtn');
+  if(auditBtn) auditBtn.addEventListener('click', openBalanceAuditModal);
   document.querySelectorAll('[data-set-opening]').forEach(b=>b.addEventListener('click', ()=>openOpeningBalanceModal(b.dataset.setOpening)));
   const sel = document.getElementById('expManagerSel');
   if(sel) sel.addEventListener('change', ()=>{ S.expenseAdminSel = sel.value; render(); });
@@ -13450,6 +14052,11 @@ function homeTodayStats(){
 // trust.
 function homeDeltaHtml(now, before){
   const d = (Number(now)||0) - (Number(before)||0);
+  // ROUND 72: with nothing to compare against, the difference IS the number --
+  // "144" sat directly under "144", which spends a line to say nothing. The
+  // arrow still points up, because up is true; what it carries now is the one
+  // fact the big number above does not already give: yesterday was empty.
+  if(d > 0 && (Number(before)||0) === 0) return `<span class="d up">▲ ${esc(t('all new'))}</span>`;
   if(d > 0) return `<span class="d up">▲ ${d.toLocaleString('en-IN')}</span>`;
   if(d < 0) return `<span class="d down">▼ ${Math.abs(d).toLocaleString('en-IN')}</span>`;
   return `<span class="d same">— ${esc(t('same'))}</span>`;
@@ -13721,7 +14328,11 @@ function stockTilesVisible(role){
 function stockTierTileHtml(tier, tiers){
   const isUrgent = tier === 'urgent';
   const n = isUrgent ? tiers.urgentCount : tiers.lowCount;
-  return `<div class="stat-card-v2" data-alert-tier="${esc(tier)}">
+  // ROUND 72: the tile says what it MEANS, not where it sits. Zero is not a
+  // neutral number on these two -- "nothing short" is the good outcome, and
+  // saying so in green is what makes the red, when it comes, mean something.
+  const sev = n > 0 ? (isUrgent ? 'sev sev-bad' : 'sev sev-warn') : 'sev sev-ok';
+  return `<div class="stat-card-v2 ${sev}" data-alert-tier="${esc(tier)}">
     <div class="row-top"><div class="icon-badge ${isUrgent?'red':'orange'}">${isUrgent?'\u{1F6A8}':'\u26A0\uFE0F'}</div><span class="chev">\u203A</span></div>
     ${countNumHtml(n, n, 'tier:' + tier)}
     <div class="title">${esc(isUrgent ? t('Short stock') : t('Low stock'))}</div>
@@ -13738,7 +14349,7 @@ function openMyEntriesTodayModal(){
   const body = mine.length === 0
     ? `<div class="empty"><div class="big">\u{1F4DD}</div>${esc(t('Nothing logged yet today.'))}</div>`
     : `<table><thead><tr><th>${esc(t('Entry'))}</th><th>${esc(t('Detail'))}</th><th>${esc(t('Time'))}</th></tr></thead><tbody>`
-      + mine.map(e=>`<tr><td>${esc(e.label)}</td><td class="mono">${esc(e.detail||'')}</td><td class="mono">${fmtTime(e.at)}</td></tr>`).join('')
+      + mine.map(e=>`<tr><td>${esc(e.label)}</td><td>${esc(e.detail||'')}</td><td class="mono">${fmtTime(e.at)}</td></tr>`).join('')
       + `</tbody></table>`;
   showModal(`<h3>\u2705 ${esc(t('Done today'))}</h3><p class="desc" style="margin-top:-6px;">${esc(t('Everything you have logged since midnight.'))}</p>${body}<div class="modal-actions"><button type="button" class="btn btn-outline" id="cancelModal">${esc(t('Close'))}</button></div>`);
 }
@@ -13859,7 +14470,7 @@ function renderHomeGeneric(role){
     <h2>${esc(t('Your recent activity'))}</h2>
     ${myEntries.length===0?`<div class="empty">Nothing logged yet.</div>`:`
     <table><thead><tr><th>Entry</th><th>Detail</th><th>When</th><th></th></tr></thead><tbody>
-    ${myEntries.map(e=>`<tr><td>${esc(e.label)}</td><td class="mono">${esc(e.detail)}</td><td class="mono">${fmtDate(e.at)}</td><td>${(e.refType && withinSelfEditWindow(e))?`<button type="button" class="btn btn-sm btn-outline" data-self-edit-type="${e.refType}" data-self-edit-id="${e.refId}">${esc(t('Edit'))}</button>`:''}</td></tr>`).join('')}
+    ${myEntries.map(e=>`<tr><td>${esc(e.label)}</td><td>${esc(e.detail)}</td><td class="mono">${fmtDate(e.at)}</td><td>${(e.refType && withinSelfEditWindow(e))?`<button type="button" class="btn btn-sm btn-outline" data-self-edit-type="${e.refType}" data-self-edit-id="${e.refId}">${esc(t('Edit'))}</button>`:''}</td></tr>`).join('')}
     </tbody></table>`}
   </div>
   
@@ -14655,8 +15266,17 @@ function renderOrderTile(o, showUndoDispatch, fifoShortages){
         avail = short === 0;
         shortQty = short;
       }
-      const mark = avail ? '<span class="success-pop" style="color:var(--success);">✔</span>' : `<span style="color:var(--danger);">✘ (${esc(t('short by'))} ${fmtQtyPreferCase(shortQty, caseSize)})</span>`;
-      return `${mark} ${qtyLabel}`;
+      // ROUND 73 -- the shortage used to be printed BEFORE the item:
+      // "✘ (short by 3 cases) Olife Gold 200mL - 6 cases". The red clause was
+      // wider than the item name it belonged to, so a list of items read as a
+      // list of problems, and the thing a packer is looking for -- which item
+      // -- was the last part of the line. The tick or cross stays at the
+      // front, because that is the bullet that lets the eye run down the
+      // column and see at a glance whether anything is wrong. The words move
+      // to the end, as a chip, where they qualify the line they follow.
+      const mark = avail ? '<span class="success-pop" style="color:var(--success);">✔</span>' : '<span style="color:var(--danger);">✘</span>';
+      const shortChip = avail ? '' : ` <span class="ot-short">${esc(t('short by'))} ${fmtQtyPreferCase(shortQty, caseSize)}</span>`;
+      return `${mark} ${qtyLabel}${shortChip}`;
     }).join('<br/>')}</div>
     ${orderNoteHtml(o)}
     <!-- ROUND 46. Round 18 put the dispatch date on the tile and left the
@@ -14679,7 +15299,7 @@ function renderOrderTile(o, showUndoDispatch, fifoShortages){
     </div>
     ${orderDispatchLineHtml(o)}
     <button type="button" class="ot-detail-btn" data-ot-detail="${o.id}" aria-expanded="false">ⓘ ${esc(t('Details'))}</button>
-    ${(()=>{ const geoLat=safeGeoCoord(o.orderLat), geoLng=safeGeoCoord(o.orderLng); const hasGeo = isAdmin && geoLat!=null && geoLng!=null; return `<div class="ot-meta ot-detail" hidden>${o.orderNumber?`#${esc(o.orderNumber)} · `:''}by ${esc(o.createdBy)} · ${fmtTime(o.createdAt)}${hasGeo ? ` · <a href="https://www.google.com/maps?q=${encodeURIComponent(geoLat)},${encodeURIComponent(geoLng)}" target="_blank" rel="noopener" style="color:var(--primary);">📍 Order location</a>` : ''}${isAdmin ? ` · <button type="button" class="mono" data-view-tracking-logs="${o.id}" style="background:none;border:none;color:var(--primary);cursor:pointer;padding:0;font-size:inherit;">📜 Logs</button>` : ''}</div>`; })()}
+    ${(()=>{ const geoLat=safeGeoCoord(o.orderLat), geoLng=safeGeoCoord(o.orderLng); const hasGeo = isAdmin && geoLat!=null && geoLng!=null; return `<div class="ot-meta ot-detail" hidden>${o.orderNumber?`#${esc(o.orderNumber)} · `:''}by ${esc(o.createdBy)} · ${fmtTime(o.createdAt)}${hasGeo ? ` · <a href="https://www.google.com/maps?q=${encodeURIComponent(geoLat)},${encodeURIComponent(geoLng)}" target="_blank" rel="noopener" style="color:var(--primary);">📍 Order location</a>` : ''}${isAdmin ? ` · <button type="button" class="note" data-view-tracking-logs="${o.id}" style="background:none;border:none;color:var(--primary);cursor:pointer;padding:0;font-size:inherit;">📜 Logs</button>` : ''}</div>`; })()}
     <div class="row-actions ot-actions">
       ${(isAdmin || (S.currentUser.role==='sales' && o.createdByUsername===S.currentUser.username)) ? `<button class="btn btn-sm btn-outline" data-track-link="${o.id}">🔗 Track link</button>` : ''}
       ${isAdmin?`
@@ -14876,6 +15496,58 @@ function renderRetailSalesCard(){
     <p class="desc" style="margin-top:8px;">${esc(t('Total cash sales (7 days):'))} <b>₹${totalAmount.toLocaleString('en-IN')}</b></p>`}
   </div>`;
 }
+// ROUND 73 -- one renderer for all five chips. Written once on purpose: the
+// row used to be five hand-written controls, which is how it ended up in three
+// shapes with the count written two different ways. `stat` is the stage the
+// chip opens (bindOrders already binds [data-stat] to openStatModal); a chip
+// with an id instead opens its own thing.
+function orderFilterChipHtml(icon, label, count, stat, id){
+  const n = Number(count) || 0;
+  const attrs = (stat ? ` data-stat="${esc(stat)}"` : '') + (id ? ` id="${esc(id)}"` : '');
+  return `<button type="button" class="ofilter${n === 0 ? ' is-zero' : ''}"${attrs}>`
+       + `${icon} <span>${esc(label)}</span><span class="cnt">${n}</span></button>`;
+}
+// ROUND 74 -- every table in this app that offers more than two actions on a
+// row was stacking them into a column, and because td carries
+// overflow-wrap:anywhere the labels broke mid-word on a phone. Batch A stopped
+// the breaking; this is the part that gives the row its width back.
+//
+// It reuses the order tile's fold rather than inventing a second one. The
+// FIRST entry is the row's primary and stays on screen; the rest fold behind
+// the ⋯, which bindOrderTileActions labels with the number hidden and removes
+// outright if nothing is. Two or fewer actions are left alone -- a fold that
+// hides one button costs a tap and saves nothing.
+//
+// The caller passes finished <button> markup and decides, by its own
+// permission checks, which buttons exist at all. This function never adds one.
+// ROUND 74 -- the raw, filled and ready lanes each carried their own hand-
+// written copy of the SAME three-button cell. That is the shape every drift
+// bug in this file has had (Rounds 62, 63, 64, and the duplicate count-up in
+// 68): one sentence written several times, and the copies eventually
+// disagreeing. One builder, three callers, and the pool is the only thing that
+// differs between them.
+function stockRowActionsHtml(pool, key, label){
+  return rowActionsHtml([
+    `<button class="btn btn-sm btn-outline" data-adjust-${pool}="${esc(key)}">${esc(t('Adjust'))}</button>`,
+    `<button class="btn btn-sm btn-outline" data-lowalert-${pool}="${esc(key)}">${esc(t('Low alert'))}</button>`,
+    `<button class="btn btn-sm btn-outline" data-stocklog-key="${esc(key)}" data-stocklog-label="${esc(label)}">${esc(t('📜 Log'))}</button>`,
+  ], true);
+}
+const ROW_ACTION_FOLD_AT = 3;
+function rowActionsHtml(buttons, asCell){
+  const list = (buttons || []).filter(b => b && String(b).trim());
+  const tag = asCell ? 'td' : 'div';
+  if(!list.length) return asCell ? '<td></td>' : '';
+  if(list.length < ROW_ACTION_FOLD_AT){
+    return `<${tag} class="row-actions">${list.join('')}</${tag}>`;
+  }
+  // The primary keeps its place at the front of the row AND is the one the
+  // fold leaves visible -- marking it is what tells the shared CSS which.
+  const first = String(list[0]).replace(/^(\s*<button)\b/, '$1 data-ot-primary="1"');
+  const more = `<button type="button" class="btn btn-sm btn-outline ot-more-btn"`
+             + ` aria-expanded="false" aria-label="${esc(t('More actions'))}">⋯</button>`;
+  return `<${tag} class="row-actions ot-actions">${first}${list.slice(1).join('')}${more}</${tag}>`;
+}
 function renderOrders(){
   const canCreate = canDoEntry(S.currentUser.role, 'entry_order');
   const processingCount = S.orders.filter(o=>o.status==='processing').length;
@@ -14888,12 +15560,14 @@ function renderOrders(){
       <div><h2>${t('Orders')}</h2><p class="desc">${S.currentUser.role==='admin'?esc(t('Accept, edit, or move through stages.')):esc(t('Your team\'s orders.'))}</p></div>
       ${canCreate?`<div class="row-actions"><button class="btn btn-outline btn-sm" id="chatOrderBtn">${esc(t('💬 Quick order'))}</button><button class="btn btn-primary btn-sm" id="newOrderBtn">${esc(t('+ New order'))}</button></div>`:''}
     </div>
-    <div class="row-actions" style="margin-top:10px;flex-wrap:wrap;gap:8px;">
-      <span class="badge badge-processing" style="font-size:0.71875rem;padding:5px 10px;">🔧 ${esc(t('Processing'))}: ${processingCount}</span>
-      <span class="badge badge-approved" style="font-size:0.71875rem;padding:5px 10px;">📦 ${esc(t('In packing'))}: ${readyCount}</span>
-      <button type="button" class="btn btn-sm btn-outline" data-stat="packed" style="padding:4px 10px;font-size:0.71875rem;">🚚 ${esc(t('Ready to Dispatch'))}: ${packedCount}</button>
-      <button type="button" class="btn btn-sm btn-outline" data-stat="processed" style="padding:4px 10px;font-size:0.71875rem;">✅ ${esc(t('Processed'))}: ${processedCount}</button>
-      ${S.currentUser.role==='admin' ? `<button type="button" class="btn btn-sm btn-outline" id="siteVisitLogsBtn" style="padding:4px 10px;font-size:0.71875rem;">🌐 ${esc(t('Order Form Logs'))} (${S.siteVisitLogs.length})</button>` : ''}
+    ${/* ROUND 73: one shape, one place for the count, and every one of them
+         tappable -- see the .ofilter note in the stylesheet. */''}
+    <div class="ofilter-row">
+      ${orderFilterChipHtml('🔧', t('Processing'), processingCount, 'processing')}
+      ${orderFilterChipHtml('📦', t('In packing'), readyCount, 'ready')}
+      ${orderFilterChipHtml('🚚', t('Ready to Dispatch'), packedCount, 'packed')}
+      ${orderFilterChipHtml('✅', t('Processed'), processedCount, 'processed')}
+      ${S.currentUser.role==='admin' ? orderFilterChipHtml('🌐', t('Order Form Logs'), S.siteVisitLogs.length, null, 'siteVisitLogsBtn') : ''}
     </div>
     ${/* PERF, ROUND 56: this called renderOrdersSegregated(0) -- every order,
          no cap. On a 400-staff dataset (2,400 orders over the listener's 60
@@ -15643,6 +16317,24 @@ function ordersForCustomer(custId, custName){
     return !!name && String(o.customerName||'').trim().toLowerCase() === name;
   });
 }
+// ROUND 78 -- a directory on a telephone whose telephone numbers could not be
+// dialled. One anchor does it, and the care is all in what gets into the href:
+//   * Only digits, + and the separators a person might type are kept, so a
+//     note like "9811111111 (Rakesh)" cannot smuggle anything into the URL.
+//   * A number with fewer than six digits is not treated as a number at all;
+//     it is shown as plain text. A half-entered field should not offer a call.
+//   * The visible text stays exactly what was typed -- this changes what the
+//     number DOES, never what it says.
+// Returns '' for nothing worth showing, so callers can drop the line entirely.
+function telLinkHtml(raw, cls){
+  const text = String(raw == null ? '' : raw).trim();
+  if(!text) return '';
+  const dialable = text.replace(/[^\d+]/g, '');
+  const digits = dialable.replace(/\D/g, '');
+  const span = `<span class="${esc(cls || 'mono')}">${esc(text)}</span>`;
+  if(digits.length < 6) return span;
+  return `<a href="tel:${esc(dialable)}" class="${esc(cls || 'mono')}" style="color:var(--primary);">${esc(text)}</a>`;
+}
 function customerMatchesQuery(c, q){
   if(!q) return true;
   return [c.name, c.city, c.phone, c.gstin, c.address, c.transport]
@@ -15671,15 +16363,32 @@ function renderCustomerCards(){
         <div style="background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:14px 12px;text-align:center;">
           <span class="cust-avatar" style="--cust-hue:${avatarColorFor(c.name||'?')};width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1rem;margin:0 auto 8px;">${esc((c.name||'?').charAt(0).toUpperCase())}</span>
           <div style="font-weight:800;font-size:0.84375rem;">${esc(c.name)}</div>
-          <div class="mono" style="margin-top:2px;">${esc(c.phone||'—')}</div>
-          ${c.city?`<div class="mono" style="margin-top:2px;">📍 ${esc(c.city)}</div>`:''}
+          <div style="margin-top:2px;">${c.phone ? telLinkHtml(c.phone) : `<span class="mono">—</span>`}</div>
+          ${c.city?`<div class="note" style="margin-top:2px;">📍 ${esc(c.city)}</div>`:''}
           ${c.address?`<div style="font-size:0.71875rem;color:var(--ink-soft);margin-top:4px;">${esc(c.address)}</div>`:''}
-          <div class="mono" style="margin-top:6px;">${esc(t('added by'))} ${esc(c.addedBy)}</div>
-          <div class="row-actions" style="justify-content:center;margin-top:10px;">
-            <button class="btn btn-sm btn-outline" data-cust-orders="${esc(String(c.id))}">📦 ${esc(t('Orders'))} (${orderCount})</button>
-            ${isAdmin?`<button class="btn btn-sm btn-outline" data-edit-cust="${c.id}">${esc(t('Edit'))}</button>
-            <button class="btn btn-sm btn-danger" data-del-cust="${c.id}">${esc(t('Delete'))}</button>`:''}
-          </div>
+          ${/* ROUND 76 -- the search box offers "name, city, phone or GSTIN"
+               and customerSearchHaystack really does match on it, but the card
+               never showed it. So a search BY GSTIN returned a card with no
+               way to confirm it was the right party. It is an identifier, so
+               it is .mono, like the phone above it. */''}
+          ${c.gstin?`<div class="mono" style="margin-top:2px;">${esc(c.gstin)}</div>`:''}
+          ${/* ROUND 76 -- "added by" was printed whether or not there was a
+               name after it, so a customer imported or created before that
+               field existed showed a label dangling on its own. A label with
+               nothing after it is not information; it reads as a broken row. */''}
+          ${c.addedBy?`<div class="note" style="margin-top:6px;">${esc(t('added by'))} ${esc(c.addedBy)}</div>`:''}
+          ${/* ROUND 78 -- batch C taught the TABLE rows to fold; these card
+               grids were left stacking their buttons into a column, which is
+               why a three-customer screen showed twelve of them and a card
+               was taller than the data in it. Same helper, same shared
+               binder, same rule: the first entry stays, the rest go behind a
+               ⋯, and each button is still produced by its own permission
+               test -- a non-admin has no Edit to fold. */''}
+          ${rowActionsHtml([
+            `<button class="btn btn-sm btn-outline" data-cust-orders="${esc(String(c.id))}">📦 ${esc(t('Orders'))} (${orderCount})</button>`,
+            isAdmin ? `<button class="btn btn-sm btn-outline" data-edit-cust="${c.id}">${esc(t('Edit'))}</button>` : '',
+            isAdmin ? `<button class="btn btn-sm btn-danger" data-del-cust="${c.id}">${esc(t('Delete'))}</button>` : '',
+          ])}
         </div>`;
     }).join('')}
   </div>`;
@@ -15713,7 +16422,7 @@ function openCustomerOrdersModal(custId){
   showModal(`
     <h3>📦 ${esc(t('Previous orders'))}</h3>
     <p class="desc" style="margin-top:-6px;">
-      <b>${esc(c.name)}</b>${c.city?` · ${esc(c.city)}`:''}${c.phone?` · <span class="mono">${esc(c.phone)}</span>`:''}<br/>
+      <b>${esc(c.name)}</b>${c.city?` · ${esc(c.city)}`:''}${c.phone?` · ${telLinkHtml(c.phone)}`:''}<br/>
       ${list.length} ${esc(t('order(s)'))} · ${esc(t('last 60 days'))}${isAdmin?` · ${esc(t('MRP Value'))}: <b>₹${mrpTotal.toLocaleString('en-IN')}</b>`:''}
     </p>
     ${chips?`<div class="row-actions" style="flex-wrap:wrap;gap:6px;margin-bottom:10px;">${chips}</div>`:''}
@@ -15904,18 +16613,29 @@ function openCustomerModal(existingCust){
 const TEAM_PAGE_SIZE = 60;
 function renderUsers(){
   return `
-  <div class="card">
-    <h2>${esc(t('⚠️ Reset all data'))}</h2>
-    <p class="desc">${esc(t('Erases all data except Users. Needs your password. Can\'t be undone.'))}</p>
-    <button class="btn btn-danger btn-sm" id="resetAllBtn">${esc(t('Reset all data (except Users)'))}</button>
-  </div>
+  ${/* ROUND 77 -- "Reset all data" used to be the FIRST card on this screen.
+       The single most destructive action in the app -- it erases orders,
+       stock, attendance, expenses, everything but the logins -- was the first
+       thing an admin met every time they came here to add a user or fix
+       somebody's role. Nothing about it needs to be near the top; it is used
+       perhaps once in the life of the app.
+       It is at the bottom now, inside a <details> that starts CLOSED. That is
+       deliberate and it is not decoration: opening it is a deliberate act, so
+       the button cannot be reached by a mis-tap on the way to something else.
+       The password prompt and the confirm it already had are untouched --
+       this adds a step in front of them rather than replacing one. */''}
   <div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
       <div><h2>${esc(t('Team & access'))}</h2><p class="desc">${esc(t('Create logins & assign roles.'))}</p></div>
+      ${/* ROUND 77 -- "+ Add user" is what this screen is for, and it was
+           third, squeezed onto the end of a wrapped row behind two settings
+           sheets that are opened far more rarely. The one filled button in a
+           group goes first; batch A settled that for table rows and this is
+           the same rule one level up. */''}
       <div class="row-actions">
+        <button class="btn btn-primary btn-sm" id="newUserBtn">${esc(t('+ Add user'))}</button>
         <button class="btn btn-outline btn-sm" id="openPermsBtn">${esc(t('🔐 Permission Manager'))}</button>
         <button class="btn btn-outline btn-sm" id="openNotifPermsBtn">${esc(t('🔔 Notification Permissions'))}</button>
-        <button class="btn btn-primary btn-sm" id="newUserBtn">${esc(t('+ Add user'))}</button>
       </div>
     </div>
     ${/* PERF, ROUND 56: 400 staff cards is a 1.35 MB screen. The cap only
@@ -15930,42 +16650,45 @@ function renderUsers(){
           <div class="mono" style="margin:2px 0 4px;">${esc(u.username)}</div>
           <span class="role-pill" style="background:var(--surface);color:var(--ink-brand);border:1px solid var(--border);">${esc(t(ROLES[u.role]?ROLES[u.role].label:u.role))}</span>
           ${u.post?`<div style="font-size:0.6875rem;color:var(--ink-soft);margin-top:4px;font-style:italic;">${esc(u.post)}</div>`:''}
-          ${u.phone?`<div class="mono" style="margin-top:6px;">${esc(u.phone)}</div>`:''}
-          <div class="row-actions" style="justify-content:center;margin-top:10px;flex-wrap:wrap;">
-            <button class="btn btn-sm btn-outline" data-edit-user="${u.id}">${esc(t('Edit'))}</button>
-            ${u.username!==S.currentUser.username ? `<button class="btn btn-sm btn-outline" data-force-logout="${esc(u.username)}" title="${esc(t('Immediately signs this person out wherever they\'re currently logged in'))}">${esc(t('🔒 Force logout'))}</button>` : ''}
-            <!-- BUGFIX (2026-09-03, live report -- "Dusre Admin ko to Delete kr skta hai lekin Self Delete nhi kr skta"): this used to
-                 hardcode the check to the literal username "admin" (u.username!=='admin'), so the "don't delete the last admin"
-                 safety net only ever protected whichever account happened to be named exactly "admin" -- NOT whoever the real last
-                 admin actually is. If the real admin's own account is that "admin" user and there's currently only one admin-role
-                 account left, their OWN row correctly hid Delete (that half was "working" -- it just looked like an unexplained
-                 self-delete block) -- but a DIFFERENT admin-role account with any other username was never protected at all, even
-                 as the sole remaining admin, which is the actually dangerous direction (a careless click could lock everyone out
-                 with no admin left, since deleteStaffUser has no other safeguard). Fixed to key off the row's own role instead of a
-                 hardcoded name, so the same "can't delete the LAST admin, whoever they are" rule now applies uniformly -- and an
-                 admin CAN delete their own account like anyone else's as soon as a second admin exists, since the risk (zero admins
-                 left) is gone at that point. -->
-            <!-- ROUND 18 (explicit user request -- "Admin User Self ko delet
-                 na kr ske" + "admin naam ke username isko to koi bhi delet na
-                 kr ske"): two NEW conditions layered on top of the existing
-                 last-admin-role-count rule above -- (1) u.username===
-                 S.currentUser.username hides Delete on your OWN row,
-                 regardless of role or how many admins exist (this
-                 deliberately REVERSES the 2026-09-03 fix that made
-                 self-delete allowed -- the user has now asked for the
-                 opposite); (2) u.username==='admin' hides Delete on that one
-                 specific literal account for EVERYONE, even other admins.
-                 Both are enforced server-side too (deleteStaffUser), this is
-                 just so the button doesn't even appear as clickable. -->
-            ${(u.role!=='admin' || S.users.filter(x=>x.role==='admin').length>1) && u.username!==S.currentUser.username && u.username!=='admin' ? `<button class="btn btn-sm btn-danger" data-del-user="${u.id}">${esc(t('Delete'))}</button>` : ''}
-          </div>
+          ${u.phone?`<div style="margin-top:6px;">${telLinkHtml(u.phone)}</div>`:''}
+          ${/* ROUND 78 -- the same fold the customer cards and every table row now
+               use. The three conditions below are untouched, comments and all:
+               Force logout still requires that this is not you, and Delete
+               still requires that it is not the last admin, not you, and not
+               the literal "admin" account. Folding decides how many are on
+               screen; it has never decided which exist. */''}
+          ${rowActionsHtml([
+            `<button class="btn btn-sm btn-outline" data-edit-user="${u.id}">${esc(t('Edit'))}</button>`,
+            u.username!==S.currentUser.username ? `<button class="btn btn-sm btn-outline" data-force-logout="${esc(u.username)}" title="${esc(t('Immediately signs this person out wherever they\'re currently logged in'))}">${esc(t('🔒 Force logout'))}</button>` : '',
+            // The Delete condition below is three rules layered over time, and
+            // every one of them is load-bearing. Round 17's audit found it
+            // hardcoded to the literal username "admin", so the "do not delete
+            // the LAST admin" safety net only ever protected whichever account
+            // happened to be named that -- never whoever the real last admin
+            // was, which is the dangerous direction: one careless click could
+            // leave the company with no admin at all, and deleteStaffUser has
+            // no other safeguard. It keys off the row's own ROLE now.
+            // Round 18 then added two more at the owner's explicit request
+            // ("Admin User Self ko delet na kr ske" + "admin naam ke username
+            // isko to koi bhi delet na kr ske"): your OWN row never offers
+            // Delete whatever your role, and the literal "admin" account never
+            // offers it to anybody, including other admins.
+            // All three are enforced in deleteStaffUser as well; this only
+            // keeps the button from appearing clickable.
+            (u.role!=='admin' || S.users.filter(x=>x.role==='admin').length>1) && u.username!==S.currentUser.username && u.username!=='admin' ? `<button class="btn btn-sm btn-danger" data-del-user="${u.id}">${esc(t('Delete'))}</button>` : '',
+          ])}
         </div>
       `).join('')}
     </div>
   </div>
   <div class="card">
     <p class="desc" style="margin:0;">${esc(t('⚠️ Not bank-grade security — fine for a trusted team. Don\'t reuse sensitive passwords.'))}</p>
-  </div>`;
+  </div>
+  <details class="danger-zone">
+    <summary>${esc(t('⚠️ Danger zone'))}</summary>
+    <p class="desc">${esc(t('Erases all data except Users. Needs your password. Can\'t be undone.'))}</p>
+    <button class="btn btn-danger btn-sm" id="resetAllBtn">${esc(t('Reset all data (except Users)'))}</button>
+  </details>`;
 }
 const CHECKLIST_MODULES = [
   {key:'orders', label:'Orders'}, {key:'customers', label:'Customers'},
@@ -16465,15 +17188,15 @@ function openUserModal(id){
           <label class="btn btn-outline btn-sm" style="cursor:pointer;">${esc(t('Choose photo'))}<input type="file" id="uPhotoFile" accept="image/*" style="display:none;" /></label>
           ${pendingPhoto?`<button type="button" class="btn btn-outline btn-sm" id="uPhotoRemoveBtn">${esc(t('Remove'))}</button>`:''}
         </div>
-        <div class="mono" style="margin-top:6px;">${esc(t('Auto-compressed to a small avatar for saving.'))}</div>
+        <div class="note" style="margin-top:6px;">${esc(t('Auto-compressed to a small avatar for saving.'))}</div>
       </div>
       <div class="field"><label>${esc(t('Full name'))}</label><input id="uName" value="${existing?esc(existing.name):''}" required /></div>
       <div class="field"><label>${esc(t('Username'))}</label><input id="uUser" value="${existing?esc(existing.username):''}" required ${existing?'readonly':''} />
-        ${existing?`<div class="mono" style="margin-top:4px;">${esc(t("Username can't be changed once created — it's permanently tied to this person's login (Firebase Auth account + doc id), so editing it here would only change the displayed name without actually renaming the login, silently breaking their sign-in. Delete and re-add if a genuine rename is needed."))}</div>`:''}</div>
+        ${existing?`<div class="note" style="margin-top:4px;">${esc(t("Username can't be changed once created — it's permanently tied to this person's login (Firebase Auth account + doc id), so editing it here would only change the displayed name without actually renaming the login, silently breaking their sign-in. Delete and re-add if a genuine rename is needed."))}</div>`:''}</div>
       ${existing
-        ? `<div class="field"><label>${esc(t('Password'))}</label><div class="mono" style="margin-top:4px;">${esc(t('A fresh temporary password will be generated and shown to you if you use the "Reset password" button below — hand it to them privately. Staff can also change their own password anytime from Profile → Change password.'))}</div>
+        ? `<div class="field"><label>${esc(t('Password'))}</label><div class="note" style="margin-top:4px;">${esc(t('A fresh temporary password will be generated and shown to you if you use the "Reset password" button below — hand it to them privately. Staff can also change their own password anytime from Profile → Change password.'))}</div>
              <button type="button" class="btn btn-outline btn-sm" id="uResetPasswordBtn" style="margin-top:6px;">${esc(t('Reset password'))}</button></div>`
-        : `<div class="field"><label>${esc(t('Password'))}</label><div class="mono" style="margin-top:4px;">${esc(t('A temporary password will be generated automatically and shown to you once this account is created.'))}</div></div>`}
+        : `<div class="field"><label>${esc(t('Password'))}</label><div class="note" style="margin-top:4px;">${esc(t('A temporary password will be generated automatically and shown to you once this account is created.'))}</div></div>`}
       <div class="field"><label>${esc(t('Role / Team (controls access — see 🔐 Permission Manager)'))}</label>
         <select id="uRole">
           ${(()=>{
@@ -17354,7 +18077,7 @@ function renderTasks(){
     const ordered = (d.orderedQty && d.orderedQty > d.qty)
       ? `<div class="desc" style="margin:0;font-size:11px;">${esc(t('of'))} ${d.orderedQty} ${esc(t('pc ordered'))} — ${esc(t('the rest is already in stock'))}</div>`
       : '';
-    return `<b>${d.qty} ${esc(t('pc'))}</b>${ordered}`;
+    return `<b class="num">${d.qty} ${esc(t('pc'))}</b>${ordered}`;
   };
 
   const laneWorkRowHtml = (key, d)=>{
@@ -17368,7 +18091,7 @@ function renderTasks(){
     const btn = queueKind==='filling'
       ? `<button class="btn btn-sm btn-accent" data-quick-fill="${key}|${suggestedQty}">${esc(t('Record'))}</button>`
       : `<button class="btn btn-sm btn-accent" data-quick-pack="${key}|${suggestedQty}">${esc(t('Record'))}</button>`;
-    return `<tr data-lane-row="${esc(key)}"><td>${esc(it?t(it.name):key)} <span class="mono">${esc(it?translateSizeUnit(it.size):'')}</span><div style="margin-top:3px;">${tags}</div></td><td class="mono">${qtyText}</td><td>${btn}</td></tr>`;
+    return `<tr data-lane-row="${esc(key)}"><td>${esc(it?t(it.name):key)} <span class="mono">${esc(it?translateSizeUnit(it.size):'')}</span><div style="margin-top:3px;">${tags}</div></td><td>${qtyText}</td><td>${btn}</td></tr>`;
   };
 
   // The lane's URGENT work -- exactly what myOpenAssignedTasks counts and what
@@ -17463,20 +18186,35 @@ function renderTasks(){
   const generalTaskRow = (t, showAssignee)=>`
     <tr>
       <td><b>${esc(t.title)}</b>${t.description?`<div style="font-size:0.75rem;color:var(--ink-soft);margin-top:2px;">${esc(t.description)}</div>`:''}</td>
-      ${showAssignee?`<td class="mono">${t.assignedTo?esc(t.assignedToName):esc(taskLabel('— unassigned —'))}</td>`:''}
+      ${showAssignee?`<td>${t.assignedTo?esc(t.assignedToName):esc(taskLabel('— unassigned —'))}</td>`:''}
       ${/* ROUND 62 (owner: "kis admin ne kisko task assign kre hn"). Every task
            has carried createdBy since it was first written -- it was simply
            never shown, so with more than one admin there was no way to tell
            who had handed out what. Nothing to migrate: old tasks have it too.
            A task from before that field existed falls back to a dash rather
            than to a blank cell that looks like a rendering fault. */''}
-      ${showAssignee?`<td class="mono">${t.createdBy?esc(t.createdBy):'—'}</td>`:''}
+      ${showAssignee?`<td>${t.createdBy?esc(t.createdBy):'—'}</td>`:''}
       <td class="mono">${t.dueDate?esc(t.dueDate):'—'}</td>
       <td><span class="badge badge-${t.status==='done'?'done':'pending'}">${t.status}</span></td>
-      <td class="row-actions">
-        ${t.status!=='done' ? `<button class="btn btn-sm btn-success" data-complete-task="${t.id}">${esc(taskLabel('Mark done'))}</button>` : ''}
-        ${isAdmin ? `<button class="btn btn-sm btn-outline" data-edit-task="${t.id}">${esc(taskLabel('Edit'))}</button>${t.assignedTo?`<button class="btn btn-sm btn-outline" data-unassign-task="${t.id}">${esc(taskLabel('Unassign'))}</button>`:''}<button class="btn btn-sm btn-danger" data-del-task="${t.id}">${esc(taskLabel('Delete'))}</button>` : ''}
-      </td>
+      ${/* ROUND 74 -- the same four buttons, in the same order, decided by the
+           same two permission tests. All that changed is that the row hands
+           them to rowActionsHtml, which keeps the primary on screen and folds
+           the rest behind a ⋯. Each entry is still produced by its own
+           condition, so a role that was never given Edit has no Edit to fold --
+           folding is a layout decision and can never be a permission one. */''}
+        ${/* ROUND 72 -- "Mark done" was .btn-success, a pale tint, standing beside
+             "Delete" in .btn-danger. Both are tints of the same strength, but red
+             is the louder hue, so the row's DESTRUCTIVE action was reading as its
+             most important one. The primary action gets the solid fill instead:
+             one filled button per row is what tells a person which one the row is
+             actually for. (.btn-sm after .btn-primary is what keeps width:auto, so
+             it sits inline like the rest -- same pairing as "+ New task" above.) */''}
+      ${rowActionsHtml([
+        t.status!=='done' ? `<button class="btn btn-primary btn-sm" data-complete-task="${t.id}">${esc(taskLabel('Mark done'))}</button>` : '',
+        isAdmin ? `<button class="btn btn-sm btn-outline" data-edit-task="${t.id}">${esc(taskLabel('Edit'))}</button>` : '',
+        (isAdmin && t.assignedTo) ? `<button class="btn btn-sm btn-outline" data-unassign-task="${t.id}">${esc(taskLabel('Unassign'))}</button>` : '',
+        isAdmin ? `<button class="btn btn-sm btn-danger" data-del-task="${t.id}">${esc(taskLabel('Delete'))}</button>` : '',
+      ], true)}
     </tr>`;
 
   const generalTasksBlock = isAdmin ? `
@@ -17486,7 +18224,13 @@ function renderTasks(){
         <button class="btn btn-primary btn-sm" id="newTaskBtn">${esc(t('+ New task'))}</button>
       </div>
       ${allGeneralTasks.length===0?`<div class="empty"><div class="big">🗒️</div>${esc(t('No tasks created yet.'))}${emptyCtaHtml(t('+ New task'), '#newTaskBtn')}</div>`:`
-      <table><thead><tr><th>${esc(t('Task'))}</th><th>${esc(t('Assigned to'))}</th><th>${esc(t('Assigned by'))}</th><th>${esc(t('Due'))}</th><th>${esc(t('Status'))}</th><th></th></tr></thead><tbody>
+      ${/* ROUND 74 -- "Assigned to" and "Assigned by" sat over the two
+           NARROWEST columns on the screen and came out as "ASSIG NED TO". The
+           columns hold a person's name, which says what they are without the
+           word "assigned" in front of it, and the Daily Work tables next door
+           have always headed the same kind of column "By". Both keys already
+           exist in Hindi and Urdu, so this adds no string. */''}
+      <table><thead><tr><th>${esc(t('Task'))}</th><th>${esc(t('To'))}</th><th>${esc(t('By'))}</th><th>${esc(t('Due'))}</th><th>${esc(t('Status'))}</th><th></th></tr></thead><tbody>
         ${allGeneralTasks.map(t=>generalTaskRow(t,true)).join('')}
       </tbody></table>`}
     </div>` : `
@@ -17544,7 +18288,7 @@ function renderTasks(){
             ${l.work.now.map(r=>{
               const it = findItem(r.key);
               return `<tr><td>${esc(it?t(it.name):r.key)} <span class="mono">${esc(it?translateSizeUnit(it.size):'')}</span></td>`
-                   + `<td class="mono">${laneQtyHtml(r)}</td></tr>`;
+                   + `<td>${laneQtyHtml(r)}</td></tr>`;
             }).join('')}
           </tbody></table>`).join('')}
     </div>`;
@@ -17769,7 +18513,7 @@ function renderStockLogModal(key, label, pool){
 }
 function renderRawMaterialRows(){
   const isAdmin = S.currentUser.role==='admin';
-  return filterSortInventory(RAW_CATEGORIES,'raw',c=>S.rawMaterial[c]||0,c=>c).map(cat=>{const v=S.rawMaterial[cat]||0; const th=S.lowStock.raw[cat]; const cls = v<0?'stockneg':(th && v<=th?'stocklow':''); return `<tr><td>${esc(cat)}</td><td class="mono ${cls}">${fmtMl(v)}${stockBarHtml(v, th)}</td>${isAdmin?`<td class="row-actions"><button class="btn btn-sm btn-outline" data-adjust-raw="${esc(cat)}">${esc(t('Adjust'))}</button><button class="btn btn-sm btn-outline" data-lowalert-raw="${esc(cat)}">${esc(t('Low alert'))}</button><button class="btn btn-sm btn-outline" data-stocklog-key="${esc(cat)}" data-stocklog-label="${esc(cat)}">${esc(t('📜 Log'))}</button></td>`:''}</tr>`;}).join('');
+  return filterSortInventory(RAW_CATEGORIES,'raw',c=>S.rawMaterial[c]||0,c=>c).map(cat=>{const v=S.rawMaterial[cat]||0; const th=S.lowStock.raw[cat]; const cls = v<0?'stockneg':(th && v<=th?'stocklow':''); return `<tr><td>${esc(cat)}</td><td class="mono ${cls}">${fmtMl(v)}${stockBarHtml(v, th)}</td>${isAdmin?stockRowActionsHtml('raw', cat, cat):''}</tr>`;}).join('');
 }
 function renderRawMaterial(){
   const alerts = getStockAlerts().raw;
@@ -17778,7 +18522,12 @@ function renderRawMaterial(){
   return `
   <div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-      <div><h2>${esc(t('Raw material'))}</h2><p class="desc">${esc(t('Bulk oil, before filling.'))}</p></div>
+      ${/* ROUND 74 -- the heading and its line of explanation are gone from
+           all four lane cards. The selector eight pixels above this already
+           reads "🛢️ Raw material (bulk oil)" -- it IS the title of
+           what follows, and printing the same words again directly underneath
+           cost a third of the first screen before a single stock figure
+           appeared. The actions keep their place. */''}
       <div class="row-actions">
         ${canPurchase?`<button class="btn btn-outline btn-sm" id="recPurchaseBtn">${esc(t('+ Record purchase'))}</button>`:''}
         ${isAdmin?`<button class="btn btn-outline btn-sm" id="bulkEditRawBtn">${esc(t('✎ Bulk edit'))}</button>`:''}
@@ -17942,7 +18691,7 @@ function openFillingModal(prefillKey, prefillQty){
 /* ============================= FILLED STOCK ============================= */
 function renderFilledRows(){
   const isAdmin = S.currentUser.role==='admin';
-  return filterSortInventory(CATALOG_FLAT,'filled',it=>S.filledStock[it.key]||0,it=>it.name+' '+it.size).map(it=>{const v=S.filledStock[it.key]||0; const th=S.lowStock.filled[it.key]; const cls = v<0?'stockneg':(th && v<=th?'stocklow':''); return `<tr><td>${esc(t(it.name))}</td><td class="mono">${esc(translateSizeUnit(it.size))}</td><td class="mono ${cls}">${v} ${esc(t('pc'))}${stockBarHtml(v, th)}</td>${isAdmin?`<td class="row-actions"><button class="btn btn-sm btn-outline" data-adjust-filled="${it.key}">${esc(t('Adjust'))}</button><button class="btn btn-sm btn-outline" data-lowalert-filled="${it.key}">${esc(t('Low alert'))}</button><button class="btn btn-sm btn-outline" data-stocklog-key="${it.key}" data-stocklog-label="${esc(it.name+' '+it.size)}">${esc(t('📜 Log'))}</button></td>`:''}</tr>`;}).join('');
+  return filterSortInventory(CATALOG_FLAT,'filled',it=>S.filledStock[it.key]||0,it=>it.name+' '+it.size).map(it=>{const v=S.filledStock[it.key]||0; const th=S.lowStock.filled[it.key]; const cls = v<0?'stockneg':(th && v<=th?'stocklow':''); return `<tr><td>${esc(t(it.name))}</td><td class="mono">${esc(translateSizeUnit(it.size))}</td><td class="mono ${cls}">${v} ${esc(t('pc'))}${stockBarHtml(v, th)}</td>${isAdmin?stockRowActionsHtml('filled', it.key, it.name+' '+it.size):''}</tr>`;}).join('');
 }
 function renderFilled(){
   const alerts = getStockAlerts().filled;
@@ -17950,7 +18699,7 @@ function renderFilled(){
   const canFill = canDoEntry(S.currentUser.role, 'entry_filling');
   return `<div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-      <div><h2>${esc(t('Filled stock'))}</h2><p class="desc">${esc(t('Bottled, not yet packaged.'))}</p></div>
+
       <div class="row-actions">
         ${canFill?`<button class="btn btn-primary btn-sm" id="recFillingBtn">${esc(t('+ Record filling'))}</button>`:''}
         ${isAdmin?`<button class="btn btn-outline btn-sm" id="bulkEditFilledBtn">${esc(t('✎ Bulk edit'))}</button>`:''}
@@ -18358,7 +19107,7 @@ function deleteRetailEntry(id){
 /* ============================= READY STOCK ============================= */
 function renderReadyRows(){
   const isAdmin = S.currentUser.role==='admin';
-  return filterSortInventory(CATALOG_FLAT,'ready',it=>S.readyStock[it.key]||0,it=>it.name+' '+it.size).map(it=>{const v=S.readyStock[it.key]||0; const th=S.lowStock.ready[it.key]; const cls = v<0?'stockneg':(th && v<=th?'stocklow':''); return `<tr><td>${esc(t(it.name))}</td><td class="mono">${esc(translateSizeUnit(it.size))}</td><td class="mono">₹${it.mrp}</td><td class="mono ${cls}">${fmtReadyDisplay(v,it.caseSize,it.pktSize)}${stockBarHtml(v, th)}</td>${isAdmin?`<td class="row-actions"><button class="btn btn-sm btn-outline" data-adjust-ready="${it.key}">${esc(t('Adjust'))}</button><button class="btn btn-sm btn-outline" data-lowalert-ready="${it.key}">${esc(t('Low alert'))}</button><button class="btn btn-sm btn-outline" data-stocklog-key="${it.key}" data-stocklog-label="${esc(it.name+' '+it.size)}">${esc(t('📜 Log'))}</button></td>`:''}</tr>`;}).join('');
+  return filterSortInventory(CATALOG_FLAT,'ready',it=>S.readyStock[it.key]||0,it=>it.name+' '+it.size).map(it=>{const v=S.readyStock[it.key]||0; const th=S.lowStock.ready[it.key]; const cls = v<0?'stockneg':(th && v<=th?'stocklow':''); return `<tr><td>${esc(t(it.name))}</td><td class="mono">${esc(translateSizeUnit(it.size))}</td><td class="mono">₹${it.mrp}</td><td class="mono ${cls}">${fmtReadyDisplay(v,it.caseSize,it.pktSize)}${stockBarHtml(v, th)}</td>${isAdmin?stockRowActionsHtml('ready', it.key, it.name+' '+it.size):''}</tr>`;}).join('');
 }
 function renderReady(){
   const alerts = getStockAlerts().ready;
@@ -18366,7 +19115,7 @@ function renderReady(){
   const canPack = canDoEntry(S.currentUser.role, 'entry_packing');
   return `<div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-      <div><h2>${esc(t('Ready stock'))}</h2><p class="desc">${esc(t('Packed, ready to dispatch.'))}</p></div>
+
       <div class="row-actions">
         ${canPack?`<button class="btn btn-primary btn-sm" id="recPackagingBtn">${esc(t('+ Record packaging'))}</button>`:''}
         ${isAdmin?`<button class="btn btn-outline btn-sm" id="bulkEditReadyBtn">${esc(t('✎ Bulk edit'))}</button>`:''}
@@ -18649,7 +19398,7 @@ function renderCheckin(){
       // finding #5's orderLat/orderLng fix).
       const geoLatA = safeGeoCoord(a.lat), geoLngA = safeGeoCoord(a.lng);
       const hasLoc = geoLatA!=null && geoLngA!=null;
-      const locCell = a.markedByAdmin ? attendanceMarkedByCell(a) : (hasLoc?`<a href="https://www.google.com/maps?q=${encodeURIComponent(geoLatA)},${encodeURIComponent(geoLngA)}" target="_blank" rel="noopener" class="mono" style="color:var(--primary);">${esc(t('📍 view'))}</a>`:`<span class="mono">${esc(t('no location'))}</span>`);
+      const locCell = a.markedByAdmin ? attendanceMarkedByCell(a) : (hasLoc?`<a href="https://www.google.com/maps?q=${encodeURIComponent(geoLatA)},${encodeURIComponent(geoLngA)}" target="_blank" rel="noopener" class="mono" style="color:var(--primary);">${esc(t('📍 view'))}</a>`:`<span class="note" title="${esc(t('no location'))}">—</span>`);
       const timeCell = (a.type==='present' && !a.markedByAdmin) ? fmtTime(a.timestamp) : '—';
       // ROUND 33: there was NO status column at all, so an admin marking
       // someone ABSENT showed in their own history as a row with "—" and
@@ -18844,6 +19593,28 @@ function renderLog(){
 function bindLog(){}
 
 /* ============================= ATTENDANCE MAP (admin) ============================= */
+// ROUND 78 -- stepping one day. The common need on both Daily Work and
+// Attendance is "yesterday", and reaching it meant opening the phone's date
+// picker, finding the day and confirming it. These two give it one tap.
+//
+// It goes through dateKeyToTs and localDateKey rather than arithmetic on the
+// string, for the reason this file already records in homePrevDayStart: a day
+// is not reliably 86,400,000 ms. Noon is the anchor, so a daylight shift
+// cannot push the result onto the wrong date.
+//
+// `max` is today for Daily Work, which is why stepping forward past it returns
+// null rather than a date -- the caller hides the button instead of offering
+// one that would be refused.
+function shiftDateKey(dateKey, days, maxKey){
+  const base = dateKeyToTs(dateKey);
+  if(!isFinite(base)) return null;
+  const d = new Date(base);
+  d.setHours(12, 0, 0, 0);
+  d.setDate(d.getDate() + days);
+  const next = localDateKey(d.getTime());
+  if(maxKey && next > maxKey) return null;
+  return next;
+}
 function dateKeyToTs(dateKey){
   const [y,m,d] = dateKey.split('-').map(Number);
   return new Date(y, m-1, d, 12).getTime();
@@ -19140,9 +19911,20 @@ function attendanceTeamCardHtml(){
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
       <div>
         <h2>👥 ${esc(t('Team attendance'))} — ${esc(t('Today'))}</h2>
-        <p class="desc">${esc(t('Jo log aaye hain unhe Present kijiye. Jab tak mark na ho, unki app band rahegi.'))}</p>
+        ${/* ROUND 76 -- the rule about an already-marked row used to be printed
+             on EVERY row: four people, the same sentence four times, and it was
+             the widest thing in the column. A rule that is true of the whole
+             card belongs to the card. It is said once, here, beside the line
+             that was already explaining how this screen works -- and the rows
+             below keep only what differs between them. */''}
+        <p class="desc">${esc(t('Jo log aaye hain unhe Present kijiye. Jab tak mark na ho, unki app band rahegi.'))} ${esc(t('Ek baar mark ho jaane ke baad sirf admin use badal sakta hai.'))}</p>
       </div>
-      <div class="stat" style="min-width:92px;"><div class="n">${presentCount}/${team.length}</div><div class="l">${esc(t('present'))}</div></div>
+      ${/* ROUND 76 -- margin-bottom, because at 430px the heading and its line
+           of explanation take the whole row and this tile WRAPS onto a line of
+           its own. With no margin its shadow fell across the table header
+           underneath, so "2/4 PRESENT" looked like it was sitting on top of
+           the word NAME. Harmless on a wide window, where it never wraps. */''}
+      <div class="stat" style="min-width:92px;margin-bottom:10px;"><div class="n">${presentCount}/${team.length}</div><div class="l">${esc(t('present'))}</div></div>
     </div>
     ${team.length===0 ? `<div class="empty">${esc(t('No other staff to mark.'))}</div>` : `
     ${/* TWO columns, not three. On a 390px phone a third column squeezed the
@@ -19157,7 +19939,7 @@ function attendanceTeamCardHtml(){
       // the rule instead, and markAttendanceForUser re-checks it anyway for
       // the stale-render case.
       const actionCell = rec
-        ? `<span class="desc" style="margin:0;font-size:11px;display:block;text-align:right;">${esc(t('Mark ho chuka — sirf admin badal sakta hai'))}</span>`
+        ? `<span class="note" style="display:block;text-align:right;">${esc(t('Mark ho chuka'))}</span>`
         : `<div style="display:flex;gap:5px;justify-content:flex-end;flex-wrap:nowrap;">
             <button type="button" class="btn btn-sm btn-outline" data-team-att="present|${esc(u.username)}" style="white-space:nowrap;">${esc(t('Present'))}</button>
             <button type="button" class="btn btn-sm btn-outline" data-team-att="absent|${esc(u.username)}" style="white-space:nowrap;">${esc(t('Absent'))}</button>
@@ -19281,9 +20063,18 @@ function renderAttendanceMap(){
         <button type="button" class="btn btn-outline btn-sm" id="markForOthersBtn">📍 Mark for someone</button>
         <button type="button" class="btn btn-outline btn-sm" id="markHolidayBtn">🗓️ ${esc(t('Set day type'))}</button>
         <button type="button" class="btn btn-outline btn-sm" id="monthlySummaryBtn">📊 Monthly summary</button>
-        <button type="button" class="btn btn-outline btn-sm" id="markingWindowBtn">⏰ Marking window (${fmtHHMMOfDay(getAttendanceSettings().selfMarkStart)}–${fmtHHMMOfDay(getAttendanceSettings().selfMarkEnd)})</button>
+        ${/* ROUND 76 -- the times used to be inside this button's label, which
+             made it three times wider than the three controls beside it and
+             pushed it onto a row of its own, as if it were a section rather
+             than the fourth item in a group. The button is still a button --
+             it opens the window settings -- but what it OPENS is the control,
+             and what the times are is a fact about today. The fact goes on its
+             own line, in the same place and the same words as Daily Work's, so
+             the two screens finally say this the same way. */''}
+        <button type="button" class="btn btn-outline btn-sm" id="markingWindowBtn">⏰ ${esc(t('Marking window'))}</button>
       </div>
     </div>
+    <div class="note" style="margin-top:8px;">${esc(t('Self-marking'))}: ${fmtHHMMOfDay(getAttendanceSettings().selfMarkStart)}–${fmtHHMMOfDay(getAttendanceSettings().selfMarkEnd)}</div>
     ${moreDays ? `<p class="desc">${esc(t('Showing the last'))} ${dayLimit} ${esc(t('day(s)'))} — ${S.users.filter(u=>u&&u.role!=='admin').length} ${esc(t('people per day.'))} <button type="button" class="btn btn-sm btn-outline" style="width:auto;" id="attShowAllBtn">${esc(t('Show 30 days'))}</button></p>` : ''}
     ${presence.length===0?`<div class="empty">No attendance marked yet.</div>`:
       presence.map(p=>{
@@ -19309,7 +20100,7 @@ function renderAttendanceMap(){
             // SECURITY FIX (2026-08-21 audit, finding #7) -- see safeGeoCoord's comment.
             const geoLatE = safeGeoCoord(e.record.lat), geoLngE = safeGeoCoord(e.record.lng);
             const hasLoc = geoLatE!=null && geoLngE!=null;
-            const gpsLine = e.record.markedByAdmin ? attendanceMarkedByCell(e.record) : (hasLoc ? `<a href="https://www.google.com/maps?q=${encodeURIComponent(geoLatE)},${encodeURIComponent(geoLngE)}" target="_blank" rel="noopener" class="mono" style="color:var(--primary);">📍 view</a>` : `<span class="mono">no location</span>`);
+            const gpsLine = e.record.markedByAdmin ? attendanceMarkedByCell(e.record) : (hasLoc ? `<a href="https://www.google.com/maps?q=${encodeURIComponent(geoLatE)},${encodeURIComponent(geoLngE)}" target="_blank" rel="noopener" class="mono" style="color:var(--primary);">📍 view</a>` : `<span class="note" title="${esc(t('no location'))}">—</span>`);
             const flLine = e.record.fieldLocation ? `<div class="mono" style="font-size:0.75rem;color:var(--ink-soft);margin-top:2px;">Field Location - ${esc(e.record.fieldLocation)}</div>` : '';
             locCell = gpsLine + flLine;
           } else if(e.status==='absent'){
