@@ -10,7 +10,7 @@
      the whole 1.35 MB down again on a phone. Up here it lands inside the
      first kilobyte, so the check costs a few KB instead of the entire app.
      The two can never be allowed to drift -- test_round60 fails if they do. -->
-<meta name="app-build" content="2026-10-09-firestore-preview107">
+<meta name="app-build" content="2026-10-20-firestore-preview108">
 <meta name="theme-color" content="#1E3F1B">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1372,7 +1372,10 @@
                 be put on a <b> without flattening it to grey 12px. */
   .mono{font-family:var(--font-mono);font-size:0.75rem;color:var(--ink-soft);}
   .note{font-size:0.75rem;color:var(--ink-soft);line-height:1.55;}
-  .num{font-family:var(--font-mono);font-variant-numeric:tabular-nums;}
+    /* ROUND 80 -- nowrap. At 430px a five-column table broke ₹3,900 across two
+     lines as "3,90 / 0" and 26/26 as "26/2 / 6". A number that wraps between
+     its own digits is not a smaller number on screen, it is a wrong one. */
+  .num{font-family:var(--font-mono);font-variant-numeric:tabular-nums;white-space:nowrap;}
   .stockneg{color:var(--danger)!important;font-weight:800;}
   .stocklow{color:var(--stock-low-ink)!important;font-weight:800;}
   /* ROUND 44 -- the stock level bar (see stockBarHtml). aria-hidden on the
@@ -1743,6 +1746,9 @@
   .badge-expense{background:var(--badge-expense-bg);color:var(--badge-expense-ink);}
   .badge-settlement{background:var(--success-bg);color:var(--success);}
   .badge-opening{background:var(--badge-opening-bg);color:var(--badge-opening-ink);}
+  /* ROUND 80 -- the temporary-employee tag. Token-driven like every other
+     badge, so it follows all four theme families in light and dark. */
+  .badge-temp{background:var(--warning-bg);color:var(--warning);}
 
   .row-actions{display:flex;gap:6px;flex-wrap:wrap;}
 
@@ -2479,7 +2485,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-10-09-firestore-preview107"; // ROUND 79 (2026-10-09). Owner asked for three things: a laptop review of preview99-106, the Stock fold bug ("... 2 pr click krte h to saare button upr se niche tk line change krte h"), and a full re-read of the Check balances logic. THE THIRD ONE FOUND A MONEY BUG I SHIPPED IN ROUND 75. An opening_balance entry's `amount` is NOT the checkpoint figure -- it is the signed DELTA needed to reach it (targetBalance - balanceAtThatMoment), and the absolute is kept in `targetBalance`. The note above openOpeningBalanceModal says precisely that, and even says targetBalance exists "purely for display/audit". The audit summed the delta. For the ORDINARY case -- a manager already carrying a balance when the checkpoint is set -- that understated the truth by the entire pre-checkpoint history: Rs 30,000 carried plus a checkpoint of Rs 45,000 produced an entry of amount 15,000, so the audit reported 18,000 where the stored balance and the truth were both 48,000 -- and the repair button would have written that over a correct balance. It passed its tests because the FIXTURES encoded my assumption rather than the app's shape; Round 75's suite now builds entries through a ledger that moves a running balance exactly as the app does, so the formula can never be restated by the test that checks it. AND ONE THING THE DATA CANNOT SETTLE: an expense can be RE-DATED when edited (readAdminDateField, 90 days back). An entry created after a checkpoint and back-dated to before it is inside the running balance -- balances are order-blind running totals -- but outside a window that goes by date, and no stored field tells that apart from real corruption. The row says so, and only on rows where something sits before the checkpoint that could have been re-dated. THE FOLD, MEASURED AT BOTH WIDTHS. At 430px opening a cell grew it 173px -> 223px and the row 58px -> 100px, and because the table is `auto` layout that re-measured every column and shifted the whole table. The overflow now lives in a wrapper that is absolutely positioned when open, so the cell cannot change size; measured after, every row height is identical open and closed. At 1440px the action column is 527px and all four buttons fit with room over, so above the sidebar breakpoint the fold turns itself off entirely -- in the cells AND in the Clients/Users card grids. Order tiles keep expanding in place: one can carry seven actions and a menu there would be a regression. Also capped a date field that stretched to 1,070px on a laptop. AND THE SUITE WAS GREEN ONLY IN DAYLIGHT: three fixtures stamped attendance at `now - 5 hours` to mean "earlier today", which between midnight and 05:00 is YESTERDAY -- the record stopped matching today's key, Round 66's gate replaced every screen with the lock card, and 13 assertions failed against an app that had not changed. Caught only because this review ran at 01:38. Six fixtures clamped, and a test now refuses the pattern. firestore.rules UNCHANGED.
+const APP_BUILD = "2026-10-20-firestore-preview108"; // ROUND 80 (2026-10-20). Four things the owner asked for, and one of them moved a salary off a document the whole team can read. TEMPORARY EMPLOYEES: a person on the payroll with NO LOGIN -- employmentType/loginEnabled on the user doc, both defaulting to the old behaviour so every record that already exists is untouched and nothing needed backfilling. createStaffUser is NOT called for one (there is no Auth account to create), the doc is written straight to users/{username} because attendance is filed under username__date, and their card offers no Reset password and no Force logout -- those act on an Auth account that does not exist and would have reported a Cloud Functions failure for a thing working as intended. Delete takes the no-Auth path. They are also kept OFF the task assignee list: a task handed to someone who can never sign in is a task nobody will ever see, and while fixing that I found the Round 23 placeholder bug was only half closed -- stillExists asked S.users, which answers yes for people who are not among the options, so an unrelated edit could still silently reassign a task to a whole team. It asks the options list itself now. ATTENDANCE AS ONE DAILY WORK ENTRY, admin only: every employee temp + permanent, one tick for the whole day, counted as exactly 1 in the day's booked tally, in its own admin-only attendanceBooks collection keyed by date -- not on the attendance records (their update rule is deliberately narrow and Round 69 made a mark final) and not on dailyRecordMarks, whose rule lets every signed-in device write. Undo DELETES the doc, so \"not booked\" has exactly one representation. It never appears on a Sunday or a holiday, because then there is no attendance to book. THE SHOP FLOOR SEES ONLY ITS OWN WORK in Daily Work -- screen, backlog banner and print all scoped by byUsername; admin and manager are character for character unchanged. PAY CYCLES AND THE SALARY ALERT: weekly (the week ending each Saturday) or monthly (the previous month, due by the 10th), daily basis = rate x present days, fixed basis = fixed / working days x present days, and a Sunday or declared holiday never costs anybody money. THE PRIVACY CATCH: firestore.rules lets any signed-in user READ users/{uid} -- it has to, the whole app reads the staff directory -- and the Users module can be handed to another post from the Permission Manager, so a payRate kept on the user document would have published every salary in the company to every employee whatever the screen drew. The three payroll fields live in their own admin-only payrollSettings collection instead, the same shape expenseBalances uses for the same reason. Paid is the EXISTENCE of a payrollRuns doc, so the alert and the record cannot disagree; the alert is in-app (this app has no scheduler -- every push comes from a Cloud Function that is not in this project) and stays on Home until marked paid. Both look-backs sit inside the 60 days of attendance the listener holds, and a day that is NOT loaded is counted and said rather than quietly treated as an absence. firestore.rules: 3 new collections.
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -2941,7 +2947,7 @@ const S = {
   // out of the order document makes that impossible by construction.
   orderNotes:[],
   rawMaterial:{}, filledStock:{}, readyStock:{}, expenses:[], activityLog:[], stockTasks:[], dominoPrints:[], chatMessages:[], retailSales:[], trackingViewLogs:[], siteVisitLogs:[], stockMovementLog:[],
-  lowStock:{raw:{}, filled:{}, ready:{}}, watchStock:{raw:{}, filled:{}, ready:{}}, rolePermissions:{}, customRoles:[], catalogItems:[], transports:[], dailyRecordMarks:{}, dailyWorkDate:null, batchReferences:{}, holidays:{}, activeSessions:{}, notificationPrefs:{}, attendanceSettings:{},
+  lowStock:{raw:{}, filled:{}, ready:{}}, watchStock:{raw:{}, filled:{}, ready:{}}, rolePermissions:{}, customRoles:[], catalogItems:[], transports:[], dailyRecordMarks:{}, dailyWorkDate:null, batchReferences:{}, holidays:{}, activeSessions:{}, notificationPrefs:{}, attendanceSettings:{}, attendanceBooks:{}, payrollRuns:{}, payrollSettings:{},
   // RACE FIX (2026-08-29, full security audit -- stock ledger clobber): a
   // snapshot of rawMaterial/filledStock/readyStock/lowStock/watchStock as
   // they stood at the LAST live server update this device actually saw --
@@ -3350,6 +3356,50 @@ function normalizeTheme(code){
 }
 const I18N = {
   hi: {
+    // ROUND 80 -- payment cycles and the salary alert.
+    'Payment cycle':'पेमेंट साइकिल',
+    'Not on payroll':'तनखाह पर नहीं',
+    'Weekly — every Saturday':'हप्तावार — हर शनिवार',
+    'Monthly — 1st to 10th':'मासिक — 1 से 10 तारीख तक',
+    'Salary basis':'तनखाह का हिसाब',
+    'Per day present':'हाज़िर दिन के हिसाब से',
+    'Fixed for the cycle':'पूरे साइकिल का फ़िक्स',
+    'Amount (₹)':'रकम (₹)',
+    'Per day: this much for every day they are present. Fixed: this much for a full cycle, cut in proportion to the working days missed. A Sunday or a declared holiday is never cut.':'हाज़िर दिन के हिसाब से: हर हाज़िर दिन के लिए इतना। फ़िक्स: पूरे साइकिल का इतना, और छूटे काम के दिनों के अनुपात में कटौती। रविवार या घोषित छुट्टी कभी नहीं कटती।',
+    'Salary to pay':'देने वाली तनखाह',
+    'Worked out from attendance. Stays here until you mark it paid.':'हाज़िरी से निकाला गया है। जब तक आप पेड ना लगाएं, यहीं रहेगा।',
+    'The monthly ones were due by the 10th.':'मासिक वाली 10 तारीख तक देनी थी।',
+    'Period':'अवधि',
+    'Days':'दिन',
+    'day(s) not loaded':'दिन का रिकॉर्ड लोड नहीं हुआ',
+    'Mark paid':'पेड लगाएं',
+    'Mark':'लगाएं',
+    'as paid to':'पेड के रूप में,',
+    'for':'के लिए',
+    'This only records that you paid it — it does not move any money.':'यह सिर्फ दर्ज करता है कि आपने दे दिया — पैसा कहीं नहीं जाता।',
+    'Weekly':'हप्तावार',
+    'Monthly':'मासिक',
+    'Fixed':'फ़िक्स',
+    'Per day':'प्रति दिन',
+    'Some days of an older period are past the 60 days of attendance this device keeps loaded. Those days are left out of the figure rather than counted as absences — check the register before paying.':'पुरानी अवधि के कुछ दिन उन 60 दिनों से बाहर हैं जितनी हाज़िरी यह डिवाइस रखती है। उन दिनों को गैरहाज़िर नहीं गिना गया, बल्कि रकम से बाहर रखा गया है — देने से पहले रजिस्टर देख लें।',
+    // ROUND 80 -- attendance as one bookable Daily Work entry.
+    'The whole day\'s attendance counts as one entry here — book it once, as one line in your accounting software.':'पूरे दिन की हाज़िरी यहाँ अकेली एंट्री गिनी जाती है — इसे एक बार बुक करें, अकाउंटिंग सॉफ़्टवेयर में एक लाइन की तरह।',
+    'Temp':'अस्थायी',
+    'marked':'दर्ज',
+    'absent':'गैरहाज़िर',
+    'Booked by':'बुक किसने किया',
+    // ROUND 80 -- temporary employees.
+    'Employment type':'रोज़गार का प्रकार',
+    'Permanent — gets a login':'पक्का — लॉगिन बनेगा',
+    'Temporary — no login':'अस्थायी — कोई लॉगिन नहीं',
+    'A temporary employee never signs in. A manager or admin marks their attendance, and they are paid like anyone else.':'अस्थायी कर्मी कभी लॉगिन नहीं करता। उसकी हाज़िरी मैनेजर या ऐडमिन लगाता है, और तनखाह बाकियों की तरह बनती है।',
+    'Permanent — has a login. To turn this into a no-login record, delete this person and add them again as temporary.':'पक्का — लॉगिन है। बिना-लॉगिन रिकॉर्ड बनाना हो तो इसे हटाकर अस्थायी के रूप में पहिर जोड़ें।',
+    'Temporary — no login. To give this person a login, delete this record and add them again as permanent.':'अस्थायी — कोई लॉगिन नहीं। लॉगिन देना हो तो यह रिकॉर्ड हटाकर पक्के कर्मी के रूप में पहिर जोड़ें।',
+    'There is no password — this person has no login. Nothing to reset and nothing to hand over.':'कोई पासवर्ड नहीं — इनका लॉगिन ही नहीं है। रीसेट करने या देने को कुछ नहीं।',
+    'No password is created — a temporary employee has no login, so there is nothing to hand over.':'कोई पासवर्ड नहीं बनता — अस्थायी कर्मी का लॉगिन नहीं होता, सो देने को कुछ नहीं।',
+    'For a temporary employee this is only a name tag used to file their attendance — letters, numbers, dot, dash or underscore. It is not a login.':'अस्थायी कर्मी के लिए यह सिर्फ हाज़िरी दर्ज करने का नाम-टैग है — अक्षर, अंक, डॉट, डैश या अंडरस्कोर। यह लॉगिन नहीं है।',
+    'That name tag cannot be used. Use 2–32 letters, numbers, dot, dash or underscore, starting with a letter or number.':'यह नाम-टैग नहीं चलेगा। 2–32 अक्षर/अंक, डॉट, डैश या अंडरस्कोर लिखें, शुरू अक्षर या अंक से।',
+    'Could not save this temporary employee:':'यह अस्थायी कर्मी सेव नहीं हो सका:',
     // Profile / language switcher / preferences
     'EMPLOYEE ID CARD':'कर्मचारी पहचान पत्र', 'Designation':'पद', 'Username':'यूज़रनेम', 'Contact No.':'फ़ोन नंबर', 'Address':'पता', 'Log out':'लॉग आउट', 'Language':'भाषा',
     'Preferences':'सेटिंग्स', 'Font Size':'फ़ॉन्ट साइज़', 'Normal':'सामान्य', 'XL':'बड़ा (XL)', 'XXL':'सबसे बड़ा (XXL)',
@@ -3539,7 +3589,7 @@ const I18N = {
     'Delete an order from Home/Orders\' Accept · Reject · Delete flow, not from here.':'ऑर्डर को Home/Orders के Accept · Reject · Delete से हटाएं, यहां से नहीं.',
     'No orders created this day.':'इस दिन कोई ऑर्डर नहीं बना.', 'Party':'पार्टी', 'MRP Value':'एमआरपी वैल्यू', 'off':'छूट',
     '↩ Undo':'↩ वापस लें', '✅ Book':'✅ बुक करें',
-    'Filling & Packing entries for the day, from everyone on the team. You can edit or delete your own entry until it\'s booked — once booked, it\'s locked.':'टीम के सभी लोगों की उस दिन की भरने और पैकिंग की एंट्रीज़. जब तक बुक न हो, आप अपनी एंट्री बदल या हटा सकते हैं — बुक होने के बाद लॉक हो जाती है.',
+    'Your own Filling & Packing entries for the day. You can edit or delete one until it\'s booked — once booked, it\'s locked.':'उस दिन की सिर्फ आपकी अपनी भरने और पैकिंग की एंट्रीज़। जब तक बुक न हो, आप उसे बदल या हटा सकते हैं — बुक होने के बाद लॉक हो जाती है।',
     'Every entry for the day, in one place — book each as you update your accounting software.':'उस दिन की हर एंट्री एक ही जगह — अपने अकाउंटिंग सॉफ्टवेयर में अपडेट करते हुए हर एक को बुक करें.',
     'View only.':'सिर्फ़ देखने के लिए.', 'Editing or deleting stays available until it\'s booked.':'बुक होने तक बदलना या हटाना संभव है.',
     '⚠️ Previous Entry Not Booked':'⚠️ पिछली एंट्री बुक नहीं हुई', 'days':'दिन',
@@ -3883,6 +3933,50 @@ const I18N = {
     'Only an admin can write an order note':'ऑर्डर नोट सिर्फ़ एडमिन लिख सकता है',
   },
   ur: {
+    // ROUND 80 -- payment cycles and the salary alert.
+    'Payment cycle':'تنخواہ کا سائیکل',
+    'Not on payroll':'تنخواہ پر نہیں',
+    'Weekly — every Saturday':'ہفتہ وار — ہر ہفتے',
+    'Monthly — 1st to 10th':'ماہانہ — 1 سے 10 تاریخ تک',
+    'Salary basis':'تنخواہ کا حساب',
+    'Per day present':'حاضر دن کے حساب سے',
+    'Fixed for the cycle':'پورے سائیکل کا فکس',
+    'Amount (₹)':'رقم (₹)',
+    'Per day: this much for every day they are present. Fixed: this much for a full cycle, cut in proportion to the working days missed. A Sunday or a declared holiday is never cut.':'حاضر دن کے حساب سے: ہر حاضر دن کے لیے اتنا۔ فکس: پورے سائیکل کا اتنا، اور چھوٹے ہوئے کام کے دنوں کے تناسب سے کٹوتی۔ اتوار یا اعلان کردہ چھٹی کبھی نہیں کٹتی۔',
+    'Salary to pay':'دینے والی تنخواہ',
+    'Worked out from attendance. Stays here until you mark it paid.':'حاضری سے نکالی گئی ہے۔ جب تک آپ پیڈ نہ لگائیں، یہیں رہے گی۔',
+    'The monthly ones were due by the 10th.':'ماہانہ والی 10 تاریخ تک دینی تھی۔',
+    'Period':'مدت',
+    'Days':'دن',
+    'day(s) not loaded':'دن کا ریکارڈ لوڑ نہیں ہوا',
+    'Mark paid':'پیڈ لگائیں',
+    'Mark':'لگائیں',
+    'as paid to':'پیڈ کے طور پر،',
+    'for':'کے لیے',
+    'This only records that you paid it — it does not move any money.':'یہ صرف درج کرتا ہے کہ آپ نے دے دی — پیسہ کہیں نہیں جاتا۔',
+    'Weekly':'ہفتہ وار',
+    'Monthly':'ماہانہ',
+    'Fixed':'فکس',
+    'Per day':'فی دن',
+    'Some days of an older period are past the 60 days of attendance this device keeps loaded. Those days are left out of the figure rather than counted as absences — check the register before paying.':'پرانی مدت کے کچھ دن ان 60 دنوں سے باہر ہیں جتنی حاضری یہ ڈیوائس رکھتی ہے۔ ان دنوں کو غیر حاضر شمار نہیں کیا گیا، بلکہ رقم سے باہر رکھا گیا ہے — دینے سے پہلے رجسٹر دیکھ لیں۔',
+    // ROUND 80 -- attendance as one bookable Daily Work entry.
+    'The whole day\'s attendance counts as one entry here — book it once, as one line in your accounting software.':'پورے دن کی حاضری یہاں ایک ہی اندراج شمار ہوتی ہے — اسے ایک بار بک کریں، اکاؤنٹنگ سافٹ ویئر میں ایک لائن کی طرح۔',
+    'Temp':'عارضی',
+    'marked':'درج',
+    'absent':'غیر حاضر',
+    'Booked by':'بک کس نے کیا',
+    // ROUND 80 -- temporary employees.
+    'Employment type':'ملازمت کی قسم',
+    'Permanent — gets a login':'مستقل — لاگ ان بنے گا',
+    'Temporary — no login':'عارضی — کوئی لاگ ان نہیں',
+    'A temporary employee never signs in. A manager or admin marks their attendance, and they are paid like anyone else.':'عارضی ملازم کبھی لاگ ان نہیں کرتا۔ اس کی حاضری مینیجر یا ایڈمن لگاتا ہے، اور تنخواہ باقی لوگوں کی طرح بنتی ہے۔',
+    'Permanent — has a login. To turn this into a no-login record, delete this person and add them again as temporary.':'مستقل — لاگ ان موجود ہے۔ بغیر لاگ ان ریکارڈ بنانا ہو تو اسے حذف کر کے عارضی کے طور پر دوبارہ شامل کریں۔',
+    'Temporary — no login. To give this person a login, delete this record and add them again as permanent.':'عارضی — کوئی لاگ ان نہیں۔ لاگ ان دینا ہو تو یہ ریکارڈ حذف کر کے مستقل کے طور پر دوبارہ شامل کریں۔',
+    'There is no password — this person has no login. Nothing to reset and nothing to hand over.':'کوئی پاس ورڈ نہیں — ان کا لاگ ان ہی نہیں۔ ری سیٹ کرنے یا دینے کو کچھ نہیں۔',
+    'No password is created — a temporary employee has no login, so there is nothing to hand over.':'کوئی پاس ورڈ نہیں بنتا — عارضی ملازم کا لاگ ان نہیں ہوتا، اس لیے دینے کو کچھ نہیں۔',
+    'For a temporary employee this is only a name tag used to file their attendance — letters, numbers, dot, dash or underscore. It is not a login.':'عارضی ملازم کے لیے یہ صرف حاضری درج کرنے کا نام ٹیگ ہے — حروف، اعداد، ڈاٹ، ڈیش یا انڈر اسکور۔ یہ لاگ ان نہیں۔',
+    'That name tag cannot be used. Use 2–32 letters, numbers, dot, dash or underscore, starting with a letter or number.':'یہ نام ٹیگ نہیں چلے گا۔ 2–32 حروف/اعداد، ڈاٹ، ڈیش یا انڈر اسکور لکھیں، شروع حرف یا عدد سے۔',
+    'Could not save this temporary employee:':'یہ عارضی ملازم محفوز نہیں ہو سکا:',
     'EMPLOYEE ID CARD':'ملازم شناختی کارڈ', 'Designation':'عہدہ', 'Username':'یوزرنیم', 'Contact No.':'فون نمبر', 'Address':'پتہ', 'Log out':'لاگ آؤٹ', 'Language':'زبان',
     'Preferences':'ترتیبات', 'Font Size':'فونٹ سائز', 'Normal':'عام', 'XL':'بڑا (XL)', 'XXL':'سب سے بڑا (XXL)',
     'Theme':'تھیم', 'Green (Default)':'سبز (ڈیفالٹ)', 'Dark':'گہرا', 'Light':'روشن', 'Dark mode':'گہرا موڈ', 'Maroon':'مرون', 'Indigo':'نیلا جامنی', 'Sand':'ریتلا',
@@ -4020,7 +4114,7 @@ const I18N = {
     'Delete an order from Home/Orders\' Accept · Reject · Delete flow, not from here.':'آرڈر کو Home/Orders کے Accept · Reject · Delete سے ہٹائیں، یہاں سے نہیں۔',
     'No orders created this day.':'اس دن کوئی آرڈر نہیں بنا۔', 'Party':'پارٹی', 'MRP Value':'ایم آر پی ویلیو', 'off':'چھوٹ',
     '↩ Undo':'↩ واپس لیں', '✅ Book':'✅ بک کریں',
-    'Filling & Packing entries for the day, from everyone on the team. You can edit or delete your own entry until it\'s booked — once booked, it\'s locked.':'ٹیم کے سب لوگوں کی اس دن کی بھرائی اور پیکنگ کی اندراجات۔ جب تک بک نہ ہو، آپ اپنا اندراج تبدیل یا حذف کر سکتے ہیں — بک ہونے کے بعد لاک ہو جاتا ہے۔',
+    'Your own Filling & Packing entries for the day. You can edit or delete one until it\'s booked — once booked, it\'s locked.':'اس دن کی صرف آپ کی اپنی بھرائی اور پیکنگ کی اندراجات۔ جب تک بک نہ ہو، آپ اسے تبدیل یا حذف کر سکتے ہیں — بک ہونے کے بعد لاک ہو جاتا ہے۔',
     'Every entry for the day, in one place — book each as you update your accounting software.':'اس دن کا ہر اندراج ایک ہی جگہ — اپنے اکاؤنٹنگ سافٹ ویئر میں اپڈیٹ کرتے ہوئے ہر ایک کو بک کریں۔',
     'View only.':'صرف دیکھنے کے لیے۔', 'Editing or deleting stays available until it\'s booked.':'بک ہونے تک تبدیل یا حذف کرنا ممکن ہے۔',
     '⚠️ Previous Entry Not Booked':'⚠️ پچھلا اندراج بک نہیں ہوا', 'days':'دن',
@@ -4524,6 +4618,48 @@ function generateTempPassword(){
   let out = '';
   for(let i=0;i<bytes.length;i++) out += chars[bytes[i] % chars.length];
   return out;
+}
+/* ROUND 80 -- TEMPORARY EMPLOYEES. The owner asked for "ik temperary
+   employee ka option ... uski b attendance manager ya admin lga skta h".
+   What that means precisely: a person who is ON THE PAYROLL but has NO
+   LOGIN. They are counted in attendance and in salary like anybody else;
+   they simply never sign in, so no Firebase Auth account is created for
+   them and there is no password to hand over.
+   Two fields carry this, and BOTH default to the old behaviour, because
+   every user doc that already exists was created by createStaffUser and
+   has neither: employmentTypeOf() reads a missing field as 'permanent',
+   and userHasLogin() therefore returns true for every pre-Round-80
+   record. No migration, no backfill, nothing to go stale.
+   loginEnabled is kept beside employmentType rather than derived from it
+   on purpose: it is the field the UI actually asks ("is there an account
+   behind this row?"), and a future "suspended login" would set it without
+   making the person temporary. Either one saying no is enough. */
+const EMPLOYMENT_TYPES = ['permanent','temporary'];
+function employmentTypeOf(u){
+  return (u && u.employmentType === 'temporary') ? 'temporary' : 'permanent';
+}
+function isTemporaryUser(u){ return employmentTypeOf(u) === 'temporary'; }
+function userHasLogin(u){
+  if(!u) return false;
+  if(u.loginEnabled === false) return false;
+  return !isTemporaryUser(u);
+}
+/* The permanent path never needed this because createStaffUser validates
+   server-side and Firebase Auth rejects a bad email. The temporary path
+   writes users/{username} straight from the client, so the username has
+   to be a usable Firestore DOC ID -- and `.doc('')` or `.doc('a/b')`
+   THROWS SYNCHRONOUSLY in the SDK (the same class of failure fsSetItem's
+   own header comment documents), which from the admin's side would look
+   like Create doing nothing at all. Stricter than Firestore's own rules
+   deliberately: no slashes, no leading dot, no __reserved__ form. */
+const TEMP_USERNAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{1,31}$/;
+function isUsableTempUsername(name){
+  // No separate __reserved__ test: Firestore refuses a doc id matching
+  // __.*__, and every one of those starts with an underscore, which the first
+  // character class above already rejects. A second check for it would be a
+  // line no input can ever reach -- a mutation pass is what established that,
+  // by deleting it and finding nothing could tell.
+  return TEMP_USERNAME_RE.test(String(name == null ? '' : name).trim());
 }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 // SECURITY FIX (2026-08-21 audit, findings #5/#7): orderLat/orderLng and
@@ -7177,14 +7313,19 @@ function fsBindDoc(collection, docId, onData){
 // reassembled here into the plain {subKey: value} object shape the rest
 // of the app (S.rolePermissions[role], S.holidays[dateKey], ...) already
 // expects, unchanged from today.
-function fsBindStaticCollection(collection, onObject){
-  const unsub = fsDb.collection(collection).onSnapshot(snap=>{
+// ROUND 80 added the optional `query`. Every caller before this round binds
+// the WHOLE collection, which is right for the handful of documents each of
+// them holds (one per role, one per declared holiday). attendanceBooks grows
+// by one document per working day forever, so it passes a bounded query
+// instead -- see its bind site for the window and why that window is safe.
+function fsBindStaticCollection(collection, onObject, query){
+  const unsub = (query || fsDb.collection(collection)).onSnapshot(snap=>{
     const obj = {};
     snap.docs.forEach(d=>{ obj[d.id] = d.data(); });
     onObject(obj);
     _fsListenerRecovered(collection);
     scheduleRender(); // ROUND 30
-  }, err=>_fsListenerFailed(collection, err, ()=>fsBindStaticCollection(collection, onObject)));
+  }, err=>_fsListenerFailed(collection, err, ()=>fsBindStaticCollection(collection, onObject, query)));
   fsUnsubscribers.push(unsub);
 }
 // ROOT-CAUSE FIX (Round 22): two listeners in this app are ROLE-GATED --
@@ -7249,7 +7390,36 @@ function attachRoleGatedListeners(){
   if(isAdmin){
     fsBindCollection('attendance', fsDb.collection('attendance').where('timestamp','>=', now-60*DAY_MS).orderBy('timestamp'), (a,b)=>a.timestamp-b.timestamp);
     fsBindCollection('loginLog', fsDb.collection('loginLog').where('at','>=', now-7*DAY_MS).orderBy('at'), (a,b)=>a.at-b.at);
+    // ROUND 80 -- the attendance booking marks, one document per day, read
+    // and written by nobody but admin (firestore.rules says exactly that),
+    // so this sits inside the admin branch rather than beside holidays.
+    // THE WINDOW. 90 days, newest first. It cannot hide a day that still
+    // needs booking, because the attendance records themselves only load for
+    // 60 days (the fsBindCollection above) -- past that the Daily Work
+    // attendance card has no roster to show and never renders, booked or
+    // not. A single-field orderBy uses Firestore's automatic index; a second
+    // sort key would need a composite index deployed by hand, and a missing
+    // composite index is a listener that fails outright (see the
+    // attendanceTeam note below).
+    fsBindStaticCollection('attendanceBooks', obj=>{ S.attendanceBooks = obj; },
+      fsDb.collection('attendanceBooks').orderBy('dateKey','desc').limit(90));
+    // ROUND 80 -- the salary-paid marks. Same shape and the same reasoning:
+    // admin-only at the rules level, one document per employee per period,
+    // and bounded so the listener cannot grow without limit. 500 newest
+    // periods covers every look-back the alert can ask about (8 weeks and 2
+    // months) at well past this company's size, and a period older than the
+    // look-back is never read.
+    fsBindStaticCollection('payrollRuns', obj=>{ S.payrollRuns = obj; },
+      fsDb.collection('payrollRuns').orderBy('endKey','desc').limit(500));
+    // ROUND 80 -- the per-person payroll settings. One document per employee
+    // who has one, so this is the whole collection and needs no window.
+    // Admin-only to read: see payrollSettingsFor's comment for why a salary
+    // cannot sit on the user document.
+    fsBindStaticCollection('payrollSettings', obj=>{ S.payrollSettings = obj; });
   } else if(S.currentUser && S.currentUser.username){
+    S.attendanceBooks = {};
+    S.payrollRuns = {};
+    S.payrollSettings = {};
     fsBindCollection('attendance', fsDb.collection('attendance').where('username','==', S.currentUser.username), (a,b)=>a.timestamp-b.timestamp);
     S.loginLog = [];
     // ROUND 66. Someone who may mark OTHER people's attendance has to be able
@@ -8025,6 +8195,9 @@ function applyServerData(data, isFullSync){
   if(has('dailyRecordMarks')) S.dailyRecordMarks = data.dailyRecordMarks || {};
   if(has('batchReferences')) S.batchReferences = data.batchReferences || {};
   if(has('holidays')) S.holidays = data.holidays || {};
+  if(has('attendanceBooks')) S.attendanceBooks = data.attendanceBooks || {}; // ROUND 80
+  if(has('payrollRuns')) S.payrollRuns = data.payrollRuns || {}; // ROUND 80
+  if(has('payrollSettings')) S.payrollSettings = data.payrollSettings || {}; // ROUND 80
   if(has('activeSessions')) S.activeSessions = data.activeSessions || {};
   S.trackingViewLogs = mergeAndFilterPartition('trackingViewLogs', data, S.trackingViewLogs, l=>l.at >= Date.now()-7*24*60*60*1000, (a,b)=>b.at-a.at);
   S.siteVisitLogs = mergeAndFilterPartition('siteVisitLogs', data, S.siteVisitLogs, l=>l.at >= Date.now()-7*24*60*60*1000, (a,b)=>b.at-a.at);
@@ -8769,6 +8942,8 @@ const BACKUP_DATA_KEYS = [
   'rawMaterial','filledStock','readyStock','lowStock','watchStock',
   'users','customers','tasks','stockTasks','catalogItems','customRoles','transports',
   'rolePermissions','dailyRecordMarks','batchReferences','holidays','expenseBalances','notificationPrefs','attendanceSettings',
+  'attendanceBooks','payrollRuns','payrollSettings', // ROUND 80 -- which days' attendance went into the accounts, each person's pay cycle, and which salaries are paid
+
 ];
 async function downloadBackupNow(){
   showToast('Preparing backup…');
@@ -12151,14 +12326,26 @@ function renderDailyWork(){
   // Anyone else who reaches this page (today that's the Packaging team)
   // only ever sees Filling + Packing -- the two categories that are their
   // shop floor's business -- never Purchase/Expenses/Retail/New Orders,
-  // which stay admin/manager-only. They see EVERY filling/packing entry
-  // for the day regardless of who logged it ("by anyone"), not just their own.
+  // which stay admin/manager-only.
   const restrictedToProduction = !isAdmin && !isManager;
   const myUsername = S.currentUser.username;
+  // ROUND 80 (owner: "Jo Daily work wla h. Usme Relevant employee ko sirf
+  // apna hi kaam dikhe. Lekin Admin ko Sbka (jesa abi h)"). Until now the
+  // shop floor saw EVERY filling/packing entry of the day, whoever logged
+  // it -- and could act on none of them but its own, so most of that list
+  // was something to scroll past. It is their own work now. ADMIN AND
+  // MANAGER ARE UNTOUCHED: mineOnly is false for both, so the filter below
+  // is the identity function for them and this screen is character for
+  // character what it was.
+  // byUsername, not `by`: the display name is not unique and can be edited,
+  // the username is the key every other owner check in this file uses --
+  // including actionCell's own `e.byUsername===myUsername` right below.
+  const mineOnly = restrictedToProduction;
+  const minePredicate = e => !mineOnly || e.byUsername === myUsername;
   const date = S.dailyWorkDate || localDateKey(Date.now());
   const purchaseEntries = S.activityLog.filter(e=>e.kind==='purchase' && localDateKey(e.at)===date).sort((a,b)=>a.at-b.at);
-  const fillingEntries = S.activityLog.filter(e=>e.kind==='filling' && localDateKey(e.at)===date).sort((a,b)=>a.at-b.at);
-  const packagingEntries = S.activityLog.filter(e=>e.kind==='packaging' && localDateKey(e.at)===date).sort((a,b)=>a.at-b.at);
+  const fillingEntries = S.activityLog.filter(e=>e.kind==='filling' && localDateKey(e.at)===date && minePredicate(e)).sort((a,b)=>a.at-b.at);
+  const packagingEntries = S.activityLog.filter(e=>e.kind==='packaging' && localDateKey(e.at)===date && minePredicate(e)).sort((a,b)=>a.at-b.at);
   const expenseEntries = S.expenses.filter(e=>localDateKey(e.at)===date).sort((a,b)=>a.at-b.at);
   const totalExpense = expenseEntries.filter(e=>e.type!=='settlement' && !isOpeningBalanceEntry(e)).reduce((s,e)=>s+(e.amount||0),0);
   const retailEntries = S.retailSales.filter(e=>localDateKey(e.at)===date).sort((a,b)=>a.at-b.at);
@@ -12169,8 +12356,28 @@ function renderDailyWork(){
   const allEntries = restrictedToProduction
     ? [...fillingEntries, ...packagingEntries]
     : [...purchaseEntries, ...fillingEntries, ...packagingEntries, ...expenseEntries, ...retailEntries, ...newOrderEntries];
-  const bookedCount = allEntries.filter(e=>e.booked).length;
-  const totalCount = allEntries.length;
+
+  // ROUND 80 -- the day's attendance, as ONE entry. Admin only, and only on
+  // a day that actually has attendance: on a Sunday or a declared holiday
+  // attendanceMarkedCountFor is 0 and this whole block is inert, because
+  // nobody worked and there is no attendance line to book.
+  // It is counted as exactly 1 in the day's booked tally -- not as one per
+  // employee -- which is the shape the owner asked for and the shape it has
+  // in the accounting software.
+  const attendanceRoster = isAdmin ? attendanceRosterFor(date) : [];
+  const attendanceMarked = attendanceMarkedCountFor(attendanceRoster);
+  // ONE gate, deliberately. isAdmin is asked exactly once, on the line above:
+  // a non-admin gets an empty roster, an empty roster has nothing marked, and
+  // nothing marked means no card. Asking isAdmin again here would make each of
+  // the two tests individually unnecessary -- which is how a mutation pass
+  // found that widening either one of them changed nothing observable at all.
+  const attendanceSectionActive = attendanceMarked > 0;
+  const attendanceBookRec = attendanceSectionActive ? attendanceBookFor(date) : null;
+  const attendanceIsBooked = !!attendanceBookRec;
+  const attendanceEntryCount = attendanceSectionActive ? 1 : 0;
+
+  const bookedCount = allEntries.filter(e=>e.booked).length + (attendanceIsBooked ? 1 : 0);
+  const totalCount = allEntries.length + attendanceEntryCount;
 
   // Backlog check: does any day BEFORE the one currently shown here still
   // have unbooked entries sitting around? Surfaced as a warning banner up
@@ -12180,8 +12387,11 @@ function renderDailyWork(){
   // Scoped the same way as allEntries above -- Packaging shouldn't see (or
   // be alerted about) backlog in categories they can't view at all.
   const entryDateKey = e => localDateKey(e.createdAt!=null ? e.createdAt : e.at);
+  // ROUND 80 -- minePredicate here too. A banner that counts days of
+  // backlog the person cannot see on this screen, and could not book if
+  // they could, is a warning with no action behind it.
   const backlogSource = restrictedToProduction
-    ? S.activityLog.filter(e=>e.kind==='filling'||e.kind==='packaging')
+    ? S.activityLog.filter(e=>(e.kind==='filling'||e.kind==='packaging') && minePredicate(e))
     : [...S.activityLog, ...S.expenses, ...S.retailSales, ...S.orders];
   const prevUnbookedDates = [...new Set(
     backlogSource.filter(e => !e.booked && entryDateKey(e) < date).map(entryDateKey)
@@ -12223,6 +12433,13 @@ function renderDailyWork(){
     return e.booked ? `<span class="mono" style="font-size:0.6875rem;opacity:0.7;">${esc(t('✅ Booked'))}</span>` : '';
   };
 
+  // ROUND 80 -- when the list is only your own work, "By" says your own name on
+  // every row. At 430px that is a whole column spent on a fact the reader
+  // already has. Dropped ONLY where the scoping made it redundant: admin and
+  // manager still see who did what, which is what the column is for.
+  const byTh = mineOnly ? '' : `<th>${esc(t('By'))}</th>`;
+  const byTd = e => mineOnly ? '' : `<td>${esc(e.by)}</td>`;
+
   const purchaseHtml = `<div class="card">
     <h2>🛢️ ${esc(t('Purchase'))} — ${entryCountText(purchaseEntries.length)}</h2>
     ${purchaseEntries.length===0?`<div class="empty">${esc(t('No purchases recorded this day.'))}</div>`:`
@@ -12234,11 +12451,11 @@ function renderDailyWork(){
   const fillingHtml = `<div class="card">
     <h2>🧴 ${esc(t('Filling'))} — ${entryCountText(fillingEntries.length)}</h2>
     ${fillingEntries.length===0?`<div class="empty">${esc(t('No filling recorded this day.'))}</div>`:`
-    <table><thead><tr><th>${esc(t('Item'))}</th><th>${esc(t('Qty'))}</th><th>${esc(t('By'))}</th><th>${esc(t('Time'))}</th><th></th></tr></thead><tbody>
+    <table><thead><tr><th>${esc(t('Item'))}</th><th>${esc(t('Qty'))}</th>${byTh}<th>${esc(t('Time'))}</th><th></th></tr></thead><tbody>
     ${fillingEntries.map(e=>{
       const it = findItem(e.key);
       const qtyDisplay = it && it.caseSize ? fmtCase(e.qty, it.caseSize) : `${e.qty} pc`;
-      return `<tr${e.booked?' style="opacity:0.55;"':''}><td>${esc(e.itemLabel)}</td><td class="mono">${qtyDisplay}</td><td>${esc(e.by)}</td><td class="mono">${fmtTime(e.at)}</td><td>${actionCell(e,'activityLog',true)}</td></tr>`;
+      return `<tr${e.booked?' style="opacity:0.55;"':''}><td>${esc(e.itemLabel)}</td><td class="mono">${qtyDisplay}</td>${byTd(e)}<td class="mono">${fmtTime(e.at)}</td><td>${actionCell(e,'activityLog',true)}</td></tr>`;
     }).join('')}
     </tbody></table>`}
   </div>`;
@@ -12246,7 +12463,7 @@ function renderDailyWork(){
   const packagingHtml = `<div class="card">
     <h2>📦 ${esc(t('Packing'))} — ${entryCountText(packagingEntries.length)}</h2>
     ${packagingEntries.length===0?`<div class="empty">${esc(t('No packing recorded this day.'))}</div>`:`
-    <table><thead><tr><th>${esc(t('Item'))}</th><th>${esc(t('Qty'))}</th><th>${esc(t('By'))}</th><th>${esc(t('Time'))}</th><th></th></tr></thead><tbody>
+    <table><thead><tr><th>${esc(t('Item'))}</th><th>${esc(t('Qty'))}</th>${byTh}<th>${esc(t('Time'))}</th><th></th></tr></thead><tbody>
     ${packagingEntries.map(e=>{
       const it = findItem(e.key);
       const qtyDisplay = it && it.caseSize ? fmtCase(e.qty, it.caseSize) : `${e.qty} pc`;
@@ -12257,7 +12474,7 @@ function renderDailyWork(){
       // stock has since moved). Older entries recorded before this field
       // existed simply won't have it, so nothing extra renders for them.
       const totalDisplay = e.totalAfter!=null ? (it && it.caseSize ? fmtCase(e.totalAfter, it.caseSize) : `${e.totalAfter} pc`) : null;
-      return `<tr${e.booked?' style="opacity:0.55;"':''}><td>${esc(e.itemLabel)}${e.note?` <span class="mono">(${esc(t('Batch no-'))} ${esc(e.note)})</span>`:''}${totalDisplay?`<div class="mono" style="margin-top:2px;">${esc(t('Updated Qty:'))} ${totalDisplay}</div>`:''}</td><td class="mono">${qtyDisplay}</td><td>${esc(e.by)}</td><td class="mono">${fmtTime(e.at)}</td><td>${actionCell(e,'activityLog',true)}</td></tr>`;
+      return `<tr${e.booked?' style="opacity:0.55;"':''}><td>${esc(e.itemLabel)}${e.note?` <span class="mono">(${esc(t('Batch no-'))} ${esc(e.note)})</span>`:''}${totalDisplay?`<div class="mono" style="margin-top:2px;">${esc(t('Updated Qty:'))} ${totalDisplay}</div>`:''}</td><td class="mono">${qtyDisplay}</td>${byTd(e)}<td class="mono">${fmtTime(e.at)}</td><td>${actionCell(e,'activityLog',true)}</td></tr>`;
     }).join('')}
     </tbody></table>`}
   </div>`;
@@ -12276,6 +12493,30 @@ function renderDailyWork(){
     <table><thead><tr><th>${esc(t('Items'))}</th><th>${esc(t('Type'))}</th><th>${esc(t('Total'))}</th><th>${esc(t('By'))}</th><th>${esc(t('Time'))}</th><th></th></tr></thead><tbody>
     ${retailEntries.map(e=>`<tr${e.booked?' style="opacity:0.55;"':''}><td>${(e.items||[]).map(i=>`${esc(i.itemLabel)} <span class="mono">×${i.qty}</span>`).join('<br/>')}</td><td>${e.type==='sale'?`<span class="badge badge-approved">${esc(t('Sale'))}</span>`:`<span class="badge badge-pending">${esc(t('Sample'))}</span>`}</td><td class="mono">${e.type==='sale'?'₹'+(e.totalAmount||0).toLocaleString('en-IN'):'—'}</td><td>${esc(e.by)}</td><td class="mono">${fmtTime(e.at)}</td><td>${actionCell(e,'retailSales',true)}</td></tr>`).join('')}
     </tbody></table>`}
+  </div>`;
+
+  // ROUND 80 -- one card, one table, one tick. The per-row cell carries no
+  // button at all: a tick per person is exactly what the owner did not ask
+  // for, and the day is either in the accounts or it is not.
+  const attendanceHtml = `<div class="card">
+    <h2>🧍 ${esc(t('Attendance'))} — ${entryCountText(1)}</h2>
+    <p class="desc" style="margin-top:-6px;">${esc(t('The whole day\'s attendance counts as one entry here — book it once, as one line in your accounting software.'))}</p>
+    <table><thead><tr><th>${esc(t('Employee'))}</th><th>${esc(t('Status'))}</th></tr></thead><tbody>
+    ${attendanceRoster.map(r=>{
+      let cell;
+      if(r.status==='present') cell = `<span class="badge badge-approved">${esc(t('Present'))}</span>`;
+      else if(r.status==='absent') cell = `<span class="badge badge-rejected">${esc(t('Absent'))}</span>`;
+      else cell = `<span class="mono">—</span>`;
+      return `<tr${attendanceIsBooked?' style="opacity:0.55;"':''}><td>${esc(r.name)}${r.temporary?` <span class="badge badge-temp">${esc(t('Temp'))}</span>`:''}</td><td>${cell}</td></tr>`;
+    }).join('')}
+    </tbody></table>
+    <div class="note" style="margin-top:8px;">${attendanceMarked} ${esc(t('of'))} ${attendanceRoster.length} ${esc(t('marked'))} · ${attendanceRoster.filter(r=>r.status==='present').length} ${esc(t('present'))} · ${attendanceRoster.filter(r=>r.status==='absent').length} ${esc(t('absent'))}</div>
+    <div class="row-actions" style="margin-top:10px;">
+      ${attendanceIsBooked
+        ? `<button type="button" class="btn btn-sm btn-outline" data-att-book="${esc(date)}">${esc(t('↩ Undo'))}</button>`
+        : `<button type="button" class="btn btn-sm btn-accent" data-att-book="${esc(date)}">${esc(t('✅ Book'))}</button>`}
+    </div>
+    ${attendanceIsBooked && attendanceBookRec.bookedByName ? `<div class="note" style="margin-top:6px;">${esc(t('Booked by'))} ${esc(attendanceBookRec.bookedByName)}</div>` : ''}
   </div>`;
 
   const newOrdersHtml = `<div class="card">
@@ -12303,6 +12544,11 @@ function renderDailyWork(){
         { count: expenseEntries.length, html: expensesHtml },
         { count: retailEntries.length, html: retailHtml },
         { count: newOrderEntries.length, html: newOrdersHtml },
+        // ROUND 80 -- admin only, and absent entirely on a day with no
+        // attendance, which is why it is pushed rather than listed with a
+        // 0 count: an empty attendance card would sink to the bottom and
+        // say nothing, on every Sunday and every holiday.
+        ...(attendanceSectionActive ? [{ count: 1, html: attendanceHtml }] : []),
       ];
   sections.sort((a,b)=> (b.count>0?1:0) - (a.count>0?1:0));
 
@@ -12310,7 +12556,7 @@ function renderDailyWork(){
   <div class="card">
     <h2>📆 ${esc(t('Daily Work'))}</h2>
     <p class="desc">${esc(restrictedToProduction
-      ? t('Filling & Packing entries for the day, from everyone on the team. You can edit or delete your own entry until it\'s booked — once booked, it\'s locked.')
+      ? t('Your own Filling & Packing entries for the day. You can edit or delete one until it\'s booked — once booked, it\'s locked.')
       : t('Every entry for the day, in one place — book each as you update your accounting software.')+(isManager?' '+t('View only.'):' '+t('Editing or deleting stays available until it\'s booked.')))}</p>
     ${/* ROUND 78 -- the native date picker is still here and still the way to
          reach any date. What it was NOT good at is the thing people actually
@@ -12433,14 +12679,49 @@ function toggleEntryBooked(source, id){
   render();
   showToast(e.booked ? 'Booked ✅' : 'Unbooked');
 }
+/* ROUND 80 -- booking (and un-booking) the day's attendance. One doc per
+   date, admin only at the rules level too, so this is defense in depth
+   rather than the only check. `force` is what "Book all remaining" passes:
+   it must never flip a booked day back off.
+   The write is NOT awaited, following every other write in this file (see
+   fsSetItem's header comment on why, and on how a real rejection surfaces);
+   S is updated locally first so the screen is right immediately and the
+   listener confirms it a moment later. */
+function toggleAttendanceBooked(dateKey, force){
+  if(!S.currentUser || S.currentUser.role!=='admin') return false;
+  const dk = String(dateKey || '');
+  if(!dk) return false;
+  // Re-derived here, never trusted from the button: a background snapshot
+  // can redraw this screen between the render and the tap, and a day whose
+  // attendance has since been cleared has nothing to book.
+  const roster = attendanceRosterFor(dk);
+  if(attendanceMarkedCountFor(roster) === 0) return false;
+  const already = !!attendanceBookFor(dk);
+  if(already && force) return false;
+  if(already){
+    delete S.attendanceBooks[dk];
+    fsDeleteItem('attendanceBooks', dk);
+    return true;
+  }
+  const rec = { dateKey: dk, booked: true, bookedAt: Date.now(),
+    bookedByUsername: S.currentUser.username, bookedByName: S.currentUser.name || S.currentUser.username };
+  S.attendanceBooks[dk] = rec;
+  fsSetStaticSubKey('attendanceBooks', dk, rec);
+  return true;
+}
 function printDailyWork(){
   // Mirrors renderDailyWork's own visibility rule -- Packaging team only
   // ever prints Filling + Packing, never Purchase/Expenses/Retail/Orders.
   const restrictedToProduction = S.currentUser.role!=='admin' && S.currentUser.role!=='manager';
+  // ROUND 80 -- the same "only my own work" rule as the screen. A print that
+  // showed the whole floor's entries while the screen above it showed one
+  // person's would be two different answers to the same question.
+  const printMineOnly = restrictedToProduction;
+  const printMine = e => !printMineOnly || e.byUsername === S.currentUser.username;
   const date = S.dailyWorkDate || localDateKey(Date.now());
   const purchaseEntries = S.activityLog.filter(e=>e.kind==='purchase' && localDateKey(e.at)===date).sort((a,b)=>a.at-b.at);
-  const fillingEntries = S.activityLog.filter(e=>e.kind==='filling' && localDateKey(e.at)===date).sort((a,b)=>a.at-b.at);
-  const packagingEntries = S.activityLog.filter(e=>e.kind==='packaging' && localDateKey(e.at)===date).sort((a,b)=>a.at-b.at);
+  const fillingEntries = S.activityLog.filter(e=>e.kind==='filling' && localDateKey(e.at)===date && printMine(e)).sort((a,b)=>a.at-b.at);
+  const packagingEntries = S.activityLog.filter(e=>e.kind==='packaging' && localDateKey(e.at)===date && printMine(e)).sort((a,b)=>a.at-b.at);
   const expenseEntries = S.expenses.filter(e=>localDateKey(e.at)===date).sort((a,b)=>a.at-b.at);
   const totalExpense = expenseEntries.filter(e=>e.type!=='settlement' && !isOpeningBalanceEntry(e)).reduce((s,e)=>s+(e.amount||0),0);
   const retailEntries = S.retailSales.filter(e=>localDateKey(e.at)===date).sort((a,b)=>a.at-b.at);
@@ -12473,6 +12754,19 @@ function printDailyWork(){
 
     html += `<h2>🛍️ New Orders ${totalOrderValue?`— Total ₹${totalOrderValue.toLocaleString('en-IN')}`:''}</h2>` + table(['Party','Items','MRP Value','By','Time'],
       newOrderEntries.map(o=>`<tr><td>${esc(orderDisplayLabel(o))}</td><td>${o.items.filter(i=>!i.cancelled).map(i=>`${esc(i.name)} ${esc(i.size)} ×${i.qty}`).join(', ')}</td><td>₹${orderMrpValue(o).toLocaleString('en-IN')}</td><td>${esc(o.createdBy)}</td><td>${fmtTime(o.createdAt)}</td></tr>`).join(''));
+  }
+
+  // ROUND 80 -- the attendance line, on the same sheet that goes into the
+  // accounts, and under the same rule as the card: admin only, and only on
+  // a day that has attendance.
+  if(S.currentUser.role==='admin'){
+    const roster = attendanceRosterFor(date);
+    if(attendanceMarkedCountFor(roster) > 0){
+      const present = roster.filter(r=>r.status==='present').length;
+      const absent = roster.filter(r=>r.status==='absent').length;
+      html += `<h2>🧍 Attendance — ${present} present, ${absent} absent</h2>` + table(['Employee','Status'],
+        roster.map(r=>`<tr><td>${esc(r.name)}${r.temporary?' (Temp)':''}</td><td>${r.status==='present'?'Present':(r.status==='absent'?'Absent':'—')}</td></tr>`).join(''));
+    }
   }
 
   const printArea = document.getElementById('printArea');
@@ -12508,6 +12802,13 @@ function bindDailyWork(){
     const [source, id] = b.dataset.book.split('|');
     toggleEntryBooked(source, id);
   }));
+  // ROUND 80 -- the attendance card's single tick for the whole day.
+  document.querySelectorAll('[data-att-book]').forEach(b=>b.addEventListener('click', ()=>{
+    const wasBooked = !!attendanceBookFor(b.dataset.attBook);
+    if(!toggleAttendanceBooked(b.dataset.attBook, false)){ render(); return; }
+    render();
+    showToast(wasBooked ? 'Unbooked' : 'Booked ✅');
+  }));
   document.querySelectorAll('[data-edit-entry]').forEach(b=>b.addEventListener('click', ()=>{
     const [source, id] = b.dataset.editEntry.split('|');
     editDailyEntry(source, id);
@@ -12523,6 +12824,10 @@ function bindDailyWork(){
     S.activityLog.filter(e=>(e.kind==='purchase'||e.kind==='filling'||e.kind==='packaging') && localDateKey(e.at)===date && !e.booked).forEach(e=>{ e.booked = true; savePartitionForItem('activityLog', e); });
     S.expenses.filter(e=>localDateKey(e.at)===date && !e.booked).forEach(e=>{ e.booked = true; savePartitionForItem('expenses', e); });
     S.retailSales.filter(e=>localDateKey(e.at)===date && !e.booked).forEach(e=>{ e.booked = true; savePartitionForItem('retailSales', e); });
+    // ROUND 80 -- "remaining" includes the day's attendance, which is one of
+    // the entries the counter above it counts. force=true so a day already
+    // booked is left alone rather than toggled back off.
+    toggleAttendanceBooked(date, true);
     // ROUND 65: this button would otherwise be a one-click bypass of the
     // billing checklist, which would make the checklist pointless. Orders
     // whose checklist isn't finished are held back and counted; everything
@@ -14646,6 +14951,10 @@ function renderHomeAdmin(){
   ${homeGreetHtml()}
   ${homeTodayCardHtml(true)}
   ${isAdmin && isLastWorkingDayOfMonth() ? `<div class="alert-banner" style="margin-bottom:12px;"><b>📅 Last working day of the month</b>Export this month's data before it rolls over.</div>` : ''}
+  ${/* ROUND 80 -- the salary alert. High on the screen because it is money
+       somebody is owed, and it renders as nothing at all on a day when
+       nothing is due, so it costs this screen no space the rest of the time. */''}
+  ${payrollAlertHtml()}
   ${quickActionIcons(S.currentUser.role)}
   ${/* ROUND 54 -- pipeline order, and the two stock tiles the owner asked to
        give everyone. The "Stock short" card that used to sit below this grid
@@ -14712,6 +15021,7 @@ function bindHomeAdmin(){
   bindOrderRowActions();
   bindAlertTiles();
   bindQuickActionIcons();
+  bindPayrollAlert(); // ROUND 80 -- no-ops when nothing is due, since the card renders as ''
   if(syncStockTasksFromAlerts()){ /* task list changed — next render will pick it up */ }
   const exportBtn = document.getElementById('exportPdfBtn');
   if(exportBtn) exportBtn.addEventListener('click', ()=>{
@@ -16767,6 +17077,11 @@ function renderUsers(){
           <div style="font-weight:800;font-size:0.84375rem;">${esc(u.name)}</div>
           <div class="mono" style="margin:2px 0 4px;">${esc(u.username)}</div>
           <span class="role-pill" style="background:var(--surface);color:var(--ink-brand);border:1px solid var(--border);">${esc(t(ROLES[u.role]?ROLES[u.role].label:u.role))}</span>
+          ${/* ROUND 80 -- a temporary employee has no login, and that is the one
+               thing about this row an admin has to be able to see without
+               opening it: it is why the row offers no Reset password and no
+               Force logout below. */''}
+          ${isTemporaryUser(u)?`<div style="margin-top:4px;"><span class="badge badge-temp">${esc(t('Temporary — no login'))}</span></div>`:''}
           ${u.post?`<div style="font-size:0.6875rem;color:var(--ink-soft);margin-top:4px;font-style:italic;">${esc(u.post)}</div>`:''}
           ${u.phone?`<div style="margin-top:6px;">${telLinkHtml(u.phone)}</div>`:''}
           ${/* ROUND 78 -- the same fold the customer cards and every table row now
@@ -16777,7 +17092,12 @@ function renderUsers(){
                screen; it has never decided which exist. */''}
           ${rowActionsHtml([
             `<button class="btn btn-sm btn-outline" data-edit-user="${u.id}">${esc(t('Edit'))}</button>`,
-            u.username!==S.currentUser.username ? `<button class="btn btn-sm btn-outline" data-force-logout="${esc(u.username)}" title="${esc(t('Immediately signs this person out wherever they\'re currently logged in'))}">${esc(t('🔒 Force logout'))}</button>` : '',
+            // ROUND 80 -- Force logout revokes an Auth account's refresh tokens.
+            // A temporary employee has no Auth account, so the button would
+            // call forceLogoutStaffUser with a username it cannot find and
+            // report a Cloud Functions failure for a thing that is working
+            // exactly as intended. The "not you" rule is untouched.
+            (userHasLogin(u) && u.username!==S.currentUser.username) ? `<button class="btn btn-sm btn-outline" data-force-logout="${esc(u.username)}" title="${esc(t('Immediately signs this person out wherever they\'re currently logged in'))}">${esc(t('🔒 Force logout'))}</button>` : '',
             // The Delete condition below is three rules layered over time, and
             // every one of them is load-bearing. Round 17's audit found it
             // hardcoded to the literal username "admin", so the "do not delete
@@ -16793,7 +17113,12 @@ function renderUsers(){
             // offers it to anybody, including other admins.
             // All three are enforced in deleteStaffUser as well; this only
             // keeps the button from appearing clickable.
-            (u.role!=='admin' || S.users.filter(x=>x.role==='admin').length>1) && u.username!==S.currentUser.username && u.username!=='admin' ? `<button class="btn btn-sm btn-danger" data-del-user="${u.id}">${esc(t('Delete'))}</button>` : '',
+            // ROUND 80 adds data-del-login, which decides HOW the row is
+            // removed, never WHETHER: a login goes through deleteStaffUser
+            // (Auth account + doc + session together), a temporary employee
+            // has no Auth account to remove, so its doc is deleted directly.
+            // The three conditions above are unchanged.
+            (u.role!=='admin' || S.users.filter(x=>x.role==='admin').length>1) && u.username!==S.currentUser.username && u.username!=='admin' ? `<button class="btn btn-sm btn-danger" data-del-user="${u.id}" data-del-login="${userHasLogin(u)?'1':'0'}">${esc(t('Delete'))}</button>` : '',
           ])}
         </div>
       `).join('')}
@@ -17171,6 +17496,15 @@ async function performResetAllDataExceptUsers(){
   S.expenses = []; S.activityLog = []; S.stockTasks = []; S.dominoPrints = []; S.chatMessages = []; S.retailSales = []; S.trackingViewLogs = []; S.siteVisitLogs = []; S.stockMovementLog = [];
   S.lowStock = {raw:{}, filled:{}, ready:{}};
   S.expenseBalances = {};
+  // ROUND 80. attendanceBooks is deliberately NOT wiped here: the Cloud
+  // Function is the source of truth for what a reset deletes, its collection
+  // list lives in functions/index.js (not in this file, and only the owner
+  // can deploy it), and wiping S locally would just be undone by the
+  // listener's next snapshot. Any booking doc that outlives a reset is inert
+  // anyway -- the Daily Work attendance card is drawn from the attendance
+  // RECORDS, so with those erased the card never renders and the stale doc
+  // is never read. Worth adding to that function's list when it is next
+  // touched; nothing breaks until then.
   PARTITIONED_ENTITIES.forEach(entity=>{ S._partitionKeysSeen[entity] = new Set(); });
   offlineQueue = {}; persistOfflineQueue(); updateSyncStatusUI(); // don't let a stale queued save push old (pre-reset) data back
   pendingExpenseDeltas = {}; persistPendingExpenseDeltas(); // don't let a stale queued balance delta reapply against the post-reset (zeroed) balances
@@ -17210,15 +17544,39 @@ function bindUsers(){
     // entry) together -- see that function's own comment in
     // functions/index.js.
     if(b.disabled) return;
-    showConfirm('Remove this user? Their login will stop working immediately.', async ()=>{
+    // ROUND 80: a temporary employee has no Firebase Auth account, so
+    // deleteStaffUser has nothing to delete there -- it would fail on the
+    // Auth lookup and leave the doc behind, reported as a Cloud Functions
+    // problem. That row deletes its own doc instead, which firestore.rules
+    // already allows an admin (and still refuses for yourself and for the
+    // literal "admin" account -- see the users/{uid} delete rule).
+    // The person's past attendance records are NOT touched by either path;
+    // they are their own documents keyed by username__date.
+    const delHasLogin = b.dataset.delLogin !== '0';
+    showConfirm(delHasLogin
+        ? 'Remove this user? Their login will stop working immediately.'
+        : 'Remove this temporary employee? Their attendance already recorded stays in the register.', async ()=>{
       const delUserId = b.dataset.delUser;
       b.disabled = true;
       try{
-        await fsFunctions.httpsCallable('deleteStaffUser')({ username: delUserId });
+        if(delHasLogin){
+          await fsFunctions.httpsCallable('deleteStaffUser')({ username: delUserId });
+        } else {
+          await fsDeleteItem('users', delUserId);
+        }
         S.users = S.users.filter(u=>u.id!==delUserId);
+        // ROUND 80 -- their pay cycle goes with them, or the next person
+        // given the same username inherits somebody else's salary. The PAID
+        // records (payrollRuns) are deliberately kept: those are history of
+        // money that actually left the business.
+        if(S.payrollSettings && Object.prototype.hasOwnProperty.call(S.payrollSettings, delUserId)){
+          delete S.payrollSettings[delUserId];
+          fsDeleteStaticSubKey('payrollSettings', delUserId);
+        }
         render();
       }catch(e){
-        showAlert('Could not remove this user: ' + ((e && e.message) || 'unknown error') + '. Make sure the Cloud Functions are deployed (see CLOUD_FUNCTIONS_DEPLOY.md) and try again.');
+        showAlert('Could not remove this user: ' + ((e && e.message) || 'unknown error') + '. '
+          + (delHasLogin ? 'Make sure the Cloud Functions are deployed (see CLOUD_FUNCTIONS_DEPLOY.md) and try again.' : 'Try again in a moment.'));
         b.disabled = false;
       }
     });
@@ -17292,9 +17650,34 @@ async function resizeImageFileSafe(file){
   }
   return last;
 }
+// ROUND 80. Reads the three payroll controls out of the user form. Always
+// returns all three, so a cycle set back to "Not on payroll" genuinely
+// CLEARS the old rate instead of leaving a stale figure behind a cycle that
+// no longer reads it -- a stale rate is how a wrong amount gets paid the day
+// somebody puts the cycle back.
+function readUserPayFields(){
+  const cycleEl = document.getElementById('uPayCycle');
+  const basisEl = document.getElementById('uPayBasis');
+  const rateEl = document.getElementById('uPayRate');
+  const cycle = (cycleEl && PAY_CYCLES.indexOf(cycleEl.value) !== -1) ? cycleEl.value : 'none';
+  const basis = (basisEl && basisEl.value === 'fixed') ? 'fixed' : 'daily';
+  const rateRaw = Number(rateEl ? rateEl.value : 0);
+  const rate = (isFinite(rateRaw) && rateRaw > 0) ? Math.round(rateRaw) : 0;
+  if(cycle === 'none' || rate === 0) return { payCycle:'none', payBasis:basis, payRate:0 };
+  return { payCycle:cycle, payBasis:basis, payRate:rate };
+}
 function openUserModal(id){
   const existing = id ? S.users.find(u=>u.id===id) : null;
   let pendingPhoto = existing ? (existing.photo || '') : '';
+  // ROUND 80. For a NEW person this is only the starting value of the
+  // Employment type select below -- the live value is read off the select
+  // at submit time, never from here. For an EXISTING person it is a fact
+  // about the record, which is why their type is shown as a sentence
+  // rather than a control: converting a temporary employee into a login
+  // means CREATING a Firebase Auth account, which only createStaffUser
+  // can do and which refuses a username whose doc already exists. Same
+  // reasoning, and the same wording, as the read-only Username field.
+  const existingHasLogin = existing ? userHasLogin(existing) : true;
   showModal(`
     <h3>${esc(t(existing?'Edit user':'Add user'))}</h3>
     <form id="userForm">
@@ -17310,11 +17693,29 @@ function openUserModal(id){
       </div>
       <div class="field"><label>${esc(t('Full name'))}</label><input id="uName" value="${existing?esc(existing.name):''}" required /></div>
       <div class="field"><label>${esc(t('Username'))}</label><input id="uUser" value="${existing?esc(existing.username):''}" required ${existing?'readonly':''} />
+        ${(!existing)?`<div class="note" style="margin-top:4px;display:none;" id="uTempUserNote">${esc(t('For a temporary employee this is only a name tag used to file their attendance — letters, numbers, dot, dash or underscore. It is not a login.'))}</div>`:''}
         ${existing?`<div class="note" style="margin-top:4px;">${esc(t("Username can't be changed once created — it's permanently tied to this person's login (Firebase Auth account + doc id), so editing it here would only change the displayed name without actually renaming the login, silently breaking their sign-in. Delete and re-add if a genuine rename is needed."))}</div>`:''}</div>
+      ${/* ROUND 80 -- Employment type. It sits directly under Username because
+           it decides what the next field even is: a permanent employee gets a
+           login (and therefore a password), a temporary one gets neither. */''}
+      <div class="field"><label>${esc(t('Employment type'))}</label>
+        ${existing
+          ? `<div class="note" style="margin-top:4px;">${esc(existingHasLogin
+                ? t('Permanent — has a login. To turn this into a no-login record, delete this person and add them again as temporary.')
+                : t('Temporary — no login. To give this person a login, delete this record and add them again as permanent.'))}</div>`
+          : `<select id="uEmpType">
+               <option value="permanent" selected>${esc(t('Permanent — gets a login'))}</option>
+               <option value="temporary">${esc(t('Temporary — no login'))}</option>
+             </select>
+             <div class="note" style="margin-top:4px;">${esc(t('A temporary employee never signs in. A manager or admin marks their attendance, and they are paid like anyone else.'))}</div>`}
+      </div>
       ${existing
-        ? `<div class="field"><label>${esc(t('Password'))}</label><div class="note" style="margin-top:4px;">${esc(t('A fresh temporary password will be generated and shown to you if you use the "Reset password" button below — hand it to them privately. Staff can also change their own password anytime from Profile → Change password.'))}</div>
+        ? (existingHasLogin
+            ? `<div class="field"><label>${esc(t('Password'))}</label><div class="note" style="margin-top:4px;">${esc(t('A fresh temporary password will be generated and shown to you if you use the "Reset password" button below — hand it to them privately. Staff can also change their own password anytime from Profile → Change password.'))}</div>
              <button type="button" class="btn btn-outline btn-sm" id="uResetPasswordBtn" style="margin-top:6px;">${esc(t('Reset password'))}</button></div>`
-        : `<div class="field"><label>${esc(t('Password'))}</label><div class="note" style="margin-top:4px;">${esc(t('A temporary password will be generated automatically and shown to you once this account is created.'))}</div></div>`}
+            : `<div class="field"><label>${esc(t('Password'))}</label><div class="note" style="margin-top:4px;">${esc(t('There is no password — this person has no login. Nothing to reset and nothing to hand over.'))}</div></div>`)
+        : `<div class="field" id="uPwdField"><label>${esc(t('Password'))}</label><div class="note" style="margin-top:4px;">${esc(t('A temporary password will be generated automatically and shown to you once this account is created.'))}</div></div>
+           <div class="field" id="uNoLoginField" style="display:none;"><label>${esc(t('Password'))}</label><div class="note" style="margin-top:4px;">${esc(t('No password is created — a temporary employee has no login, so there is nothing to hand over.'))}</div></div>`}
       <div class="field"><label>${esc(t('Role / Team (controls access — see 🔐 Permission Manager)'))}</label>
         <select id="uRole">
           ${(()=>{
@@ -17339,6 +17740,30 @@ function openUserModal(id){
       <div class="field"><label>${esc(t('Post / Designation (optional, display only)'))}</label><input id="uPost" value="${existing?esc(existing.post||''):''}" placeholder="${esc(t('e.g. Senior Sales Executive'))}" /></div>
       <div class="field"><label>${esc(t('Phone'))}</label><input id="uPhone" value="${existing?esc(existing.phone||''):''}" /></div>
       <div class="field"><label>${esc(t('Address'))}</label><textarea id="uAddr" rows="2">${existing?esc(existing.address||''):''}</textarea></div>
+      ${/* ROUND 80 -- the payroll settings. One form for create and for edit,
+           because a cycle is a fact about the person, not about how their
+           record came to exist -- a temporary employee is paid from exactly
+           the same three fields as a permanent one. Left at "Not on payroll"
+           they are never written, so every user doc that already exists stays
+           byte for byte as it is (payCycleOf reads a missing field as
+           'none'). */''}
+      <div class="field"><label>${esc(t('Payment cycle'))}</label>
+        <select id="uPayCycle">
+          <option value="none" ${payCycleOf(existing)==='none'?'selected':''}>${esc(t('Not on payroll'))}</option>
+          <option value="weekly" ${payCycleOf(existing)==='weekly'?'selected':''}>${esc(t('Weekly — every Saturday'))}</option>
+          <option value="monthly" ${payCycleOf(existing)==='monthly'?'selected':''}>${esc(t('Monthly — 1st to 10th'))}</option>
+        </select>
+      </div>
+      <div class="field"><label>${esc(t('Salary basis'))}</label>
+        <select id="uPayBasis">
+          <option value="daily" ${payBasisOf(existing)==='daily'?'selected':''}>${esc(t('Per day present'))}</option>
+          <option value="fixed" ${payBasisOf(existing)==='fixed'?'selected':''}>${esc(t('Fixed for the cycle'))}</option>
+        </select>
+      </div>
+      <div class="field"><label>${esc(t('Amount (₹)'))}</label>
+        <input id="uPayRate" type="number" min="0" step="1" value="${existing&&payRateOf(existing)?payRateOf(existing):''}" />
+        <div class="note" style="margin-top:4px;">${esc(t('Per day: this much for every day they are present. Fixed: this much for a full cycle, cut in proportion to the working days missed. A Sunday or a declared holiday is never cut.'))}</div>
+      </div>
       <div class="modal-actions">
         <button type="button" class="btn btn-outline" id="cancelModal">${esc(t('Cancel'))}</button>
         <button type="submit" class="btn btn-primary">${esc(t(existing?'Save':'Create'))}</button>
@@ -17363,6 +17788,22 @@ function openUserModal(id){
         applyPhoto();
       }
     }catch(e){ showAlert(t('Could not read that image — try a different file.')); }
+  });
+  // ROUND 80 -- the Employment type select rewrites nothing; it only swaps
+  // which of the two already-rendered Password notes is visible, so there is
+  // no re-render here and the photo the admin may already have chosen (held
+  // in pendingPhoto, not in the DOM) cannot be lost by touching this.
+  const empTypeSel = document.getElementById('uEmpType');
+  if(empTypeSel) empTypeSel.addEventListener('change', ()=>{
+    const isTemp = empTypeSel.value === 'temporary';
+    const pwdField = document.getElementById('uPwdField');
+    const noLoginField = document.getElementById('uNoLoginField');
+    const tempUserNote = document.getElementById('uTempUserNote');
+    if(pwdField) pwdField.style.display = isTemp ? 'none' : '';
+    if(noLoginField) noLoginField.style.display = isTemp ? '' : 'none';
+    // The note under Username explains what the name tag is FOR when there is
+    // no login behind it. On the permanent branch it is simply not true.
+    if(tempUserNote) tempUserNote.style.display = isTemp ? '' : 'none';
   });
   const removeBtn = document.getElementById('uPhotoRemoveBtn');
   if(removeBtn) removeBtn.addEventListener('click', ()=>{
@@ -17421,12 +17862,45 @@ function openUserModal(id){
       const phone = document.getElementById('uPhone').value.trim();
       const address = document.getElementById('uAddr').value.trim();
       const photo = pendingPhoto;
+      const pay = readUserPayFields(); // ROUND 80
       if(S.users.some(u=>(u.username||'').toLowerCase()===username.toLowerCase())){
         showAlert(t('That username is already taken.')); reenable(); return;
+      }
+      // ROUND 80 -- the temporary employee. createStaffUser is NOT called:
+      // there is no Firebase Auth account to create, and calling it would
+      // create one (a login the owner explicitly did not want) as well as
+      // needing a password nobody will ever use. The doc is written
+      // directly, with its id set to the username exactly as
+      // createStaffUser does it, because attendance is filed under
+      // `username__date` and every reader in the app keys off `username`.
+      const empTypeEl = document.getElementById('uEmpType');
+      if(empTypeEl && empTypeEl.value === 'temporary'){
+        if(!isUsableTempUsername(username)){
+          showAlert(t('That name tag cannot be used. Use 2–32 letters, numbers, dot, dash or underscore, starting with a letter or number.'));
+          reenable(); return;
+        }
+        const tempRecord = { id: username, username, name, role, post, phone, address, photo,
+          employmentType: 'temporary', loginEnabled: false, createdAt: Date.now() };
+        try{
+          await fsSetItem('users', tempRecord);
+          savePayrollSettings(username, pay); // ROUND 80 -- its own admin-only document
+          closeModal();
+          showToast('Saved');
+        }catch(e){
+          showAlert(t('Could not save this temporary employee:') + ' ' + ((e && e.message) || 'unknown error'));
+          reenable();
+        }
+        return;
       }
       const password = generateTempPassword();
       try{
         await fsFunctions.httpsCallable('createStaffUser')({ username, name, role, post, phone, address, photo, password });
+        // ROUND 80. The payroll settings are their own admin-only document,
+        // so createStaffUser's signature does not need to know about them --
+        // and a salary never lands on a document the whole team can read.
+        // savePayrollSettings writes nothing when the cycle was left at "Not
+        // on payroll", so a plain create costs exactly what it costs today.
+        savePayrollSettings(username, pay);
         closeModal();
         showAlert(`${t('Staff login created for')} "${username}". ${t('Temporary password:')} ${password} ${t("— hand this to them privately (not a group chat). If it ever needs changing later, only an admin can reset it (Users → Reset Password) — there's no self-service change option.")}`);
       }catch(e){
@@ -17445,7 +17919,14 @@ function openUserModal(id){
     if(S.users.some(u=>(u.username||'').toLowerCase()===username.toLowerCase() && u.id!==existing.id)){
       showAlert(t('That username is already taken.')); reenable(); return;
     }
+    // employmentType and loginEnabled are deliberately NOT in this list, so
+    // they come through from `existing` untouched: this form has no control
+    // for them (ROUND 80's Employment type field is a sentence on an existing
+    // person, not a select), and an edit must never grant or revoke a login
+    // as a side effect. The payroll fields are not here either -- they are
+    // their own document, written by savePayrollSettings below.
     const newRecord = Object.assign({}, existing, {name, username, role, post, phone, address, photo});
+    const editPay = readUserPayFields(); // ROUND 80
     const finishSaveUser = ()=>{
       // ROUND 28: this used to be safeSet('app:users', S.users), which fans
       // out a full NON-MERGE .set() of EVERY user document. Editing one
@@ -17463,6 +17944,7 @@ function openUserModal(id){
       // privilege-sensitive collection in the app -- never was.
       Object.assign(existing, newRecord);
       fsSetItem('users', existing);
+      savePayrollSettings(existing.username, editPay); // ROUND 80
       closeModal(); render(); showToast('Saved');
     };
     // FIXED (Task #54): was checking the WHOLE team's combined JSON size
@@ -18491,7 +18973,12 @@ function bindTasks(){
   }));
 }
 function openTaskModal(existingTask){
-  const assignable = S.users.filter(u=>u.role!=='admin');
+  // ROUND 80 -- userHasLogin. A task handed to someone who can never sign in
+  // is a task nobody will ever see: it would sit in My Assigned Tasks on a
+  // screen that does not exist for them, and the floor's own backlog count
+  // would carry work no person is actually holding. A temporary employee is
+  // on the attendance register and the payroll, not on the task board.
+  const assignable = S.users.filter(u=>u.role!=='admin' && userHasLogin(u));
   const teamRoles = Object.keys(ROLES).filter(r=>r!=='admin');
   showModal(`
     <h3>${esc(t(existingTask?'Edit task':'New task'))}</h3>
@@ -18520,9 +19007,18 @@ function openTaskModal(existingTask){
             // explicit choice before the form can be submitted.
             if(!existingTask || !existingTask.assignedTo) return '';
             const at = existingTask.assignedTo;
+            // ROUND 80: this asks "is the stale assignee still OFFERABLE",
+            // and it now asks the one list that answers that -- `assignable`
+            // itself. Against S.users it could answer yes for somebody who
+            // is not among the options (an admin, or from this round a
+            // temporary employee), and then NO option carries `selected`, so
+            // the browser picks the first one and an unrelated edit silently
+            // reassigns the task to a whole team. That is exactly the Round
+            // 23 bug this placeholder was added to prevent; it was only ever
+            // closed for a person who had been deleted outright.
             const stillExists = at.startsWith('role:')
               ? !!ROLES[at.slice(5)]
-              : S.users.some(u=>u.username===at);
+              : assignable.some(u=>u.username===at);
             if(stillExists) return '';
             return `<option value="" selected disabled>${esc(existingTask.assignedToName || at)} — ${esc(t('no longer exists, pick someone'))}</option>`;
           })()}
@@ -19746,6 +20242,275 @@ function isWorkingDay(dk){
   if(isForcedWorkingDay(dk)) return true;
   return !isSundayDateKey(dk) && !isDeclaredHoliday(dk);
 }
+
+/* ===== ROUND 80: PAYMENT CYCLES AND THE SALARY ALERT =====================
+   Owner: "Employees ke payment cycle b daalo weekly ya Month. Har Saturday
+   ko weekly wle Employees ki salary dene ka Notification Admin ko do
+   amount kitna Banta h ye sb btao. Or Monthly wlo ka 1st se 10th tk ka."
+
+   WHAT THIS IS NOT. It is not a phone push. Every push in this app is sent
+   by a Cloud Function (functions/index.js, which is not in this project and
+   which only the owner can deploy) and this app has NO scheduler of its own
+   -- nothing in the client runs at a time nobody opened it. So this is an
+   in-app alert on the admin's Home screen, computed fresh from attendance
+   every time that screen is drawn, and it STAYS there until the money is
+   marked paid rather than firing once and being missed.
+
+   HOW THE MONEY IS WORKED OUT, and the owner's own answer to the one
+   question that mattered ("Working din ke hisaab se kate"):
+     daily basis -- rate x days present.
+     fixed basis -- the cycle's fixed figure, cut in proportion to the
+                    WORKING days missed: fixed / workingDays x presentDays.
+   A Sunday and a declared holiday are not working days (isWorkingDay owns
+   that, overrides and all), so neither one ever costs an employee money,
+   and an admin-declared working Sunday counts for them.
+
+   WHAT "PAID" IS. The existence of a payrollRuns document. There is no
+   paid=false state: a period with no document is owed, a period with one is
+   settled, so the two can never disagree. Admin-only to read and to write.
+
+   THE 60-DAY EDGE. Attendance loads 60 days. Both look-backs here sit
+   inside that on purpose (8 weeks = 56 days; 2 months is at most 41 days
+   back while the monthly window is open), so in ordinary use every day of
+   every period is loaded. If an older period is ever reached, the days that
+   are NOT loaded are counted and SAID -- the figure is never quietly
+   computed as though an unloaded day were an absence, which is the mistake
+   Round 23 found on the payroll screen and fixed there. */
+const PAY_CYCLES = ['none','weekly','monthly'];
+const PAY_BASES = ['daily','fixed'];
+// 7, not 8, and the arithmetic matters. The oldest weekly period STARTS
+// d + 7(N-1) + 6 days ago, where d is how many days ago the last Saturday was
+// (0 on a Saturday, 6 on a Friday). The worst case is 7N + 5, so N = 8 reaches
+// 61 days back -- one day past the 60 the attendance listener holds, and ONLY
+// on a Friday. A test that checked this on a Tuesday would have passed; the
+// Round 80 suite now drives it through all seven weekdays. N = 7 is 54 days at
+// worst, with room over, and seven weeks of unpaid back-alerts is already far
+// more than this business needs.
+const PAYROLL_WEEKS_BACK = 7;
+// A monthly period CAN fall partly outside that window -- a December salary
+// still unpaid on the 31st of January starts 61 days back, and the month
+// before it is further still. That is not a reason to shorten the look-back
+// and quietly stop asking about money somebody is owed; it is the reason
+// payrollLineFor counts the days it could not load and the alert says so.
+const PAYROLL_MONTHS_BACK = 2;
+const PAYROLL_MONTHLY_DUE_BY_DAY = 10;
+/* WHERE A SALARY IS KEPT, AND WHY NOT ON THE USER DOCUMENT.
+   firestore.rules allows `users/{uid}` to be READ by anyone signed in -- it
+   has to, the whole app reads the staff directory for names, roles and
+   photos -- and the Users screen itself is admin-only only by DEFAULT, since
+   the Permission Manager can hand that module to another post. Putting a
+   payRate on the user document would therefore publish every salary in the
+   company to every employee, whatever the screen chose to draw. So the three
+   payroll fields live in their own collection, one document per person,
+   admin-only to read AND to write, exactly like expenseBalances. Nothing
+   else about this changes: these three functions are the only readers, and
+   they default to "not on payroll" for everybody until an admin sets one. */
+function payrollSettingsFor(username){
+  const raw = (S.payrollSettings || {})[String(username || '')] || {};
+  const cycle = PAY_CYCLES.indexOf(raw.payCycle) !== -1 ? raw.payCycle : 'none';
+  const basis = raw.payBasis === 'fixed' ? 'fixed' : 'daily';
+  const rateNum = Number(raw.payRate);
+  const rate = (isFinite(rateNum) && rateNum > 0) ? rateNum : 0;
+  return { payCycle: cycle, payBasis: basis, payRate: rate };
+}
+function payCycleOf(u){ return payrollSettingsFor(u && u.username).payCycle; }
+function payBasisOf(u){ return payrollSettingsFor(u && u.username).payBasis; }
+function payRateOf(u){ return payrollSettingsFor(u && u.username).payRate; }
+// Writes only when something actually changed, so editing somebody's phone
+// number never costs a payroll write and never creates a document for a
+// person who is not on the payroll at all.
+function savePayrollSettings(username, pay){
+  if(!username || !pay) return false;
+  if(!S.currentUser || S.currentUser.role !== 'admin') return false;
+  const cur = payrollSettingsFor(username);
+  if(cur.payCycle === pay.payCycle && cur.payBasis === pay.payBasis && cur.payRate === pay.payRate) return false;
+  const rec = { username: String(username), payCycle: pay.payCycle, payBasis: pay.payBasis, payRate: pay.payRate };
+  S.payrollSettings[String(username)] = rec;
+  fsSetStaticSubKey('payrollSettings', username, rec);
+  return true;
+}
+// A rate of zero is not on the payroll however the cycle is set: there is no
+// amount to tell the admin, so an alert would be a row of blanks.
+function payrollEmployees(){
+  return S.users.filter(u=>u && u.role!=='admin' && payCycleOf(u)!=='none' && payRateOf(u)>0);
+}
+// The seven days ending on each of the last `count` Saturdays, newest first.
+// setHours(12) and setDate, never arithmetic on 86,400,000 -- a day is not
+// reliably that many milliseconds (shiftDateKey's own comment).
+function payrollWeeklyPeriods(nowTs, count){
+  const d = new Date(nowTs);
+  d.setHours(12, 0, 0, 0);
+  d.setDate(d.getDate() - ((d.getDay() - 6 + 7) % 7));  // back to the last Saturday (today, if today is one)
+  const out = [];
+  for(let i = 0; i < count; i++){
+    const endKey = localDateKey(d.getTime());
+    const start = new Date(d.getTime());
+    start.setDate(start.getDate() - 6);
+    out.push({ cycle:'weekly', startKey: localDateKey(start.getTime()), endKey });
+    d.setDate(d.getDate() - 7);
+  }
+  return out;
+}
+// Whole previous calendar months, newest first. A month only appears once it
+// is OVER, which is what makes the alert turn up on the 1st by itself.
+function payrollMonthlyPeriods(nowTs, count){
+  const d = new Date(nowTs);
+  d.setHours(12, 0, 0, 0);
+  d.setDate(1);
+  const out = [];
+  for(let i = 0; i < count; i++){
+    d.setMonth(d.getMonth() - 1);
+    const start = new Date(d.getFullYear(), d.getMonth(), 1, 12, 0, 0, 0);
+    const end = new Date(d.getFullYear(), d.getMonth() + 1, 0, 12, 0, 0, 0);
+    out.push({ cycle:'monthly', startKey: localDateKey(start.getTime()), endKey: localDateKey(end.getTime()) });
+  }
+  return out;
+}
+function payrollPeriodsFor(cycle, nowTs){
+  if(cycle === 'weekly') return payrollWeeklyPeriods(nowTs, PAYROLL_WEEKS_BACK);
+  if(cycle === 'monthly') return payrollMonthlyPeriods(nowTs, PAYROLL_MONTHS_BACK);
+  return [];
+}
+function payrollPeriodByEnd(cycle, endKey, nowTs){
+  return payrollPeriodsFor(cycle, nowTs).find(p=>p.endKey === String(endKey)) || null;
+}
+function payrollDateKeysBetween(startKey, endKey){
+  const out = [];
+  let k = String(startKey || ''), guard = 0;
+  while(k && k <= String(endKey) && guard++ < 400){
+    out.push(k);
+    k = shiftDateKey(k, 1);
+  }
+  return out;
+}
+// The oldest date this device's attendance listener actually holds. Read from
+// ENTRY_DATE_WINDOW_DAYS rather than a second hardcoded 60, so the two can
+// never drift apart.
+function attendanceLoadedFromKey(nowTs){
+  const days = ENTRY_DATE_WINDOW_DAYS.attendance;
+  const d = new Date(nowTs || Date.now());
+  d.setHours(12, 0, 0, 0);
+  d.setDate(d.getDate() - days);
+  return localDateKey(d.getTime());
+}
+function payrollLineFor(u, period, nowTs){
+  const loadedFrom = attendanceLoadedFromKey(nowTs);
+  let workingDays = 0, presentDays = 0, absentDays = 0, unmarkedDays = 0, notLoadedDays = 0;
+  payrollDateKeysBetween(period.startKey, period.endKey).forEach(k=>{
+    if(!isWorkingDay(k)) return;
+    // A day whose records this device never loaded is NOT an absence and is
+    // NOT a working day for the purpose of the division below: it is counted
+    // and reported on its own, so a fixed salary is divided by the days we
+    // actually know about instead of being silently docked for them.
+    if(k < loadedFrom){ notLoadedDays++; return; }
+    workingDays++;
+    const st = attendanceStatusFor(u.username, k).status;
+    if(st === 'present') presentDays++;
+    else if(st === 'absent') absentDays++;
+    else unmarkedDays++;
+  });
+  const basis = payBasisOf(u), rate = payRateOf(u);
+  const amount = basis === 'fixed'
+    ? (workingDays > 0 ? Math.round(rate * (presentDays / workingDays)) : 0)
+    : Math.round(rate * presentDays);
+  return { username: u.username, name: u.name || u.username, cycle: period.cycle,
+           startKey: period.startKey, endKey: period.endKey,
+           basis, rate, workingDays, presentDays, absentDays, unmarkedDays,
+           notLoadedDays, amount };
+}
+function payrollRunId(username, endKey){ return String(username) + '__' + String(endKey); }
+function payrollRunPaid(username, endKey){
+  const rec = (S.payrollRuns || {})[payrollRunId(username, endKey)];
+  return (rec && rec.paidAt) ? rec : null;
+}
+function payrollDueLines(nowTs){
+  const now = nowTs || Date.now();
+  const out = [];
+  payrollEmployees().forEach(u=>{
+    payrollPeriodsFor(payCycleOf(u), now).forEach(period=>{
+      if(payrollRunPaid(u.username, period.endKey)) return;
+      const line = payrollLineFor(u, period, now);
+      // Nothing present is nothing owed. This is also what keeps somebody who
+      // joined last week out of eight weeks of invented back pay.
+      if(line.presentDays === 0) return;
+      out.push(line);
+    });
+  });
+  return out.sort((a,b)=>
+    a.endKey < b.endKey ? 1 : (a.endKey > b.endKey ? -1 : String(a.name).localeCompare(String(b.name))));
+}
+function payrollPeriodLabel(line){
+  if(line.cycle === 'monthly'){
+    const d = new Date(dateKeyToTs(line.startKey));
+    return d.toLocaleDateString('en-IN', { month:'long', year:'numeric' });
+  }
+  return fmtDateOnly(dateKeyToTs(line.startKey)) + ' – ' + fmtDateOnly(dateKeyToTs(line.endKey));
+}
+// Re-derives the period and the figure from today's data rather than trusting
+// the button that was drawn minutes ago -- the same rule toggleAttendanceBooked
+// follows, and for the same reason: a background snapshot can redraw this
+// screen between the render and the tap.
+function markPayrollPaid(username, endKey){
+  if(!S.currentUser || S.currentUser.role !== 'admin') return false;
+  const u = S.users.find(x=>x && x.username === username);
+  if(!u) return false;
+  const period = payrollPeriodByEnd(payCycleOf(u), endKey, Date.now());
+  if(!period) return false;
+  if(payrollRunPaid(username, endKey)) return false;
+  const line = payrollLineFor(u, period, Date.now());
+  const id = payrollRunId(username, endKey);
+  const rec = Object.assign({ id }, line, { paidAt: Date.now(),
+    paidByUsername: S.currentUser.username,
+    paidByName: S.currentUser.name || S.currentUser.username });
+  S.payrollRuns[id] = rec;
+  fsSetStaticSubKey('payrollRuns', id, rec);
+  return true;
+}
+function payrollAlertHtml(){
+  if(!S.currentUser || S.currentUser.role !== 'admin') return '';
+  const lines = payrollDueLines(Date.now());
+  if(!lines.length) return '';
+  const total = lines.reduce((sum, l)=>sum + l.amount, 0);
+  const anyIncomplete = lines.some(l=>l.notLoadedDays > 0);
+  const today = new Date();
+  const monthlyDue = lines.some(l=>l.cycle === 'monthly');
+  return `<div class="card">
+    <h2>💸 ${esc(t('Salary to pay'))} — ₹${total.toLocaleString('en-IN')}</h2>
+    <p class="desc" style="margin-top:-6px;">${esc(t('Worked out from attendance. Stays here until you mark it paid.'))}${monthlyDue && today.getDate() > PAYROLL_MONTHLY_DUE_BY_DAY ? ' ' + esc(t('The monthly ones were due by the 10th.')) : ''}</p>
+    ${/* THREE columns, not five. Measured at 430px first: Employee / Period /
+         Days / Amount / button squeezed the amount to 40px and broke ₹3,900
+         across two lines as "3,90 / 0". The period and the day count are facts
+         ABOUT the person's row, so they go under the name the same way the
+         cycle and the rate already do -- the move the order card and the Users
+         card both made in Rounds 73 and 78. */''}
+    <table><thead><tr><th>${esc(t('Employee'))}</th><th>${esc(t('Amount'))}</th><th></th></tr></thead><tbody>
+    ${lines.map(l=>`<tr>
+      <td><b>${esc(l.name)}</b>
+        <div class="note">${esc(t(l.cycle === 'weekly' ? 'Weekly' : 'Monthly'))} · ${esc(t(l.basis === 'fixed' ? 'Fixed' : 'Per day'))} ₹${l.rate.toLocaleString('en-IN')}</div>
+        <div class="note">${esc(payrollPeriodLabel(l))} · ${l.presentDays}/${l.workingDays} ${esc(t('days present'))}</div>
+        ${l.notLoadedDays ? `<div class="note" style="color:var(--danger);">${l.notLoadedDays} ${esc(t('day(s) not loaded'))}</div>` : ''}</td>
+      <td class="num">₹${l.amount.toLocaleString('en-IN')}</td>
+      <td class="row-actions"><button type="button" class="btn btn-sm btn-accent" data-pay-mark="${esc(l.username)}|${esc(l.endKey)}">${esc(t('Mark paid'))}</button></td>
+    </tr>`).join('')}
+    </tbody></table>
+    ${anyIncomplete ? `<div class="note" style="margin-top:8px;color:var(--danger);">${esc(t('Some days of an older period are past the 60 days of attendance this device keeps loaded. Those days are left out of the figure rather than counted as absences — check the register before paying.'))}</div>` : ''}
+  </div>`;
+}
+function bindPayrollAlert(){
+  document.querySelectorAll('[data-pay-mark]').forEach(b=>b.addEventListener('click', ()=>{
+    const [username, endKey] = b.dataset.payMark.split('|');
+    const u = S.users.find(x=>x && x.username === username);
+    const period = u ? payrollPeriodByEnd(payCycleOf(u), endKey, Date.now()) : null;
+    const line = (u && period) ? payrollLineFor(u, period, Date.now()) : null;
+    if(!line){ render(); return; }
+    showConfirm(`${t('Mark')} ₹${line.amount.toLocaleString('en-IN')} ${t('as paid to')} "${line.name}" ${t('for')} ${payrollPeriodLabel(line)}? ${t('This only records that you paid it — it does not move any money.')}`, ()=>{
+      if(!markPayrollPaid(username, endKey)){ render(); return; }
+      render();
+      showToast('Marked paid ✅');
+    }, { danger:false, confirmLabel: t('Mark paid') });
+  }));
+}
+
 /* =====================================================================
    ROUND 33 -- ONE PERSON + ONE DATE = ONE ATTENDANCE RECORD.
    =====================================================================
@@ -20122,6 +20887,47 @@ function attendanceMarkedByCell(rec){
   const name = attendanceMarkedByName(rec);
   if(!name) return '';
   return `<span class="mono" title="${esc(t('Marked by'))} ${esc(name)}">👤 ${esc(name)}</span>`;
+}
+/* ===== ROUND 80: ATTENDANCE AS ONE BOOKABLE DAILY-WORK ENTRY =============
+   Owner: "Daily me Attendance k Employees k nam (all temp + permanent)
+   sbke nam k sath Booked (single entry) rkhna hai. Ye b Accounting
+   software me Dala Jata hai."
+   So: the whole day's attendance is ONE entry on the Daily Work screen,
+   with ONE tick, not one per person -- because that is how it goes into
+   the accounting software, as a single day's line.
+   WHERE THE TICK LIVES. Not on the attendance records: an attendance doc
+   is written by the person it is about (or by whoever marked them) and its
+   update rule is deliberately narrow -- see the attendance rules -- while
+   booking is an admin-only accounting act. Round 69 also made a marked
+   attendance final; adding a field admin flips would reopen that door.
+   Not on dailyRecordMarks either, which is dead state in this file but
+   whose rule is `read, write: if signedIn()` -- every signed-in device
+   could write the company's accounting marks.
+   So it is its own collection, one doc per date keyed by the date itself,
+   admin-only to read and to write. Undo DELETES that doc rather than
+   setting a flag to false, so "not booked" has exactly one
+   representation and the collection stays as small as the days booked. */
+function attendanceBookFor(dateKey){
+  const rec = (S.attendanceBooks || {})[String(dateKey || '')];
+  return (rec && rec.booked) ? rec : null;
+}
+// Every employee whose attendance is kept, temporary and permanent alike --
+// the same `role!=='admin'` roster the Attendance screen, the Mark-for-
+// someone picker and the monthly summary all already use, so a person can
+// never appear on one of those lists and be missing from this one.
+function attendanceRosterFor(dateKey){
+  return S.users.filter(u=>u && u.role!=='admin').map(u=>{
+    const st = attendanceStatusFor(u.username, dateKey);
+    return { username:u.username, name:u.name || u.username,
+             temporary:isTemporaryUser(u), status:st.status, record:st.record || null };
+  }).sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+}
+// The card is shown only on a day that HAS attendance. On a Sunday or a
+// declared holiday every row comes back 'sunday'/'holiday' and this is 0,
+// so the day offers nothing to book -- which is correct: nobody worked, and
+// there is no attendance line to put into the accounts.
+function attendanceMarkedCountFor(roster){
+  return (roster || []).filter(r=>r && (r.status==='present' || r.status==='absent')).length;
 }
 function attendanceStatusFor(username, dk){
   // ROUND 58 -- order matters here. A declared holiday is checked FIRST, so a
