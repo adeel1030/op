@@ -10,7 +10,7 @@
      the whole 1.35 MB down again on a phone. Up here it lands inside the
      first kilobyte, so the check costs a few KB instead of the entire app.
      The two can never be allowed to drift -- test_round60 fails if they do. -->
-<meta name="app-build" content="2026-10-20-firestore-preview112">
+<meta name="app-build" content="2026-10-20-firestore-preview113">
 <meta name="theme-color" content="#1E3F1B">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1591,6 +1591,14 @@
      size down, the same step the expenses card takes, so "₹1,25,000" fits on
      one line (.num will not let it wrap between its digits). */
   .salary-figures .today-cell .n{font-size:1rem;}
+  /* ROUND 85 -- four figures: two by two on a phone, one row on a laptop */
+  .salary-figures .today-grid.cols-4{grid-template-columns:repeat(2,1fr);gap:12px 6px;}
+  @media (min-width:700px){ .salary-figures .today-grid.cols-4{grid-template-columns:repeat(4,1fr);} }
+  /* a name in a salary table opens that person's sheet */
+  .sal-name-btn{background:none;border:none;padding:0;margin:0;font:inherit;font-weight:800;color:var(--primary);cursor:pointer;text-align:left;-webkit-appearance:none;appearance:none;}
+  .sal-name-btn:active{opacity:0.6;}
+  .salary-sheet .card{box-shadow:none;border:1px solid var(--border);margin-bottom:10px;}
+  .adv-person + .adv-person{border-top:1px solid var(--border);margin-top:8px;}
   .today-cell{text-align:center;min-width:0;}
   .today-cell .n{font-family:var(--font-mono);font-size:1.3125rem;font-weight:800;color:var(--ink-brand);line-height:1.15;font-variant-numeric:tabular-nums;}
   .today-cell .l{font-size:0.65625rem;color:var(--ink-soft);margin-top:3px;line-height:1.25;}
@@ -2489,7 +2497,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-10-20-firestore-preview112"; // ROUND 84 (2026-10-20). HALF DAY, and the admin's Salary tab no longer shows "Earned so far". Owner: "Admin ko Earned so far, this cycle ye q dikh rha h ye to Employee ko dikhna chahiye na" -- the running cycle's figure is the employee's own number and stays on their card; the admin's middle figure is now the advance still to recover. And "Half day attendence ka b option do. Salary m b": a third mark, type 'halfday', stored on the same one-record-per-person-per-day document as present and absent, so every rule about a mark (one per day, final once made, admin-only to change) applies to it unchanged. Two questions, answered once: attendanceIsWorking (a half day opens the app, allows entries, counts as present today) and attendanceDayValue (present 1, half day 0.5). Eleven places asked `type === 'present'`; each would have treated a half day as an ABSENCE -- locked the person out, put it on the monthly summary's absent list and paid nothing. Salary: a half day is 0.5 of a day for both bases; the monthly summary shows 4.5 present and lists the half days on their own line. Marked by admin or by whoever holds "mark others" (the team card has a third button); never self-marked. firestore.rules UNCHANGED -- the attendance rules never constrained the type. PREVIOUSLY, ROUND 83 (2026-10-20). SALARY ADVANCES, and the new-user role default. Owner: "Kisi b Employee ko Advance dene ka b Option rkho. (Date editable)", with his two answers: cut in FULL from the next salary marked paid (the rest from the one after if that salary is smaller), and shown to the employee in their own card. The ledger is two sums, never a stored balance: given = the salaryAdvances documents, recovered = advanceDeducted on the payrollRuns records; nothing holds a running figure two devices could overwrite. The cut is decided at the moment of Mark paid, min(outstanding, that salary), and recorded beside the gross as advanceDeducted and netPaid; every screen shows the same cut BEFORE that by allocating the outstanding to owed cycles oldest first. The date (and amount and note) is editable only while none of that advance has been cut yet -- cuts are taken oldest-first, so "untouched" is exact, and changing an advance that has already come out of a paid salary would rewrite money already handed over. salaryAdvances in firestore.rules: admin writes, the person it is about may read. ALSO: the Add user form selected NOTHING in its Role list, and ROLES is admin-first, so every new person started out as an Admin -- one careless Create made them one. It starts on a placeholder now, and both the create and edit paths refuse a missing or unknown role (the edit path used to save the Round 28 placeholder as an empty role). PREVIOUSLY, ROUND 82 (2026-10-20). THE SALARY TAB, and two fixes to the payroll form. Owner: "Salary ka Tab bana do ... Kiska kya amount ho gya or kitna dena h. Also Employees ki Unka Kitna payment h aj ki Date me" -- plus "Not on Payroll pr click kre to aage q Puch rha h salary" and "Admins ko Not on Payroll Hi rkho. Owner ke devices hn vo saare." ADMIN gets a Salary tab (forced in beside Attendance, and deliberately NOT in the Permission Manager checklist, so the company's pay can never be handed to another post): To pay now (closed cycles not marked paid -- the same rows as the Home alert, drawn by ONE function now), Earned so far this cycle, Not on payroll with a Set salary button, and Recently paid. "So far" is not a new formula: it is payrollLineFor over the whole running cycle, so future working days sit in a fixed salary's divisor exactly as they will at the end and the figure never jumps when the cycle closes; the current weekly cycle starts the day AFTER the last closed one, so on a Saturday nothing is counted twice. EVERYONE ELSE gets a My salary card on Home, and firestore.rules lets them read their OWN payrollSettings and payrollRuns documents (resource.data.username == request.auth.uid -- the form a where('username','==',me) query can be proven against) and nobody else's: their device never receives another salary. Writing stays admin's. THE FORM: "Not on payroll" now hides the basis and the amount; the Admin role replaces the whole block with one sentence, live as the Role select changes, and the reader and the writer both force an admin to none; and a cycle with no amount is REFUSED instead of silently saving as "not on payroll" -- the old behaviour made an employee vanish from the Salary screen with no message. firestore.rules: two read rules widened to own-documents-only. PREVIOUSLY, ROUND 81 (2026-10-20). DATE OF JOINING AND LEAVING, and the name tag that refused "Imran Shaikh". The owner: "back date me koi naya employee ki attendance b mang rha h". Measured first: the app had no idea WHEN anybody worked here, so every person was on every day's roster -- the Attendance screen showed a new joiner unmarked on every past day, Mark-for-someone offered him for any date, and the Monthly summary, which counts anything that is not present as ABSENT, listed fourteen absences for a man who joined on the 15th. Eleven places each wrote their own `S.users.filter(u=>u.role!=='admin')`, and the bug was the same missing condition in every one; they all ask attendanceRosterUsers(dateKey) now. joinedOn / leftOn (inclusive) live on the user doc, both optional, so every existing record is employed on every date and nothing changed by itself. A mark that already exists outside the dates is NOT deleted and NOT hidden: the Attendance screen shows it with a warning and neither the summary nor the salary counts it. markAttendanceForUser and recordPresent refuse a day outside the dates (clear stays allowed). Salary: a non-employed working day stays in a fixed salary's divisor, which is what makes a mid-cycle joiner or leaver pro rata. Past the leaving date every screen is a lock card -- the owner's choice; the Auth account itself can only be removed by Delete, and the card says so. No leaving date on your own account or on the literal "admin" account. A temporary employee's name tag is now made from the name (temp1, temp2 for a Hindi or Urdu name) instead of refusing one nobody had been told the rules for. Also: "days present" from Round 80 was never translated. firestore.rules UNCHANGED.
+const APP_BUILD = "2026-10-20-firestore-preview113"; // ROUND 85 (2026-10-20). THE SALARY PORTAL -- the owner's confirmed plan, plus all five of the suggestions. Round 84 removed the running-cycle table from admin; the owner meant RENAME it, so it is back as "To be paid as of now", net of the advance it would cut. Admin: four figures (to pay now, to be paid as of now, advance to recover, paid this month), the owed table, the running table, advances as a dated running ledger per person, Not on payroll, and a month-by-month payment history -- and every name opens that person's sheet (khata). Employees: their own Salary tab beside Attendance, which is the SAME sheet for themselves -- figures, days of leave month by month, advances, payments -- and their device holds no one else's salary (Round 82 rules). The five suggestions: (1) a most-to-cut-per-salary on each advance, which needs EVERY ADVANCE TO KNOW ITS OWN RECOVERY -- payments now store advanceCuts {advanceId: amount}; older ones are allocated oldest-first, the way they were taken; (2) paid leave per month, monthly cycles only, in halves, paid as days worked; (3) a working day already past with NO mark is counted, listed, and warned about before Mark paid -- it is not leave and is not paid; (4) salary payments and advances are entries in Daily Work, bookable, counted, in Book all and in the backlog, and a booked advance cannot be edited until unbooked; (5) a printable salary slip per payment. firestore.rules UNCHANGED. PREVIOUSLY, ROUND 84 (2026-10-20). HALF DAY, and the admin's Salary tab no longer shows "Earned so far". Owner: "Admin ko Earned so far, this cycle ye q dikh rha h ye to Employee ko dikhna chahiye na" -- the running cycle's figure is the employee's own number and stays on their card; the admin's middle figure is now the advance still to recover. And "Half day attendence ka b option do. Salary m b": a third mark, type 'halfday', stored on the same one-record-per-person-per-day document as present and absent, so every rule about a mark (one per day, final once made, admin-only to change) applies to it unchanged. Two questions, answered once: attendanceIsWorking (a half day opens the app, allows entries, counts as present today) and attendanceDayValue (present 1, half day 0.5). Eleven places asked `type === 'present'`; each would have treated a half day as an ABSENCE -- locked the person out, put it on the monthly summary's absent list and paid nothing. Salary: a half day is 0.5 of a day for both bases; the monthly summary shows 4.5 present and lists the half days on their own line. Marked by admin or by whoever holds "mark others" (the team card has a third button); never self-marked. firestore.rules UNCHANGED -- the attendance rules never constrained the type. PREVIOUSLY, ROUND 83 (2026-10-20). SALARY ADVANCES, and the new-user role default. Owner: "Kisi b Employee ko Advance dene ka b Option rkho. (Date editable)", with his two answers: cut in FULL from the next salary marked paid (the rest from the one after if that salary is smaller), and shown to the employee in their own card. The ledger is two sums, never a stored balance: given = the salaryAdvances documents, recovered = advanceDeducted on the payrollRuns records; nothing holds a running figure two devices could overwrite. The cut is decided at the moment of Mark paid, min(outstanding, that salary), and recorded beside the gross as advanceDeducted and netPaid; every screen shows the same cut BEFORE that by allocating the outstanding to owed cycles oldest first. The date (and amount and note) is editable only while none of that advance has been cut yet -- cuts are taken oldest-first, so "untouched" is exact, and changing an advance that has already come out of a paid salary would rewrite money already handed over. salaryAdvances in firestore.rules: admin writes, the person it is about may read. ALSO: the Add user form selected NOTHING in its Role list, and ROLES is admin-first, so every new person started out as an Admin -- one careless Create made them one. It starts on a placeholder now, and both the create and edit paths refuse a missing or unknown role (the edit path used to save the Round 28 placeholder as an empty role). PREVIOUSLY, ROUND 82 (2026-10-20). THE SALARY TAB, and two fixes to the payroll form. Owner: "Salary ka Tab bana do ... Kiska kya amount ho gya or kitna dena h. Also Employees ki Unka Kitna payment h aj ki Date me" -- plus "Not on Payroll pr click kre to aage q Puch rha h salary" and "Admins ko Not on Payroll Hi rkho. Owner ke devices hn vo saare." ADMIN gets a Salary tab (forced in beside Attendance, and deliberately NOT in the Permission Manager checklist, so the company's pay can never be handed to another post): To pay now (closed cycles not marked paid -- the same rows as the Home alert, drawn by ONE function now), Earned so far this cycle, Not on payroll with a Set salary button, and Recently paid. "So far" is not a new formula: it is payrollLineFor over the whole running cycle, so future working days sit in a fixed salary's divisor exactly as they will at the end and the figure never jumps when the cycle closes; the current weekly cycle starts the day AFTER the last closed one, so on a Saturday nothing is counted twice. EVERYONE ELSE gets a My salary card on Home, and firestore.rules lets them read their OWN payrollSettings and payrollRuns documents (resource.data.username == request.auth.uid -- the form a where('username','==',me) query can be proven against) and nobody else's: their device never receives another salary. Writing stays admin's. THE FORM: "Not on payroll" now hides the basis and the amount; the Admin role replaces the whole block with one sentence, live as the Role select changes, and the reader and the writer both force an admin to none; and a cycle with no amount is REFUSED instead of silently saving as "not on payroll" -- the old behaviour made an employee vanish from the Salary screen with no message. firestore.rules: two read rules widened to own-documents-only. PREVIOUSLY, ROUND 81 (2026-10-20). DATE OF JOINING AND LEAVING, and the name tag that refused "Imran Shaikh". The owner: "back date me koi naya employee ki attendance b mang rha h". Measured first: the app had no idea WHEN anybody worked here, so every person was on every day's roster -- the Attendance screen showed a new joiner unmarked on every past day, Mark-for-someone offered him for any date, and the Monthly summary, which counts anything that is not present as ABSENT, listed fourteen absences for a man who joined on the 15th. Eleven places each wrote their own `S.users.filter(u=>u.role!=='admin')`, and the bug was the same missing condition in every one; they all ask attendanceRosterUsers(dateKey) now. joinedOn / leftOn (inclusive) live on the user doc, both optional, so every existing record is employed on every date and nothing changed by itself. A mark that already exists outside the dates is NOT deleted and NOT hidden: the Attendance screen shows it with a warning and neither the summary nor the salary counts it. markAttendanceForUser and recordPresent refuse a day outside the dates (clear stays allowed). Salary: a non-employed working day stays in a fixed salary's divisor, which is what makes a mid-cycle joiner or leaver pro rata. Past the leaving date every screen is a lock card -- the owner's choice; the Auth account itself can only be removed by Delete, and the card says so. No leaving date on your own account or on the literal "admin" account. A temporary employee's name tag is now made from the name (temp1, temp2 for a Hindi or Urdu name) instead of refusing one nobody had been told the rules for. Also: "days present" from Round 80 was never translated. firestore.rules UNCHANGED.
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -3095,6 +3103,14 @@ function applyRolePermissionsToROLES(){
       const at = ROLES[role].tabs.indexOf('attendance');
       ROLES[role].tabs.splice(at === -1 ? ROLES[role].tabs.length : at + 1, 0, 'salary');
     }
+    // ROUND 85 -- "Employees ko b Salary ka Tab do Attendance ke sath".
+    // Everybody else gets it beside their own Attendance tab. It shows them
+    // their own sheet only (renderSalary), and their device holds no one
+    // else's salary to show (firestore.rules), so handing it out cannot leak.
+    if(role!=='admin' && !ROLES[role].tabs.includes('salary')){
+      const at = ROLES[role].tabs.indexOf('checkin');
+      ROLES[role].tabs.splice(at === -1 ? ROLES[role].tabs.length : at + 1, 0, 'salary');
+    }
   });
   if(S.currentUser && !roleDef(S.currentUser.role).tabs.includes(S.view)){
     S.view = roleDef(S.currentUser.role).tabs[0];
@@ -3370,6 +3386,48 @@ function normalizeTheme(code){
 }
 const I18N = {
   hi: {
+    // ROUND 85 -- the salary portal.
+    'paid leave':'छुट्टी (पैसे सहित)',
+    'working day(s) with no attendance — not paid':'काम के दिन जिनकी हाज़िरी नहीं लगी — पैसा नहीं बना',
+    'No advance taken.':'कोई एडवांस नहीं लिया।',
+    'Advance given':'एडवांस दिया',
+    'max':'ज़्यादा से ज़्यादा',
+    'per salary':'हर तनखाह से',
+    'Cut from salary':'तनखाह से कटा',
+    'booked':'बुक हो गया',
+    'being cut':'कट रहा है',
+    'Pay anyway':'फिर भी दे दें',
+    '🧾 Slip':'🧾 पर्ची',
+    'paid leave a month':'महीने की पैसे वाली छुट्टी',
+    'Salary not decided yet.':'तनखाह अभी तय नहीं हुई।',
+    'To be paid as of now':'आज तक कितना बना',
+    'Advance to repay':'एडवांस चुकाना बाकी',
+    'not marked':'हाज़िरी नहीं लगी',
+    'Days of leave':'छुट्टी के दिन',
+    'Absent is a day of leave, half day is half. A working day with no attendance is shown on its own — it is not leave, and it is not paid.':'गैरहाज़िर = 1 दिन छुट्टी, आधा दिन = आधी। जिस काम के दिन हाज़िरी नहीं लगी वह अलग दिखता है — वह छुट्टी नहीं है, और उसका पैसा नहीं बनता।',
+    'Leave':'छुट्टी',
+    'Not marked:':'हाज़िरी नहीं लगी:',
+    'Payment history':'पेमेंट का हिसाब',
+    'Cut from the next salary that is marked paid — in full, or no more than the most-per-salary set on the advance. Whatever is left comes out of the salary after.':'अगली दी जाने वाली तनखाह से कटता है — पूरा, या एडवांस पर लिखी हद तक। जो बचे वह उसके बाद वाली तनखाह से।',
+    'No advance given yet.':'अभी कोई एडवांस नहीं दिया।',
+    'Tap a name for that person\'s full sheet.':'किसी नाम पर टैप करें तो उसका पूरा हिसाब खुलेगा।',
+    'Paid this month':'इस महीने दी गई',
+    'on payroll':'तनखाह पर',
+    'The cycle that is still running, up to today, after the advance it would cut. It moves to To pay now when the cycle closes.':'जो साइकिल अभी चल रहा है, आज तक का, एडवांस कटने के बाद। साइकिल बंद होते ही "अभी देना है" में चला जाएगा।',
+    'As of now':'आज तक',
+    'Nobody is on the payroll yet.':'अभी कोई तनखाह पर नहीं है।',
+    'Details ›':'पूरा देखें ›',
+    'working day(s) have no attendance:':'काम के दिन की हाज़िरी नहीं लगी:',
+    'They are not paid. If they worked, mark the attendance first.':'उनका पैसा नहीं बना। काम किया था तो पहले हाज़िरी लगाएं।',
+    'This advance is booked in Daily Work. Undo the booking there first, then change it.':'यह एडवांस Daily Work में बुक हो चुका है। पहले वहाँ बुकिंग हटाएं, फिर बदलें।',
+    'Most to cut from one salary (₹, optional)':'एक तनखाह से ज़्यादा से ज़्यादा कितना कटे (₹, ज़रूरी नहीं)',
+    'Blank = cut in full':'खाली = पूरा कटेगा',
+    'For example 1000: each salary gives back at most 1000 until the advance is repaid.':'जैसे 1000: हर तनखाह से ज़्यादा से ज़्यादा 1000 कटेगा, जब तक एडवांस पूरा न हो।',
+    'The most to cut from one salary must be between 1 and the advance amount.':'एक तनखाह से कटने वाली रकम 1 से एडवांस की रकम के बीच होनी चाहिए।',
+    'Salary & advances':'तनखाह और एडवांस',
+    'Paid leave must be between 0 and 10 days a month.':'पैसे वाली छुट्टी महीने में 0 से 10 दिन के बीच होनी चाहिए।',
+    'Paid leave per month (days)':'महीने की पैसे वाली छुट्टी (दिन)',
+    'This many days of leave in a month are paid as if worked. A half day uses half a day of it. Monthly salary only.':'महीने में इतने दिन की छुट्टी का पैसा काम किए दिन जैसा बनेगा। आधा दिन इसमें से आधा लेता है। सिर्फ मासिक तनखाह के लिए।',
     // ROUND 84 -- half day.
     'Half day':'आधा दिन',
     'half day':'आधा दिन',
@@ -4031,6 +4089,48 @@ const I18N = {
     'Only an admin can write an order note':'ऑर्डर नोट सिर्फ़ एडमिन लिख सकता है',
   },
   ur: {
+    // ROUND 85 -- the salary portal.
+    'paid leave':'چھٹی (تنخواہ کے ساتھ)',
+    'working day(s) with no attendance — not paid':'کام کے دن جن کی حاضری نہیں لگی — پیسہ نہیں بنا',
+    'No advance taken.':'کوئی ایڈوانس نہیں لیا۔',
+    'Advance given':'ایڈوانس دیا',
+    'max':'زیادہ سے زیادہ',
+    'per salary':'ہر تنخواہ سے',
+    'Cut from salary':'تنخواہ سے کٹا',
+    'booked':'بک ہو گیا',
+    'being cut':'کٹ رہا ہے',
+    'Pay anyway':'پھر بھی دے دیں',
+    '🧾 Slip':'🧾 پرچی',
+    'paid leave a month':'مہینے کی تنخواہ والی چھٹی',
+    'Salary not decided yet.':'تنخواہ ابھی طے نہیں ہوئی۔',
+    'To be paid as of now':'آج تک کتنا بنا',
+    'Advance to repay':'ایڈوانس چکانا باقی',
+    'not marked':'حاضری نہیں لگی',
+    'Days of leave':'چھٹی کے دن',
+    'Absent is a day of leave, half day is half. A working day with no attendance is shown on its own — it is not leave, and it is not paid.':'غیر حاضر = 1 دن چھٹی، آدھا دن = آدھی۔ جس کام کے دن حاضری نہیں لگی وہ الگ دکھتا ہے — وہ چھٹی نہیں ہے، اور اس کا پیسہ نہیں بنتا۔',
+    'Leave':'چھٹی',
+    'Not marked:':'حاضری نہیں لگی:',
+    'Payment history':'ادائیگی کا حساب',
+    'Cut from the next salary that is marked paid — in full, or no more than the most-per-salary set on the advance. Whatever is left comes out of the salary after.':'اگلی دی جانے والی تنخواہ سے کٹتا ہے — پورا، یا ایڈوانس پر لکھی حد تک۔ جو بچے وہ اس کے بعد والی تنخواہ سے۔',
+    'No advance given yet.':'ابھی کوئی ایڈوانس نہیں دیا۔',
+    'Tap a name for that person\'s full sheet.':'کسی نام پر ٹیپ کریں تو اس کا پورا حساب کھلے گا۔',
+    'Paid this month':'اس مہینے دی گئی',
+    'on payroll':'تنخواہ پر',
+    'The cycle that is still running, up to today, after the advance it would cut. It moves to To pay now when the cycle closes.':'جو سائیکل ابھی چل رہا ہے، آج تک کا، ایڈوانس کٹنے کے بعد۔ سائیکل بند ہوتے ہی "ابھی دینا ہے" میں چلا جائے گا۔',
+    'As of now':'آج تک',
+    'Nobody is on the payroll yet.':'ابھی کوئی تنخواہ پر نہیں ہے۔',
+    'Details ›':'پورا دیکھیں ›',
+    'working day(s) have no attendance:':'کام کے دن کی حاضری نہیں لگی:',
+    'They are not paid. If they worked, mark the attendance first.':'ان کا پیسہ نہیں بنا۔ کام کیا تھا تو پہلے حاضری لگائیں۔',
+    'This advance is booked in Daily Work. Undo the booking there first, then change it.':'یہ ایڈوانس Daily Work میں بک ہو چکا ہے۔ پہلے وہاں بکنگ ہٹائیں، پھر بدلیں۔',
+    'Most to cut from one salary (₹, optional)':'ایک تنخواہ سے زیادہ سے زیادہ کتنا کٹے (₹، اختیاری)',
+    'Blank = cut in full':'خالی = پورا کٹے گا',
+    'For example 1000: each salary gives back at most 1000 until the advance is repaid.':'جیسے 1000: ہر تنخواہ سے زیادہ سے زیادہ 1000 کٹے گا، جب تک ایڈوانس پورا نہ ہو۔',
+    'The most to cut from one salary must be between 1 and the advance amount.':'ایک تنخواہ سے کٹنے والی رقم 1 سے ایڈوانس کی رقم کے درمیان ہونی چاہیے۔',
+    'Salary & advances':'تنخواہ اور ایڈوانس',
+    'Paid leave must be between 0 and 10 days a month.':'تنخواہ والی چھٹی مہینے میں 0 سے 10 دن کے درمیان ہونی چاہیے۔',
+    'Paid leave per month (days)':'مہینے کی تنخواہ والی چھٹی (دن)',
+    'This many days of leave in a month are paid as if worked. A half day uses half a day of it. Monthly salary only.':'مہینے میں اتنے دن کی چھٹی کا پیسہ کام کیے دن جیسا بنے گا۔ آدھا دن اس میں سے آدھا لیتا ہے۔ صرف ماہانہ تنخواہ کے لیے۔',
     // ROUND 84 -- half day.
     'Half day':'آدھا دن',
     'half day':'آدھا دن',
@@ -12684,8 +12784,17 @@ function renderDailyWork(){
   const attendanceIsBooked = !!attendanceBookRec;
   const attendanceEntryCount = attendanceSectionActive ? 1 : 0;
 
-  const bookedCount = allEntries.filter(e=>e.booked).length + (attendanceIsBooked ? 1 : 0);
-  const totalCount = allEntries.length + attendanceEntryCount;
+  // ROUND 85 -- the owner's "salah 4": a salary paid and an advance given
+  // are money out, and go into the accounting software like everything else
+  // on this screen. Admin only: nobody else's device holds them.
+  const salaryRunsToday = isAdmin ? payrollPaidRecordsFor(null).filter(r=>localDateKey(r.paidAt) === date) : [];
+  const advancesToday = isAdmin ? Object.keys(S.salaryAdvances || {}).map(k=>S.salaryAdvances[k])
+    .filter(a=>a && a.dateKey === date && Number(a.amount) > 0) : [];
+  const salaryEntries = salaryRunsToday.length + advancesToday.length;
+  const salaryBooked = salaryRunsToday.filter(r=>r.booked).length + advancesToday.filter(a=>a.booked).length;
+
+  const bookedCount = allEntries.filter(e=>e.booked).length + (attendanceIsBooked ? 1 : 0) + salaryBooked;
+  const totalCount = allEntries.length + attendanceEntryCount + salaryEntries;
 
   // Backlog check: does any day BEFORE the one currently shown here still
   // have unbooked entries sitting around? Surfaced as a warning banner up
@@ -12700,7 +12809,11 @@ function renderDailyWork(){
   // they could, is a warning with no action behind it.
   const backlogSource = restrictedToProduction
     ? S.activityLog.filter(e=>(e.kind==='filling'||e.kind==='packaging') && minePredicate(e))
-    : [...S.activityLog, ...S.expenses, ...S.retailSales, ...S.orders];
+    : [...S.activityLog, ...S.expenses, ...S.retailSales, ...S.orders,
+       // ROUND 85 -- unbooked salary payments and advances from earlier days
+       ...(isAdmin ? payrollPaidRecordsFor(null).map(r=>({ at: r.paidAt, booked: !!r.booked })) : []),
+       ...(isAdmin ? Object.keys(S.salaryAdvances || {}).map(k=>S.salaryAdvances[k]).filter(a=>a && a.dateKey)
+           .map(a=>({ at: dateKeyToTs(a.dateKey), booked: !!a.booked })) : [])];
   const prevUnbookedDates = [...new Set(
     backlogSource.filter(e => !e.booked && entryDateKey(e) < date).map(entryDateKey)
   )].sort();
@@ -12806,6 +12919,20 @@ function renderDailyWork(){
   // ROUND 80 -- one card, one table, one tick. The per-row cell carries no
   // button at all: a tick per person is exactly what the owner did not ask
   // for, and the day is either in the accounts or it is not.
+  const salaryHtml = `<div class="card">
+    <h2>💸 ${esc(t('Salary & advances'))} — ${entryCountText(salaryEntries)}</h2>
+    <table><tbody>
+    ${salaryRunsToday.map(r=>`<tr${r.booked?' style="opacity:0.55;"':''}><td><b>${esc(r.name || r.username)}</b>
+        <div class="note">${esc(t('Salary'))} · ${esc(payrollPeriodLabel(r))}${Number(r.advanceDeducted) > 0 ? ` · ${rupees(r.amount)} − ${esc(t('advance'))} ${rupees(r.advanceDeducted)}` : ''}</div></td>
+      <td class="num">${rupees(runNet(r))}</td>
+      <td class="row-actions"><button type="button" class="btn btn-sm ${r.booked ? 'btn-outline' : 'btn-accent'}" data-salbook="run|${esc(r.id)}">${esc(t(r.booked ? '↩ Undo' : '✅ Book'))}</button></td></tr>`).join('')}
+    ${advancesToday.map(a=>`<tr${a.booked?' style="opacity:0.55;"':''}><td><b>${esc(a.name || a.username)}</b>
+        <div class="note">${esc(t('Advance given'))}${a.note ? ' · ' + esc(a.note) : ''}</div></td>
+      <td class="num">${rupees(a.amount)}</td>
+      <td class="row-actions"><button type="button" class="btn btn-sm ${a.booked ? 'btn-outline' : 'btn-accent'}" data-salbook="adv|${esc(a.id)}">${esc(t(a.booked ? '↩ Undo' : '✅ Book'))}</button></td></tr>`).join('')}
+    </tbody></table>
+  </div>`;
+
   const attendanceHtml = `<div class="card">
     <h2>🧍 ${esc(t('Attendance'))} — ${entryCountText(1)}</h2>
     <p class="desc" style="margin-top:-6px;">${esc(t('The whole day\'s attendance counts as one entry here — book it once, as one line in your accounting software.'))}</p>
@@ -12856,6 +12983,7 @@ function renderDailyWork(){
         // 0 count: an empty attendance card would sink to the bottom and
         // say nothing, on every Sunday and every holiday.
         ...(attendanceSectionActive ? [{ count: 1, html: attendanceHtml }] : []),
+        ...(salaryEntries ? [{ count: salaryEntries, html: salaryHtml }] : []), // ROUND 85
       ];
   sections.sort((a,b)=> (b.count>0?1:0) - (a.count>0?1:0));
 
@@ -13016,6 +13144,29 @@ function toggleAttendanceBooked(dateKey, force){
   fsSetStaticSubKey('attendanceBooks', dk, rec);
   return true;
 }
+// ROUND 85 -- booking a salary payment or an advance into the accounts.
+// `force` (Book all remaining) only ever books, never un-books.
+function toggleSalaryBooked(kind, id, force){
+  if(!S.currentUser || S.currentUser.role !== 'admin') return false;
+  if(kind === 'run'){
+    const r = (S.payrollRuns || {})[id];
+    if(!r) return false;
+    const next = force ? true : !r.booked;
+    if(next === !!r.booked) return false;
+    r.booked = next;
+    fsSetStaticSubKey('payrollRuns', id, { booked: next, bookedAt: Date.now(), bookedByName: S.currentUser.name || S.currentUser.username });
+    return true;
+  }
+  if(kind === 'adv'){
+    const a = (S.salaryAdvances || {})[id];
+    if(!a) return false;
+    const next = force ? true : !a.booked;
+    if(next === !!a.booked) return false;
+    saveSalaryAdvance(Object.assign({}, a, { booked: next, bookedAt: Date.now(), bookedByName: S.currentUser.name || S.currentUser.username }));
+    return true;
+  }
+  return false;
+}
 function printDailyWork(){
   // Mirrors renderDailyWork's own visibility rule -- Packaging team only
   // ever prints Filling + Packing, never Purchase/Expenses/Retail/Orders.
@@ -13061,6 +13212,17 @@ function printDailyWork(){
 
     html += `<h2>🛍️ New Orders ${totalOrderValue?`— Total ₹${totalOrderValue.toLocaleString('en-IN')}`:''}</h2>` + table(['Party','Items','MRP Value','By','Time'],
       newOrderEntries.map(o=>`<tr><td>${esc(orderDisplayLabel(o))}</td><td>${o.items.filter(i=>!i.cancelled).map(i=>`${esc(i.name)} ${esc(i.size)} ×${i.qty}`).join(', ')}</td><td>₹${orderMrpValue(o).toLocaleString('en-IN')}</td><td>${esc(o.createdBy)}</td><td>${fmtTime(o.createdAt)}</td></tr>`).join(''));
+  }
+
+  // ROUND 85 -- salary payments and advances on the day's sheet, admin only
+  if(S.currentUser.role==='admin'){
+    const runs = payrollPaidRecordsFor(null).filter(r=>localDateKey(r.paidAt) === date);
+    const advs = Object.keys(S.salaryAdvances || {}).map(k=>S.salaryAdvances[k]).filter(a=>a && a.dateKey === date && Number(a.amount) > 0);
+    if(runs.length || advs.length){
+      html += `<h2>💸 Salary &amp; advances</h2>` + table(['Employee','What','Amount'],
+        runs.map(r=>`<tr><td>${esc(r.name || r.username)}</td><td>Salary · ${esc(payrollPeriodLabel(r))}${Number(r.advanceDeducted) > 0 ? ` (${rupees(r.amount)} − advance ${rupees(r.advanceDeducted)})` : ''}</td><td>${rupees(runNet(r))}</td></tr>`).join('')
+        + advs.map(a=>`<tr><td>${esc(a.name || a.username)}</td><td>Advance given${a.note ? ' · ' + esc(a.note) : ''}</td><td>${rupees(a.amount)}</td></tr>`).join(''));
+    }
   }
 
   // ROUND 80 -- the attendance line, on the same sheet that goes into the
@@ -13111,6 +13273,13 @@ function bindDailyWork(){
     toggleEntryBooked(source, id);
   }));
   // ROUND 80 -- the attendance card's single tick for the whole day.
+  // ROUND 85 -- salary payments and advances
+  document.querySelectorAll('[data-salbook]').forEach(b=>b.addEventListener('click', ()=>{
+    const [kind, id] = b.dataset.salbook.split('|');
+    const was = kind === 'run' ? !!((S.payrollRuns||{})[id]||{}).booked : !!((S.salaryAdvances||{})[id]||{}).booked;
+    if(!toggleSalaryBooked(kind, id, false)){ render(); return; }
+    render(); showToast(was ? 'Unbooked' : 'Booked ✅');
+  }));
   document.querySelectorAll('[data-att-book]').forEach(b=>b.addEventListener('click', ()=>{
     const wasBooked = !!attendanceBookFor(b.dataset.attBook);
     if(!toggleAttendanceBooked(b.dataset.attBook, false)){ render(); return; }
@@ -13136,6 +13305,9 @@ function bindDailyWork(){
     // the entries the counter above it counts. force=true so a day already
     // booked is left alone rather than toggled back off.
     toggleAttendanceBooked(date, true);
+    // ROUND 85 -- and the day's salary payments and advances
+    payrollPaidRecordsFor(null).filter(r=>localDateKey(r.paidAt) === date && !r.booked).forEach(r=>toggleSalaryBooked('run', r.id, true));
+    Object.keys(S.salaryAdvances || {}).map(k=>S.salaryAdvances[k]).filter(a=>a && a.dateKey === date && !a.booked).forEach(a=>toggleSalaryBooked('adv', a.id, true));
     // ROUND 65: this button would otherwise be a one-click bypass of the
     // billing checklist, which would make the checklist pointless. Orders
     // whose checklist isn't finished are held back and counted; everything
@@ -18018,7 +18190,14 @@ function readUserPayFields(){
   // payroll", so the admin chose Weekly, forgot the figure, pressed Save and
   // got an employee who would never appear on the Salary screen. Said now.
   if(rate === 0) return { error: t('Enter the salary amount, or choose Not on payroll.') };
-  return { payCycle:cycle, payBasis:basis, payRate:rate };
+  // ROUND 85 -- paid leave, monthly only, in halves, 0 to 10
+  const leaveEl = document.getElementById('uPaidLeave');
+  const leaveRaw = Number(leaveEl ? leaveEl.value : 0);
+  if(cycle === 'monthly' && leaveEl && leaveEl.value !== '' && (!isFinite(leaveRaw) || leaveRaw < 0 || leaveRaw > 10)){
+    return { error: t('Paid leave must be between 0 and 10 days a month.') };
+  }
+  const paidLeavePerMonth = (cycle === 'monthly' && isFinite(leaveRaw) && leaveRaw > 0) ? Math.round(leaveRaw * 2) / 2 : 0;
+  return { payCycle:cycle, payBasis:basis, payRate:rate, paidLeavePerMonth };
 }
 function openUserModal(id){
   const existing = id ? S.users.find(u=>u.id===id) : null;
@@ -18152,6 +18331,11 @@ function openUserModal(id){
         <input id="uPayRate" type="number" min="0" step="1" value="${existing&&payRateOf(existing)?payRateOf(existing):''}" />
         <div class="note" style="margin-top:4px;">${esc(t('Per day: this much for every day they are present. Fixed: this much for a full cycle, cut in proportion to the working days missed. A Sunday or a declared holiday is never cut.'))}</div>
       </div>
+      ${/* ROUND 85 -- paid leave, shown only for a monthly cycle */''}
+      <div class="field" id="uPaidLeaveField" style="${payCycleOf(existing) === 'monthly' ? '' : 'display:none;'}"><label>${esc(t('Paid leave per month (days)'))}</label>
+        <input id="uPaidLeave" type="number" min="0" max="10" step="0.5" value="${existing && paidLeaveOf(existing) ? paidLeaveOf(existing) : ''}" placeholder="0" />
+        <div class="note" style="margin-top:4px;">${esc(t('This many days of leave in a month are paid as if worked. A half day uses half a day of it. Monthly salary only.'))}</div>
+      </div>
       </div>
       </div>
       <div class="modal-actions">
@@ -18224,6 +18408,8 @@ function openUserModal(id){
     if(block) block.style.display = isAdminRole ? 'none' : '';
     if(note) note.style.display = isAdminRole ? '' : 'none';
     if(details) details.style.display = (payCycleSel && payCycleSel.value !== 'none') ? '' : 'none';
+    const leaveField = document.getElementById('uPaidLeaveField'); // ROUND 85
+    if(leaveField) leaveField.style.display = (payCycleSel && payCycleSel.value === 'monthly') ? '' : 'none';
   };
   if(payCycleSel) payCycleSel.addEventListener('change', fitPayFields);
   if(roleSel) roleSel.addEventListener('change', fitPayFields);
@@ -20782,8 +20968,14 @@ function payrollSettingsFor(username){
   const basis = raw.payBasis === 'fixed' ? 'fixed' : 'daily';
   const rateNum = Number(raw.payRate);
   const rate = (isFinite(rateNum) && rateNum > 0) ? rateNum : 0;
-  return { payCycle: cycle, payBasis: basis, payRate: rate };
+  // ROUND 85 -- paid leave per month (the owner's "salah 2"). Monthly cycles
+  // only: a monthly allowance cannot be divided honestly across weeks that
+  // straddle two months. Kept in halves, because a half day is half a leave.
+  const leaveNum = Number(raw.paidLeavePerMonth);
+  const paidLeave = (cycle === 'monthly' && isFinite(leaveNum) && leaveNum > 0) ? Math.min(10, Math.round(leaveNum * 2) / 2) : 0;
+  return { payCycle: cycle, payBasis: basis, payRate: rate, paidLeavePerMonth: paidLeave };
 }
+function paidLeaveOf(u){ return payrollSettingsFor(u && u.username).paidLeavePerMonth; }
 function payCycleOf(u){ return payrollSettingsFor(u && u.username).payCycle; }
 function payBasisOf(u){ return payrollSettingsFor(u && u.username).payBasis; }
 function payRateOf(u){ return payrollSettingsFor(u && u.username).payRate; }
@@ -20798,8 +20990,9 @@ function savePayrollSettings(username, pay){
   const target = (S.users || []).find(x=>x && x.username === username);
   if(target && target.role === 'admin') pay = { payCycle:'none', payBasis:'daily', payRate:0 };
   const cur = payrollSettingsFor(username);
-  if(cur.payCycle === pay.payCycle && cur.payBasis === pay.payBasis && cur.payRate === pay.payRate) return false;
-  const rec = { username: String(username), payCycle: pay.payCycle, payBasis: pay.payBasis, payRate: pay.payRate };
+  const leave = pay.payCycle === 'monthly' ? (Number(pay.paidLeavePerMonth) || 0) : 0; // ROUND 85
+  if(cur.payCycle === pay.payCycle && cur.payBasis === pay.payBasis && cur.payRate === pay.payRate && cur.paidLeavePerMonth === leave) return false;
+  const rec = { username: String(username), payCycle: pay.payCycle, payBasis: pay.payBasis, payRate: pay.payRate, paidLeavePerMonth: leave };
   S.payrollSettings[String(username)] = rec;
   fsSetStaticSubKey('payrollSettings', username, rec);
   return true;
@@ -20870,7 +21063,14 @@ function attendanceLoadedFromKey(nowTs){
 }
 function payrollLineFor(u, period, nowTs){
   const loadedFrom = attendanceLoadedFromKey(nowTs);
+  const todayKey = localDateKey(nowTs || Date.now());
   let workingDays = 0, presentDays = 0, absentDays = 0, unmarkedDays = 0, notLoadedDays = 0, notEmployedDays = 0, halfDays = 0;
+  // ROUND 85 -- a working day that has already happened and has NO mark at
+  // all. Not an absence, not paid: the owner's "salah 3" -- say so before
+  // paying, because it is how a short salary gets paid without anybody
+  // noticing. (Future days of a running cycle are unmarked too; they are not
+  // these.)
+  let unmarkedPastDays = 0; const unmarkedPastDates = [];
   payrollDateKeysBetween(period.startKey, period.endKey).forEach(k=>{
     if(!isWorkingDay(k)) return;
     // A day whose records this device never loaded is NOT an absence and is
@@ -20891,16 +21091,23 @@ function payrollLineFor(u, period, nowTs){
     if(st === 'present') presentDays++;
     else if(st === 'halfday'){ presentDays += 0.5; halfDays++; }
     else if(st === 'absent') absentDays++;
-    else unmarkedDays++;
+    else { unmarkedDays++; if(k <= todayKey){ unmarkedPastDays++; unmarkedPastDates.push(k); } }
   });
   const basis = payBasisOf(u), rate = payRateOf(u);
+  // ROUND 85 -- paid leave: up to the monthly allowance, a day of leave is
+  // paid as a day worked. Leave is what was MARKED -- absent 1, half day 0.5;
+  // a day with no mark is not leave, it is a missing mark (see above).
+  const leaveDays = absentDays + 0.5 * halfDays;
+  const paidLeaveUsed = period.cycle === 'monthly' ? Math.min(paidLeaveOf(u), leaveDays) : 0;
+  const payableDays = presentDays + paidLeaveUsed;
   const amount = basis === 'fixed'
-    ? (workingDays > 0 ? Math.round(rate * (presentDays / workingDays)) : 0)
-    : Math.round(rate * presentDays);
+    ? (workingDays > 0 ? Math.round(rate * (payableDays / workingDays)) : 0)
+    : Math.round(rate * payableDays);
   return { username: u.username, name: u.name || u.username, cycle: period.cycle,
            startKey: period.startKey, endKey: period.endKey,
            basis, rate, workingDays, presentDays, absentDays, unmarkedDays,
-           notLoadedDays, notEmployedDays, halfDays, amount, datesLine: employmentDatesLine(u) };
+           notLoadedDays, notEmployedDays, halfDays, amount, datesLine: employmentDatesLine(u),
+           leaveDays, paidLeaveUsed, payableDays, unmarkedPastDays, unmarkedPastDates };
 }
 function payrollRunId(username, endKey){ return String(username) + '__' + String(endKey); }
 function payrollRunPaid(username, endKey){
@@ -20916,7 +21123,8 @@ function payrollDueLines(nowTs){
       const line = payrollLineFor(u, period, now);
       // Nothing present is nothing owed. This is also what keeps somebody who
       // joined last week out of eight weeks of invented back pay.
-      if(line.presentDays === 0) return;
+      // ROUND 85: payable, not present -- a month spent on paid leave is owed.
+      if(line.payableDays === 0) return;
       out.push(line);
     });
   });
@@ -20946,8 +21154,12 @@ function markPayrollPaid(username, endKey){
   // ROUND 83 -- the advance cut, decided HERE, at the moment of paying, from
   // the ledger as it stands right now. `amount` stays the salary earned;
   // `advanceDeducted` is what came back; `netPaid` is what was handed over.
-  const advanceDeducted = Math.min(advanceLedgerFor(username).outstanding, line.amount);
-  const rec = Object.assign({ id }, line, { advanceDeducted, netPaid: line.amount - advanceDeducted, paidAt: Date.now(),
+  // ROUND 85 -- per advance, oldest first, each one no more than its own
+  // "max cut per salary"; the breakdown is stored so each advance knows
+  // exactly how much of it has come back.
+  const plan = advanceCutPlan(advanceStateFor(username), line.amount);
+  const advanceDeducted = plan.total;
+  const rec = Object.assign({ id }, line, { advanceDeducted, advanceCuts: plan.byId, netPaid: line.amount - advanceDeducted, paidAt: Date.now(),
     paidByUsername: S.currentUser.username,
     paidByName: S.currentUser.name || S.currentUser.username });
   S.payrollRuns[id] = rec;
@@ -21007,34 +21219,80 @@ function salaryAdvancesFor(username){
     .filter(a=>a && a.username === username && Number(a.amount) > 0)
     .sort((a,b)=> a.dateKey === b.dateKey ? (a.givenAt||0) - (b.givenAt||0) : (a.dateKey < b.dateKey ? -1 : 1));
 }
+/* ROUND 85 -- EVERY ADVANCE KNOWS HOW MUCH OF IT HAS COME BACK.
+   Round 83 kept one pool per person. The owner's "salah 1" -- a maximum cut
+   per salary, set on each advance -- breaks a pool: with a cap, a newer
+   advance can be cut while an older one still has some left. So a payment
+   now stores advanceCuts {advanceId: amount}, and each advance's recovered
+   figure is the sum of its own cuts.
+   Payments made before this round carry only advanceDeducted. Those were
+   always taken oldest-first, so they are allocated oldest-first here -- the
+   allocation they were made with -- and both kinds sum to the same totals.
+   An advance never shows more recovered than it was: anything left over (two
+   devices racing a delete against a payment) is dropped, not carried, so no
+   salary can ever be cut below what was actually owed. */
+function advanceStateFor(username){
+  const advances = salaryAdvancesFor(username).map(a=>Object.assign({}, a, { amount: Math.round(Number(a.amount) || 0), recovered: 0 }));
+  const byId = {};
+  advances.forEach(a=>{ byId[a.id] = a; });
+  let legacy = 0;
+  payrollPaidRecordsFor(username).forEach(r=>{
+    if(r.advanceCuts && typeof r.advanceCuts === 'object'){
+      Object.keys(r.advanceCuts).forEach(id=>{
+        const v = Math.max(0, Math.round(Number(r.advanceCuts[id]) || 0));
+        if(byId[id]) byId[id].recovered += v;
+      });
+    } else {
+      legacy += Math.max(0, Math.round(Number(r.advanceDeducted) || 0));
+    }
+  });
+  advances.forEach(a=>{
+    const take = Math.min(Math.max(0, a.amount - a.recovered), legacy);
+    a.recovered += take; legacy -= take;
+    a.recovered = Math.min(a.recovered, a.amount);
+    a.remaining = Math.max(0, a.amount - a.recovered);
+  });
+  return advances;
+}
 function advanceLedgerFor(username){
-  const advances = salaryAdvancesFor(username);
-  const given = advances.reduce((s,a)=>s + Math.round(Number(a.amount) || 0), 0);
-  const recovered = payrollPaidRecordsFor(username)
-    .reduce((s,r)=>s + Math.max(0, Math.round(Number(r.advanceDeducted) || 0)), 0);
-  return { advances, given, recovered, outstanding: Math.max(0, given - recovered) };
+  const advances = advanceStateFor(username);
+  const given = advances.reduce((s,a)=>s + a.amount, 0);
+  const recovered = advances.reduce((s,a)=>s + a.recovered, 0);
+  return { advances, given, recovered, outstanding: advances.reduce((s,a)=>s + a.remaining, 0) };
 }
 function advanceIsUntouched(adv){
   if(!adv) return false;
-  const L = advanceLedgerFor(adv.username);
-  let before = 0;
-  for(const a of L.advances){ if(a.id === adv.id) break; before += Math.round(Number(a.amount) || 0); }
-  return before >= L.recovered;
+  const a = advanceStateFor(adv.username).find(x=>x.id === adv.id);
+  return !!a && a.recovered === 0;
+}
+// What one salary of `gross` would cut, advance by advance, oldest first,
+// each no more than its own cap. MUTATES `state` (its `remaining`), so the
+// caller can chain several salaries through one state and get what each
+// would cut in turn.
+function advanceCutPlan(state, gross){
+  let left = Math.max(0, Math.round(Number(gross) || 0));
+  const byId = {}; let total = 0;
+  (state || []).forEach(a=>{
+    if(left <= 0 || !(a.remaining > 0)) return;
+    const cap = Number(a.maxCut) > 0 ? Math.round(Number(a.maxCut)) : Infinity;
+    const take = Math.min(a.remaining, cap, left);
+    if(take > 0){ byId[a.id] = take; total += take; left -= take; a.remaining -= take; }
+  });
+  return { total, byId };
 }
 // Owed lines with the advance cut applied, OLDEST cycle first, returned in
 // the order they came in. `amount` stays the gross; `net` is what to hand over.
 function payrollNetLines(lines){
   const out = (lines || []).map(l=>Object.assign({}, l));
-  const left = {};
+  const states = {};
   out.map((l,i)=>i)
     .sort((i,j)=> out[i].endKey < out[j].endKey ? -1 : (out[i].endKey > out[j].endKey ? 1 : 0))
     .forEach(i=>{
       const l = out[i];
-      if(!Object.prototype.hasOwnProperty.call(left, l.username)) left[l.username] = advanceLedgerFor(l.username).outstanding;
-      const cut = Math.min(left[l.username], l.amount);
-      left[l.username] -= cut;
-      l.advanceCut = cut;
-      l.net = l.amount - cut;
+      if(!states[l.username]) states[l.username] = advanceStateFor(l.username);
+      const plan = advanceCutPlan(states[l.username], l.amount);
+      l.advanceCut = plan.total;
+      l.net = l.amount - plan.total;
     });
   return out;
 }
@@ -21050,6 +21308,12 @@ function openAdvanceModal(existingAdv){
   if(!S.currentUser || S.currentUser.role !== 'admin') return;
   const today = localDateKey(Date.now());
   const editing = !!existingAdv;
+  // ROUND 85 -- a booked advance is in the accounting software already;
+  // changing it here would make the two disagree. Undo the booking first.
+  if(editing && existingAdv.booked){
+    showAlert(t('This advance is booked in Daily Work. Undo the booking there first, then change it.'));
+    return;
+  }
   if(editing && !advanceIsUntouched(existingAdv)){
     showAlert(t('Part of this advance has already been cut from a salary, so it can no longer be changed.'));
     return;
@@ -21074,6 +21338,12 @@ function openAdvanceModal(existingAdv){
       </div>
       <div class="field"><label>${esc(t('Amount (₹)'))}</label>
         <input id="advAmount" type="number" min="1" step="1" required value="${editing ? esc(String(existingAdv.amount)) : ''}" /></div>
+      ${/* ROUND 85 -- the owner's "salah 1": so a big advance does not leave
+           somebody with nothing in hand on payday. Blank keeps Round 83's
+           rule -- cut in full from the next salary. */''}
+      <div class="field"><label>${esc(t('Most to cut from one salary (₹, optional)'))}</label>
+        <input id="advMaxCut" type="number" min="1" step="1" value="${editing && Number(existingAdv.maxCut) > 0 ? esc(String(existingAdv.maxCut)) : ''}" placeholder="${esc(t('Blank = cut in full'))}" />
+        <div class="note" style="margin-top:4px;">${esc(t('For example 1000: each salary gives back at most 1000 until the advance is repaid.'))}</div></div>
       <div class="field"><label>${esc(t('Date'))}</label>
         <input id="advDate" type="date" required max="${today}" value="${esc(editing ? existingAdv.dateKey : today)}" /></div>
       <div class="field"><label>${esc(t('Note (optional)'))}</label>
@@ -21097,6 +21367,7 @@ function openAdvanceModal(existingAdv){
   if(delBtn) delBtn.addEventListener('click', ()=>{
     showConfirm(t('Delete this advance? It has not been cut from any salary yet.'), ()=>{
       if(!advanceIsUntouched(existingAdv)){ showAlert(t('Part of this advance has already been cut from a salary, so it can no longer be changed.')); return; }
+      if(S.salaryAdvances[existingAdv.id] && S.salaryAdvances[existingAdv.id].booked){ showAlert(t('This advance is booked in Daily Work. Undo the booking there first, then change it.')); return; }
       delete S.salaryAdvances[existingAdv.id];
       fsDeleteItem('salaryAdvances', existingAdv.id);
       closeModal(); render(); showToast('Deleted');
@@ -21109,87 +21380,43 @@ function openAdvanceModal(existingAdv){
     const amount = Math.round(Number(document.getElementById('advAmount').value));
     const dateKey = cleanDateKey(dateEl.value);
     const note = String(document.getElementById('advNote').value || '').trim().slice(0, 120);
+    const capRaw = String(document.getElementById('advMaxCut').value || '').trim();
+    const maxCut = capRaw === '' ? 0 : Math.round(Number(capRaw));
     if(!u){ showAlert(t('Pick the employee first.')); return; }
     if(u.role === 'admin'){ showAlert(t('Admin accounts are the owner\'s own devices and are never on the payroll.')); return; }
     if(!isFinite(amount) || amount <= 0 || amount > ADVANCE_MAX){ showAlert(t('Enter the advance amount.')); return; }
+    if(capRaw !== '' && (!isFinite(maxCut) || maxCut <= 0 || maxCut > amount)){ showAlert(t('The most to cut from one salary must be between 1 and the advance amount.')); return; }
     if(!dateKey){ showAlert(t('Pick the date the advance was given.')); return; }
     if(dateKey > today){ showAlert(t('An advance cannot be dated in the future.')); return; }
     if(!isEmployedOn(u, dateKey)){ showAlert(t('That date is outside this person\'s joining and leaving dates.')); return; }
     // re-checked at the moment of saving: a salary may have been marked paid
     // on another device while this form was open
     if(editing && !advanceIsUntouched(existingAdv)){ showAlert(t('Part of this advance has already been cut from a salary, so it can no longer be changed.')); return; }
+    if(editing && S.salaryAdvances[existingAdv.id] && S.salaryAdvances[existingAdv.id].booked){ showAlert(t('This advance is booked in Daily Work. Undo the booking there first, then change it.')); return; }
     const rec = editing
-      ? Object.assign({}, existingAdv, { amount, dateKey, note, editedAt: Date.now(), editedByName: S.currentUser.name || S.currentUser.username })
-      : { id: uid(), username, name: u.name || username, amount, dateKey, note,
+      ? Object.assign({}, existingAdv, { amount, dateKey, note, maxCut, editedAt: Date.now(), editedByName: S.currentUser.name || S.currentUser.username })
+      : { id: uid(), username, name: u.name || username, amount, dateKey, note, maxCut,
           givenAt: Date.now(), givenByUsername: S.currentUser.username, givenByName: S.currentUser.name || S.currentUser.username };
     saveSalaryAdvance(rec);
     closeModal(); render();
     showToast(editing ? 'Saved' : `${t('Advance recorded')} — ₹${amount.toLocaleString('en-IN')}`);
   });
 }
-function advancesCardHtml(){
-  const today = localDateKey(Date.now());
-  const people = (S.users || []).filter(u=>u && u.role !== 'admin');
-  const rows = people.map(u=>Object.assign({ u }, advanceLedgerFor(u.username)))
-    .filter(r=>r.outstanding > 0)
-    .sort((a,b)=>b.outstanding - a.outstanding);
-  const all = Object.keys(S.salaryAdvances || {}).map(k=>S.salaryAdvances[k]).filter(a=>a && Number(a.amount) > 0)
-    .sort((a,b)=> a.dateKey === b.dateKey ? (b.givenAt||0) - (a.givenAt||0) : (a.dateKey < b.dateKey ? 1 : -1))
-    .slice(0, 20);
-  const nameOf = un => { const u = (S.users||[]).find(x=>x && x.username === un); return u ? u.name : un; };
-  const total = rows.reduce((s,r)=>s + r.outstanding, 0);
-  return `<div class="card">
-    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-      <h2 style="margin:0;">💵 ${esc(t('Advances'))}${total ? ` — ₹${total.toLocaleString('en-IN')} ${esc(t('to recover'))}` : ''}</h2>
-      <button type="button" class="btn btn-primary btn-sm" id="giveAdvanceBtn">${esc(t('+ Give advance'))}</button>
-    </div>
-    <p class="desc" style="margin-top:6px;">${esc(t('Cut in full from the next salary that is marked paid. If that salary is smaller, the rest comes out of the one after.'))}</p>
-    ${rows.length ? `<table><thead><tr><th>${esc(t('Employee'))}</th><th>${esc(t('Still to cut'))}</th></tr></thead><tbody>
-      ${rows.map(r=>`<tr><td><b>${esc(r.u.name)}</b><div class="note">${esc(t('Given'))} ₹${r.given.toLocaleString('en-IN')} · ${esc(t('cut so far'))} ₹${r.recovered.toLocaleString('en-IN')}${payCycleOf(r.u) === 'none' ? ' · ' + esc(t('not on payroll yet')) : ''}</div></td>
-        <td class="num">₹${r.outstanding.toLocaleString('en-IN')}</td></tr>`).join('')}
-    </tbody></table>` : `<div class="empty">${esc(t('No advance waiting to be recovered.'))}</div>`}
-    ${all.length ? `<h3 style="margin:14px 0 6px;font-size:0.84375rem;">${esc(t('Advance history'))}</h3>
-    <table><tbody>${all.map(a=>{
-      const untouched = advanceIsUntouched(a);
-      return `<tr><td><b>${esc(a.name || nameOf(a.username))}</b>
-          <div class="note">${esc(fmtDateKeyShort(a.dateKey))}${a.note ? ' · ' + esc(a.note) : ''}${untouched ? '' : ' · ' + esc(t('already being cut — cannot be changed'))}</div></td>
-        <td class="num">₹${Number(a.amount).toLocaleString('en-IN')}</td>
-        <td class="row-actions">${untouched ? `<button type="button" class="btn btn-sm btn-outline" data-adv-edit="${esc(a.id)}">${esc(t('Edit'))}</button>` : ''}</td></tr>`;
-    }).join('')}</tbody></table>` : ''}
-  </div>`;
-}
-function payrollDueTableHtml(lines){
-  return `
-    <table><thead><tr><th>${esc(t('Employee'))}</th><th style="white-space:nowrap;">${esc(t('Amount'))}</th><th></th></tr></thead><tbody>
-    ${lines.map(l=>`<tr>
-      <td><b>${esc(l.name)}</b>
-        <div class="note">${esc(t(l.cycle === 'weekly' ? 'Weekly' : 'Monthly'))} · ${esc(t(l.basis === 'fixed' ? 'Fixed' : 'Per day'))} ₹${l.rate.toLocaleString('en-IN')}</div>
-        <div class="note">${esc(payrollPeriodLabel(l))} · ${fmtDayCount(l.presentDays)}/${l.workingDays} ${esc(t('days present'))}${l.halfDays ? ` (${l.halfDays} ${esc(t('half day'))})` : ''}</div>
-        ${l.notEmployedDays && l.datesLine ? `<div class="note">${esc(l.datesLine)} — ${esc(t('paid for the days they were here'))}</div>` : ''}
-        ${l.notLoadedDays ? `<div class="note" style="color:var(--danger);">${l.notLoadedDays} ${esc(t('day(s) not loaded'))}</div>` : ''}
-        ${l.advanceCut ? `<div class="note" style="color:var(--warning);">₹${l.amount.toLocaleString('en-IN')} − ${esc(t('advance'))} ₹${l.advanceCut.toLocaleString('en-IN')}</div>` : ''}</td>
-      <td class="num">₹${lineNet(l).toLocaleString('en-IN')}</td>
-      <td class="row-actions"><button type="button" class="btn btn-sm btn-accent" data-pay-mark="${esc(l.username)}|${esc(l.endKey)}">${esc(t('Mark paid'))}</button></td>
-    </tr>`).join('')}
-    </tbody></table>`;
-}
-/* ===== ROUND 82: THE SALARY TAB ==========================================
-   Owner: "Salary ka Tab bana do. Usme dikhao sb Admin ko Kiska kya amount ho
-   gya or kitna dena h. Also Employees ki Unka Kitna payment h aj ki Date me."
-   Two different readers, two different screens:
-     ADMIN -- everybody: what is owed now (finished cycles not yet marked
-       paid), what each person has earned so far in the cycle that is still
-       running, who is not on the payroll yet, and what was paid recently.
-     EVERYONE ELSE -- their own figures and nobody else's, on their Home
-       screen. firestore.rules lets them read their OWN payrollSettings and
-       payrollRuns documents and no others, so this is not a screen hiding
-       other people's salaries: their device never receives them.
-   "SO FAR" IS NOT A NEW FORMULA. It is payrollLineFor over the WHOLE cycle
-   that is running now. The days still to come are working days nobody has
-   been present on yet, so they sit in a fixed salary's divisor exactly as
-   they will at the end of the cycle -- present 8 of 26 working days is 8/26
-   of the month, not the full month for eight days. The day the cycle closes
-   the figure becomes the one the alert shows, with no jump between them. */
+/* ===== ROUND 85: THE SALARY PORTAL =======================================
+   Owner, confirmed plan: admin gets a portal -- four figures, To pay now, To
+   be paid as of now (Round 84 removed this table; it was meant to be renamed,
+   not removed), advances in detail as a running ledger, a per-employee
+   "khata" sheet, Not on payroll, and a month-by-month payment history.
+   Employees get their own Salary tab beside Attendance with the same sheet,
+   for themselves only: their figures, their days of leave, their advances,
+   their payments. Plus all five of the "salah": a max cut per salary on an
+   advance, paid leave per month, a warning before paying a cycle with days
+   that were never marked, salary and advances bookable in Daily Work, and a
+   printable salary slip.
+   ONE SHEET, TWO READERS. salarySheetHtml(u) is what the admin sees when he
+   taps a name AND what the employee sees on their own tab. The employee's
+   device only ever holds their own salary documents (firestore.rules,
+   Round 82), so the same function cannot show them anybody else's. */
 function payrollCurrentPeriodFor(cycle, nowTs){
   if(cycle === 'weekly'){
     // The cycle AFTER the last one that has closed. On a Saturday that closed
@@ -21211,116 +21438,380 @@ function payrollSoFarFor(u, nowTs){
   return p ? payrollLineFor(u, p, nowTs || Date.now()) : null;
 }
 function payrollPaidRecordsFor(username){
-  return Object.keys(S.payrollRuns || {}).map(k=>S.payrollRuns[k])
+  // the document id is the record's id; a record written without its own
+  // `id` field still gets one, so its Slip and Book buttons have a target
+  return Object.keys(S.payrollRuns || {}).map(k=>{ const r = S.payrollRuns[k]; return (r && !r.id) ? Object.assign({ id: k }, r) : r; })
     .filter(r=>r && r.paidAt && (!username || r.username === username))
     .sort((a,b)=>(b.paidAt||0)-(a.paidAt||0));
 }
-function renderSalary(){
-  // A non-admin who is somehow handed this tab sees their own card and
-  // nothing more -- the same card their Home screen carries.
-  if(!S.currentUser || S.currentUser.role !== 'admin') return mySalaryCardHtml() || `<div class="card"><div class="empty">${esc(t('You are not on the payroll yet.'))}</div></div>`;
+function advanceIsEditable(adv){ return !!adv && !adv.booked && advanceIsUntouched(adv); }
+const rupees = n => '₹' + Math.round(Number(n) || 0).toLocaleString('en-IN');
+// "4.5/6 days present (1 half day) · 1 absent · 1 paid leave · 2 not marked"
+function payrollDaysNote(l, withOf){
+  const parts = [`${fmtDayCount(l.presentDays)}${withOf ? '/' + l.workingDays : ''} ${t('days present')}${l.halfDays ? ` (${l.halfDays} ${t('half day')})` : ''}`];
+  if(l.absentDays) parts.push(`${l.absentDays} ${t('absent')}`);
+  if(l.paidLeaveUsed) parts.push(`${fmtDayCount(l.paidLeaveUsed)} ${t('paid leave')}`);
+  return parts.join(' · ');
+}
+// The name in any salary table opens that person's sheet -- admin only.
+function salaryNameHtml(username, name){
+  if(!S.currentUser || S.currentUser.role !== 'admin') return `<b>${esc(name)}</b>`;
+  return `<button type="button" class="sal-name-btn" data-salary-sheet="${esc(username)}">${esc(name)} ›</button>`;
+}
+function payrollDueTableHtml(lines){
+  return `
+    <table><thead><tr><th>${esc(t('Employee'))}</th><th style="white-space:nowrap;">${esc(t('Amount'))}</th><th></th></tr></thead><tbody>
+    ${lines.map(l=>`<tr>
+      <td>${salaryNameHtml(l.username, l.name)}
+        <div class="note">${esc(t(l.cycle === 'weekly' ? 'Weekly' : 'Monthly'))} · ${esc(t(l.basis === 'fixed' ? 'Fixed' : 'Per day'))} ${rupees(l.rate)}</div>
+        <div class="note">${esc(payrollPeriodLabel(l))} · ${esc(payrollDaysNote(l, true))}</div>
+        ${l.notEmployedDays && l.datesLine ? `<div class="note">${esc(l.datesLine)} — ${esc(t('paid for the days they were here'))}</div>` : ''}
+        ${l.notLoadedDays ? `<div class="note" style="color:var(--danger);">${l.notLoadedDays} ${esc(t('day(s) not loaded'))}</div>` : ''}
+        ${l.unmarkedPastDays ? `<div class="note" style="color:var(--danger);">⚠ ${l.unmarkedPastDays} ${esc(t('working day(s) with no attendance — not paid'))}</div>` : ''}
+        ${l.advanceCut ? `<div class="note" style="color:var(--warning);">${rupees(l.amount)} − ${esc(t('advance'))} ${rupees(l.advanceCut)}</div>` : ''}</td>
+      <td class="num">${rupees(lineNet(l))}</td>
+      <td class="row-actions"><button type="button" class="btn btn-sm btn-accent" data-pay-mark="${esc(l.username)}|${esc(l.endKey)}">${esc(t('Mark paid'))}</button></td>
+    </tr>`).join('')}
+    </tbody></table>`;
+}
+// The running cycle, with the advance it would cut AFTER the owed cycles
+// have taken theirs -- the order they will actually be paid in.
+function payrollSoFarWithCut(u, nowTs){
+  const soFar = payrollSoFarFor(u, nowTs);
+  if(!soFar) return null;
+  const owed = payrollDueLines(nowTs).filter(l=>l.username === u.username);
+  const all = payrollNetLines(owed.concat([soFar]));
+  return all[all.length - 1];
+}
+// Each advance and each cut, oldest first, with what is still owed after it.
+function advanceLedgerRows(username){
+  const rows = [];
+  salaryAdvancesFor(username).forEach(a=>rows.push({ key: a.dateKey, at: a.givenAt || 0, kind:'given', amount: Math.round(Number(a.amount)||0), adv: a }));
+  payrollPaidRecordsFor(username).forEach(r=>{
+    const cut = Math.round(Number(r.advanceDeducted) || 0);
+    if(cut > 0) rows.push({ key: localDateKey(r.paidAt), at: r.paidAt, kind:'cut', amount: cut, run: r });
+  });
+  rows.sort((a,b)=> a.key === b.key ? (a.at - b.at) : (a.key < b.key ? -1 : 1));
+  let bal = 0;
+  rows.forEach(r=>{ bal = r.kind === 'given' ? bal + r.amount : Math.max(0, bal - r.amount); r.balance = bal; });
+  return rows;
+}
+function advanceLedgerTableHtml(username, admin){
+  const rows = advanceLedgerRows(username);
+  if(!rows.length) return `<div class="empty">${esc(t('No advance taken.'))}</div>`;
+  // THREE columns at any width: the Edit button sits under the line it edits
+  // (a fourth column squeezed "Balance" into "Balanc / e" at phone width).
+  return `<table><thead><tr><th>${esc(t('Date'))}</th><th style="white-space:nowrap;">${esc(t('Amount'))}</th><th style="white-space:nowrap;">${esc(t('Balance'))}</th></tr></thead><tbody>
+    ${rows.map(r=>{
+      const a = r.adv;
+      const what = r.kind === 'given'
+        ? `${esc(t('Advance given'))}${a.note ? ' · ' + esc(a.note) : ''}${Number(a.maxCut) > 0 ? ` · ${esc(t('max'))} ${rupees(a.maxCut)} ${esc(t('per salary'))}` : ''}${a.givenByName ? ' · ' + esc(a.givenByName) : ''}`
+        : `${esc(t('Cut from salary'))} · ${esc(payrollPeriodLabel(r.run))}`;
+      const action = (admin && r.kind === 'given')
+        ? (advanceIsEditable(a) ? `<button type="button" class="btn btn-sm btn-outline" data-adv-edit="${esc(a.id)}">${esc(t('Edit'))}</button>`
+           : `<span class="note">${esc(t(a.booked ? 'booked' : 'being cut'))}</span>`)
+        : '';
+      return `<tr><td><b>${esc(fmtDateKeyShort(r.key))}</b><div class="note">${what}</div>${action ? `<div class="adv-row-action" style="margin-top:4px;">${action}</div>` : ''}</td>
+        <td class="num" style="color:${r.kind === 'given' ? 'var(--warning)' : 'var(--success)'};">${r.kind === 'given' ? '+' : '−'}${rupees(r.amount)}</td>
+        <td class="num">${rupees(r.balance)}</td></tr>`;
+    }).join('')}
+  </tbody></table>`;
+}
+// Days of leave, month by month, newest first. Leave is what was MARKED:
+// absent is a day, half day is half. A working day with no mark is listed on
+// its own as "not marked" -- it is not leave and it is not paid.
+function leaveMonthsFor(u, nowTs, count){
+  const loadedFrom = attendanceLoadedFromKey(nowTs);
+  const today = localDateKey(nowTs);
+  const out = [];
+  const d = new Date(nowTs); d.setHours(12, 0, 0, 0); d.setDate(1);
+  for(let i = 0; i < count; i++){
+    const y = d.getFullYear(), m = d.getMonth(), mm = String(m + 1).padStart(2, '0');
+    const rec = { key: `${y}-${mm}`, label: new Date(y, m, 1, 12).toLocaleDateString('en-IN', { month:'long', year:'numeric' }),
+      present:0, half:0, absent:0, working:0, notLoaded:0, absentDates:[], halfDates:[], unmarkedDates:[] };
+    for(let day = 1; day <= 31; day++){
+      const k = localDateKey(new Date(y, m, day, 12).getTime());
+      if(k.slice(5, 7) !== mm || k > today) break;
+      if(!isWorkingDay(k) || !isEmployedOn(u, k)) continue;
+      if(k < loadedFrom){ rec.notLoaded++; continue; }
+      rec.working++;
+      const st = attendanceStatusFor(u.username, k).status;
+      if(st === 'present') rec.present++;
+      else if(st === 'halfday'){ rec.half++; rec.halfDates.push(k); }
+      else if(st === 'absent'){ rec.absent++; rec.absentDates.push(k); }
+      else rec.unmarkedDates.push(k);
+    }
+    rec.leaveDays = rec.absent + 0.5 * rec.half;
+    rec.paidLeaveUsed = payCycleOf(u) === 'monthly' ? Math.min(paidLeaveOf(u), rec.leaveDays) : 0;
+    out.push(rec);
+    d.setMonth(d.getMonth() - 1);
+  }
+  return out;
+}
+function salaryPaymentsTableHtml(runs, withName){
+  if(!runs.length) return `<div class="empty">${esc(t('Nothing marked paid yet.'))}</div>`;
+  const nameOf = un => { const u = (S.users||[]).find(x=>x && x.username === un); return u ? u.name : un; };
+  return `<table><thead><tr><th>${esc(withName ? t('Employee') : t('Period'))}</th><th>${esc(t('Paid'))}</th><th></th></tr></thead><tbody>
+    ${runs.map(r=>`<tr>
+      <td>${withName ? salaryNameHtml(r.username, r.name || nameOf(r.username)) + `<div class="note">${esc(payrollPeriodLabel(r))}</div>` : `<b>${esc(payrollPeriodLabel(r))}</b>`}
+        <div class="note">${esc(t('Paid'))} ${esc(fmtDateOnly(r.paidAt))}${r.paidByName ? ` · ${esc(r.paidByName)}` : ''}${r.booked ? ' · ✅ ' + esc(t('booked')) : ''}</div>
+        ${Number(r.advanceDeducted) > 0 ? `<div class="note">${rupees(r.amount)} − ${esc(t('advance'))} ${rupees(r.advanceDeducted)}</div>` : ''}</td>
+      <td class="num">${rupees(runNet(r))}</td>
+      <td class="row-actions"><button type="button" class="btn btn-sm btn-outline" data-salary-slip="${esc(r.id)}">${esc(t('🧾 Slip'))}</button></td>
+    </tr>`).join('')}
+  </tbody></table>`;
+}
+// THE SHEET. One person, everything about their pay, on one screen.
+function salarySheetHtml(u, admin){
   const now = Date.now();
-  const due = payrollNetLines(payrollDueLines(now)); // ROUND 83 -- advances cut
+  const onPay = payCycleOf(u) !== 'none' && payRateOf(u) > 0;
+  const soFar = onPay ? payrollSoFarWithCut(u, now) : null;
+  const owed = onPay ? payrollNetLines(payrollDueLines(now).filter(l=>l.username === u.username)) : [];
+  const owedTotal = owed.reduce((s,l)=>s + lineNet(l), 0);
+  const adv = advanceLedgerFor(u.username);
+  const runs = payrollPaidRecordsFor(u.username);
+  const months = leaveMonthsFor(u, now, 3);
+  const st = payrollSettingsFor(u.username);
+  const dates = employmentDatesLine(u);
+  return `
+  <div class="card">
+    <h2>💸 ${esc(admin ? u.name : t('My salary'))}</h2>
+    <p class="desc" style="margin-top:-4px;">${onPay
+      ? `${esc(t(st.payCycle === 'weekly' ? 'Weekly — every Saturday' : 'Monthly — 1st to 10th'))} · ${esc(t(st.payBasis === 'fixed' ? 'Fixed for the cycle' : 'Per day present'))} ${rupees(st.payRate)}${st.paidLeavePerMonth ? ` · ${fmtDayCount(st.paidLeavePerMonth)} ${esc(t('paid leave a month'))}` : ''}`
+      : esc(t('Salary not decided yet.'))}${dates ? ` · ${esc(dates)}` : ''}</p>
+    <div class="today-card salary-figures" style="margin:0;"><div class="today-grid cols-4">
+      <div class="today-cell"><div class="n num">${soFar ? rupees(lineNet(soFar)) : '—'}</div><div class="l">${esc(t('To be paid as of now'))}</div></div>
+      <div class="today-cell"><div class="n num">${rupees(owedTotal)}</div><div class="l">${esc(t('Waiting to be paid'))}</div></div>
+      <div class="today-cell"><div class="n num">${rupees(adv.outstanding)}</div><div class="l">${esc(t('Advance to repay'))}</div></div>
+      <div class="today-cell"><div class="n num">${runs[0] ? rupees(runNet(runs[0])) : '—'}</div><div class="l">${esc(t('Last paid'))}</div>${runs[0] ? `<div class="d-wrap"><span class="d same">${esc(fmtDateOnly(runs[0].paidAt))}</span></div>` : ''}</div>
+    </div></div>
+    ${soFar ? `<div class="note" style="margin-top:8px;"><b>${esc(payrollPeriodLabel(soFar))}</b> · ${esc(payrollDaysNote(soFar, false))}${soFar.unmarkedPastDays ? ` · <span style="color:var(--danger);">${soFar.unmarkedPastDays} ${esc(t('not marked'))}</span>` : ''}${soFar.advanceCut ? ` · ${rupees(soFar.amount)} − ${esc(t('advance'))} ${rupees(soFar.advanceCut)}` : ''}</div>` : ''}
+    ${!admin ? `<p class="note" style="margin:6px 0 0;">${esc(t('Worked out from your attendance as of today. The admin confirms the final amount when paying.'))}</p>` : ''}
+  </div>
+  ${owed.length ? `<div class="card"><h2>${esc(t('Waiting to be paid'))} — ${rupees(owedTotal)}</h2>
+    ${admin ? payrollDueTableHtml(owed) : `<table><tbody>${owed.map(l=>`<tr><td><b>${esc(payrollPeriodLabel(l))}</b><div class="note">${esc(payrollDaysNote(l, true))}</div>${l.advanceCut ? `<div class="note">${rupees(l.amount)} − ${esc(t('advance'))} ${rupees(l.advanceCut)}</div>` : ''}</td><td class="num">${rupees(lineNet(l))}</td></tr>`).join('')}</tbody></table>`}
+  </div>` : ''}
+  <div class="card">
+    <h2>🗓️ ${esc(t('Days of leave'))}</h2>
+    <p class="desc" style="margin-top:-4px;">${esc(t('Absent is a day of leave, half day is half. A working day with no attendance is shown on its own — it is not leave, and it is not paid.'))}</p>
+    <table><thead><tr><th>${esc(t('Month'))}</th><th style="white-space:nowrap;">${esc(t('Leave'))}</th></tr></thead><tbody>
+    ${months.map(mo=>`<tr><td><b>${esc(mo.label)}</b>
+        <div class="note">${fmtDayCount(mo.present + 0.5 * mo.half)}/${mo.working} ${esc(t('days present'))}${mo.paidLeaveUsed ? ` · ${fmtDayCount(mo.paidLeaveUsed)} ${esc(t('paid leave'))}` : ''}${mo.notLoaded ? ` · ${mo.notLoaded} ${esc(t('day(s) not loaded'))}` : ''}</div>
+        ${mo.absentDates.length ? `<div class="note">${esc(t('Absent:'))} ${mo.absentDates.map(fmtDateKeyShort).map(esc).join(', ')}</div>` : ''}
+        ${mo.halfDates.length ? `<div class="note">${esc(t('Half day:'))} ${mo.halfDates.map(fmtDateKeyShort).map(esc).join(', ')}</div>` : ''}
+        ${mo.unmarkedDates.length ? `<div class="note" style="color:var(--danger);">${esc(t('Not marked:'))} ${mo.unmarkedDates.map(fmtDateKeyShort).map(esc).join(', ')}</div>` : ''}</td>
+      <td class="num">${fmtDayCount(mo.leaveDays)}</td></tr>`).join('')}
+    </tbody></table>
+  </div>
+  <div class="card">
+    <h2>💵 ${esc(t('Advances'))}${adv.outstanding ? ` — ${rupees(adv.outstanding)} ${esc(t('still to cut'))}` : ''}</h2>
+    ${adv.given ? `<p class="desc" style="margin-top:-4px;">${esc(t('Given'))} ${rupees(adv.given)} · ${esc(t('cut so far'))} ${rupees(adv.recovered)}</p>` : ''}
+    ${advanceLedgerTableHtml(u.username, admin)}
+  </div>
+  <div class="card">
+    <h2>🧾 ${esc(t('Payment history'))}</h2>
+    ${salaryPaymentsTableHtml(runs.slice(0, 24), false)}
+  </div>`;
+}
+function openSalarySheet(username){
+  if(!S.currentUser || S.currentUser.role !== 'admin') return;
+  const u = (S.users || []).find(x=>x && x.username === username);
+  if(!u) return;
+  showModal(`<div class="salary-sheet">${salarySheetHtml(u, true)}</div>
+    <div class="modal-actions"><button type="button" class="btn btn-outline" id="cancelModal">${esc(t('Close'))}</button></div>`);
+  bindSalaryActions(document.getElementById('modalOverlay') || document);
+}
+function advancesCardHtml(){
+  const people = (S.users || []).filter(u=>u && u.role !== 'admin')
+    .map(u=>Object.assign({ u }, advanceLedgerFor(u.username)))
+    .filter(r=>r.advances.length)
+    .sort((a,b)=> (b.outstanding - a.outstanding) || String(a.u.name).localeCompare(String(b.u.name)));
+  const total = people.reduce((s,r)=>s + r.outstanding, 0);
+  return `<div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+      <h2 style="margin:0;">💵 ${esc(t('Advances'))}${total ? ` — ${rupees(total)} ${esc(t('to recover'))}` : ''}</h2>
+      <button type="button" class="btn btn-primary btn-sm" id="giveAdvanceBtn">${esc(t('+ Give advance'))}</button>
+    </div>
+    <p class="desc" style="margin-top:6px;">${esc(t('Cut from the next salary that is marked paid — in full, or no more than the most-per-salary set on the advance. Whatever is left comes out of the salary after.'))}</p>
+    ${people.length ? people.map(r=>`<div class="adv-person">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin:12px 0 4px;">
+        ${salaryNameHtml(r.u.username, r.u.name)}
+        <span class="num" style="font-weight:800;">${rupees(r.outstanding)} <span class="note" style="font-weight:400;">${esc(t('still to cut'))}</span></span>
+      </div>
+      <div class="note">${esc(t('Given'))} ${rupees(r.given)} · ${esc(t('cut so far'))} ${rupees(r.recovered)}${payCycleOf(r.u) === 'none' ? ' · ' + esc(t('not on payroll yet')) : ''}</div>
+      ${advanceLedgerTableHtml(r.u.username, true)}
+    </div>`).join('') : `<div class="empty">${esc(t('No advance given yet.'))}</div>`}
+  </div>`;
+}
+function renderSalary(){
+  const me = S.currentUser && liveUserRecord(S.currentUser);
+  if(!me) return '';
+  // Everybody but admin: their own sheet, and nothing else.
+  if(me.role !== 'admin') return salarySheetHtml(me, false);
+  const now = Date.now();
+  const todayKey = localDateKey(now);
+  const monthKey = todayKey.slice(0, 7);
+  const due = payrollNetLines(payrollDueLines(now));
   const dueTotal = due.reduce((sum, l)=>sum + lineNet(l), 0);
-  const team = (S.users || []).filter(u=>u && u.role !== 'admin' && !hasLeftBy(u, localDateKey(now)));
-  const onPayroll = payrollEmployees().filter(u=>!hasLeftBy(u, localDateKey(now)));
+  const team = (S.users || []).filter(u=>u && u.role !== 'admin' && !hasLeftBy(u, todayKey));
+  const onPayroll = payrollEmployees().filter(u=>!hasLeftBy(u, todayKey));
   const notOn = team.filter(u=>payCycleOf(u) === 'none' || payRateOf(u) === 0)
     .sort((a,b)=>String(a.name).localeCompare(String(b.name)));
-  // ROUND 84 (owner: "Admin ko Earned so far, this cycle ye q dikh rha h ye
-  // to Employee ko dikhna chahiye na"). The running cycle's figure is the
-  // EMPLOYEE's number -- what they have earned so far -- and it stays on
-  // their own card. The admin's screen is about what to pay and what is
-  // owed back, so its middle figure is the advance still to recover.
+  // ROUND 85 -- "Earned so far" back, as the owner meant it: renamed "To be
+  // paid as of now", net of the advance it would cut.
+  const soFar = onPayroll.map(u=>payrollSoFarWithCut(u, now)).filter(Boolean)
+    .sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+  const soFarTotal = soFar.reduce((sum, l)=>sum + lineNet(l), 0);
   const advanceTotal = (S.users || []).filter(u=>u && u.role !== 'admin')
     .reduce((sum, u)=>sum + advanceLedgerFor(u.username).outstanding, 0);
-  const paid = payrollPaidRecordsFor(null).slice(0, 15);
+  const allRuns = payrollPaidRecordsFor(null);
+  const paidThisMonth = allRuns.filter(r=>localDateKey(r.paidAt).slice(0, 7) === monthKey).reduce((s,r)=>s + runNet(r), 0);
+  const histMonth = /^\d{4}-\d{2}$/.test(S.salaryHistMonth || '') ? S.salaryHistMonth : monthKey;
+  const histRuns = allRuns.filter(r=>localDateKey(r.paidAt).slice(0, 7) === histMonth);
+  const histTotal = histRuns.reduce((s,r)=>s + runNet(r), 0);
   const anyIncomplete = due.some(l=>l.notLoadedDays > 0);
-  const nameOf = un => { const u = (S.users||[]).find(x=>x && x.username === un); return u ? u.name : un; };
   return `
   <div class="card">
     <h2>💸 ${esc(t('Salary'))}</h2>
-    <p class="desc">${esc(t('Worked out from attendance. Nothing here moves money — Mark paid only records that you paid it.'))}</p>
-    <div class="today-card salary-figures" style="margin:0;"><div class="today-grid cols-3">
-      <div class="today-cell"><div class="n num">₹${dueTotal.toLocaleString('en-IN')}</div><div class="l">${esc(t('To pay now'))}</div></div>
-      <div class="today-cell"><div class="n num">₹${advanceTotal.toLocaleString('en-IN')}</div><div class="l">${esc(t('Advance to recover'))}</div></div>
-      <div class="today-cell"><div class="n num">${onPayroll.length}/${team.length}</div><div class="l">${esc(t('On payroll'))}</div></div>
+    <p class="desc">${esc(t('Worked out from attendance. Nothing here moves money — Mark paid only records that you paid it.'))} ${esc(t('Tap a name for that person\'s full sheet.'))}</p>
+    <div class="today-card salary-figures" style="margin:0;"><div class="today-grid cols-4">
+      <div class="today-cell"><div class="n num">${rupees(dueTotal)}</div><div class="l">${esc(t('To pay now'))}</div></div>
+      <div class="today-cell"><div class="n num">${rupees(soFarTotal)}</div><div class="l">${esc(t('To be paid as of now'))}</div></div>
+      <div class="today-cell"><div class="n num">${rupees(advanceTotal)}</div><div class="l">${esc(t('Advance to recover'))}</div></div>
+      <div class="today-cell"><div class="n num">${rupees(paidThisMonth)}</div><div class="l">${esc(t('Paid this month'))}</div></div>
     </div></div>
+    <div class="note" style="margin-top:8px;">${onPayroll.length}/${team.length} ${esc(t('on payroll'))}</div>
   </div>
   <div class="card">
-    <h2>${esc(t('To pay now'))}${due.length ? ` — ₹${dueTotal.toLocaleString('en-IN')}` : ''}</h2>
+    <h2>${esc(t('To pay now'))}${due.length ? ` — ${rupees(dueTotal)}` : ''}</h2>
     <p class="desc" style="margin-top:-6px;">${esc(t('Cycles that have finished and are not marked paid yet. Weekly ones close every Saturday; monthly ones on the last day of the month, to be paid by the 10th.'))}</p>
     ${due.length ? payrollDueTableHtml(due) : `<div class="empty">${esc(t('Nothing to pay right now.'))}</div>`}
     ${anyIncomplete ? `<div class="note" style="margin-top:8px;color:var(--danger);">${esc(t('Some days of an older period are past the 60 days of attendance this device keeps loaded. Those days are left out of the figure rather than counted as absences — check the register before paying.'))}</div>` : ''}
   </div>
-  ${advancesCardHtml() /* ROUND 83 */}
+  <div class="card">
+    <h2>${esc(t('To be paid as of now'))}${soFar.length ? ` — ${rupees(soFarTotal)}` : ''}</h2>
+    <p class="desc" style="margin-top:-6px;">${esc(t('The cycle that is still running, up to today, after the advance it would cut. It moves to To pay now when the cycle closes.'))}</p>
+    ${soFar.length ? `<table><thead><tr><th>${esc(t('Employee'))}</th><th style="white-space:nowrap;">${esc(t('As of now'))}</th></tr></thead><tbody>
+    ${soFar.map(l=>`<tr>
+      <td>${salaryNameHtml(l.username, l.name)}
+        <div class="note">${esc(t(l.cycle === 'weekly' ? 'Weekly' : 'Monthly'))} · ${esc(t(l.basis === 'fixed' ? 'Fixed' : 'Per day'))} ${rupees(l.rate)}</div>
+        <div class="note">${esc(payrollPeriodLabel(l))} · ${esc(payrollDaysNote(l, false))}${l.unmarkedPastDays ? ` · <span style="color:var(--danger);">${l.unmarkedPastDays} ${esc(t('not marked'))}</span>` : ''}</div>
+        ${l.advanceCut ? `<div class="note" style="color:var(--warning);">${rupees(l.amount)} − ${esc(t('advance'))} ${rupees(l.advanceCut)}</div>` : ''}</td>
+      <td class="num">${rupees(lineNet(l))}</td>
+    </tr>`).join('')}
+    </tbody></table>` : `<div class="empty">${esc(t('Nobody is on the payroll yet.'))}</div>`}
+  </div>
+  ${advancesCardHtml()}
   <div class="card">
     <h2>${esc(t('Not on payroll'))} — ${notOn.length}</h2>
     <p class="desc" style="margin-top:-6px;">${esc(t('No salary decided yet. Admin accounts are never on the payroll and are not listed.'))}</p>
     ${notOn.length ? `<table><tbody>${notOn.map(u=>`<tr>
-      <td><b>${esc(u.name)}</b>${isTemporaryUser(u) ? ` <span class="badge badge-temp">${esc(t('Temp'))}</span>` : ''}</td>
+      <td>${salaryNameHtml(u.username, u.name)}${isTemporaryUser(u) ? ` <span class="badge badge-temp">${esc(t('Temp'))}</span>` : ''}</td>
       <td class="row-actions"><button type="button" class="btn btn-sm btn-outline" data-salary-set="${esc(u.id)}">${esc(t('Set salary'))}</button></td>
     </tr>`).join('')}</tbody></table>` : `<div class="empty">${esc(t('Everybody has a salary set.'))}</div>`}
   </div>
   <div class="card">
-    <h2>${esc(t('Recently paid'))}</h2>
-    ${paid.length ? `<table><thead><tr><th>${esc(t('Employee'))}</th><th>${esc(t('Amount'))}</th></tr></thead><tbody>
-    ${paid.map(r=>`<tr>
-      <td><b>${esc(r.name || nameOf(r.username))}</b>
-        <div class="note">${esc(payrollPeriodLabel(r))} · ${esc(t('Paid'))} ${esc(fmtDateOnly(r.paidAt))}${r.paidByName ? ` · ${esc(r.paidByName)}` : ''}</div>
-        ${Number(r.advanceDeducted) > 0 ? `<div class="note">₹${Number(r.amount||0).toLocaleString('en-IN')} − ${esc(t('advance'))} ₹${Number(r.advanceDeducted).toLocaleString('en-IN')}</div>` : ''}</td>
-      <td class="num">₹${runNet(r).toLocaleString('en-IN')}</td>
-    </tr>`).join('')}
-    </tbody></table>` : `<div class="empty">${esc(t('Nothing marked paid yet.'))}</div>`}
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+      <h2 style="margin:0;">🧾 ${esc(t('Payment history'))} — ${rupees(histTotal)}</h2>
+      <input type="month" id="salHistMonth" value="${esc(histMonth)}" max="${esc(monthKey)}" style="width:auto;" />
+    </div>
+    <div style="margin-top:8px;">${salaryPaymentsTableHtml(histRuns, true)}</div>
   </div>`;
 }
-function bindSalary(){
-  bindPayrollAlert();
-  // ROUND 83 -- advances
-  const giveBtn = document.getElementById('giveAdvanceBtn');
-  if(giveBtn) giveBtn.addEventListener('click', ()=>openAdvanceModal(null));
-  document.querySelectorAll('[data-adv-edit]').forEach(b=>b.addEventListener('click', ()=>openAdvanceModal(S.salaryAdvances[b.dataset.advEdit])));
-  document.querySelectorAll('[data-salary-set]').forEach(b=>b.addEventListener('click', ()=>openUserModal(b.dataset.salarySet)));
+// The salary slip (the owner's "salah 5"): one payment, printed, on the same
+// print sheet the Daily Work print uses -- the browser's print dialog also
+// saves it as a PDF.
+function printSalarySlip(runId){
+  const r = (S.payrollRuns || {})[runId];
+  if(!r) return;
+  const me = S.currentUser;
+  if(!me || (me.role !== 'admin' && r.username !== me.username)) return;
+  const row = (k, v) => `<tr><td>${esc(k)}</td><td style="text-align:right;">${esc(v)}</td></tr>`;
+  const html = `<h1>${esc(COMPANY_NAME)}</h1>
+    <div style="font-size:0.75rem;color:#555;margin-bottom:10px;">Salary slip</div>
+    <table>
+      ${row('Employee', r.name || r.username)}
+      ${row('Period', payrollPeriodLabel(r))}
+      ${row('Cycle', (r.cycle === 'weekly' ? 'Weekly' : 'Monthly') + ' · ' + (r.basis === 'fixed' ? 'Fixed ' : 'Per day ') + rupees(r.rate))}
+      ${row('Working days', String(r.workingDays || 0))}
+      ${row('Days present', fmtDayCount(r.presentDays) + (r.halfDays ? ` (${r.halfDays} half day)` : ''))}
+      ${row('Absent', String(r.absentDays || 0))}
+      ${Number(r.paidLeaveUsed) > 0 ? row('Paid leave', fmtDayCount(r.paidLeaveUsed)) : ''}
+      ${Number(r.unmarkedPastDays) > 0 ? row('Not marked (not paid)', String(r.unmarkedPastDays)) : ''}
+      ${row('Salary earned', rupees(r.amount))}
+      ${Number(r.advanceDeducted) > 0 ? row('Less: advance', '− ' + rupees(r.advanceDeducted)) : ''}
+      <tr><td><b>Paid</b></td><td style="text-align:right;"><b>${esc(rupees(runNet(r)))}</b></td></tr>
+      ${row('Paid on', fmtDateOnly(r.paidAt))}
+      ${r.paidByName ? row('Paid by', r.paidByName) : ''}
+    </table>
+    <div style="margin-top:28px;display:flex;justify-content:space-between;font-size:0.75rem;color:#555;">
+      <span>Employee signature</span><span>For ${esc(COMPANY_NAME)}</span></div>`;
+  const printArea = document.getElementById('printArea');
+  if(!printArea) return;
+  printArea.innerHTML = html;
+  window.print();
 }
-// The employee's own figures. Their device holds only their own settings and
-// paid records (see the non-admin listeners), so payrollDueLines and
-// payrollSoFarFor -- the very functions the admin's screen uses -- can only
-// ever produce this one person's numbers here.
+// One binder for the tab AND for the sheet opened over it, so a button never
+// works in one place and not the other.
+function bindSalaryActions(root){
+  const scope = root || document;
+  bindPayrollAlert(scope);
+  const giveBtn = scope.querySelector('#giveAdvanceBtn');
+  if(giveBtn) giveBtn.addEventListener('click', ()=>openAdvanceModal(null));
+  scope.querySelectorAll('[data-adv-edit]').forEach(b=>b.addEventListener('click', ()=>openAdvanceModal(S.salaryAdvances[b.dataset.advEdit])));
+  scope.querySelectorAll('[data-salary-set]').forEach(b=>b.addEventListener('click', ()=>openUserModal(b.dataset.salarySet)));
+  scope.querySelectorAll('[data-salary-sheet]').forEach(b=>b.addEventListener('click', ()=>openSalarySheet(b.dataset.salarySheet)));
+  scope.querySelectorAll('[data-salary-slip]').forEach(b=>b.addEventListener('click', ()=>printSalarySlip(b.dataset.salarySlip)));
+  const month = scope.querySelector('#salHistMonth');
+  if(month) month.addEventListener('change', ()=>{ S.salaryHistMonth = month.value; render(); });
+}
+function bindSalary(){ bindSalaryActions(document.getElementById('root') || document); }
+// The employee's small card on Home: the headline figures, and the way into
+// the full Salary tab.
 function mySalaryCardHtml(){
   const me = S.currentUser && liveUserRecord(S.currentUser);
   if(!me || me.role === 'admin') return '';
   if(payCycleOf(me) === 'none' || payRateOf(me) === 0) return '';
   const now = Date.now();
-  const soFar = payrollSoFarFor(me, now);
-  const due = payrollNetLines(payrollDueLines(now).filter(l=>l.username === me.username)); // ROUND 83
+  const soFar = payrollSoFarWithCut(me, now);
+  const due = payrollNetLines(payrollDueLines(now).filter(l=>l.username === me.username));
   const dueTotal = due.reduce((sum, l)=>sum + lineNet(l), 0);
   const last = payrollPaidRecordsFor(me.username)[0];
   const adv = advanceLedgerFor(me.username);
   return `<div class="card">
-    <h2>💸 ${esc(t('My salary'))}</h2>
-    <div class="today-card salary-figures" style="margin:0;"><div class="today-grid cols-3">
-      <div class="today-cell"><div class="n num">₹${soFar ? soFar.amount.toLocaleString('en-IN') : 0}</div><div class="l">${esc(t(payCycleOf(me) === 'weekly' ? 'This week so far' : 'This month so far'))}</div><div class="d-wrap"><span class="d same">${soFar ? soFar.presentDays : 0} ${esc(t('days present'))}</span></div></div>
-      <div class="today-cell"><div class="n num">₹${dueTotal.toLocaleString('en-IN')}</div><div class="l">${esc(t('Waiting to be paid'))}</div></div>
-      <div class="today-cell"><div class="n num">${last ? '₹' + runNet(last).toLocaleString('en-IN') : '—'}</div><div class="l">${esc(t('Last paid'))}</div>${last ? `<div class="d-wrap"><span class="d same">${esc(fmtDateOnly(last.paidAt))}</span></div>` : ''}</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+      <h2 style="margin:0;">💸 ${esc(t('My salary'))}</h2>
+      <button type="button" class="btn btn-sm btn-outline" data-more-tab="salary" style="width:auto;">${esc(t('Details ›'))}</button>
+    </div>
+    <div class="today-card salary-figures" style="margin:10px 0 0;"><div class="today-grid cols-3">
+      <div class="today-cell"><div class="n num">${soFar ? rupees(lineNet(soFar)) : rupees(0)}</div><div class="l">${esc(t('To be paid as of now'))}</div><div class="d-wrap"><span class="d same">${soFar ? fmtDayCount(soFar.presentDays) : 0} ${esc(t('days present'))}</span></div></div>
+      <div class="today-cell"><div class="n num">${rupees(dueTotal)}</div><div class="l">${esc(t('Waiting to be paid'))}</div></div>
+      <div class="today-cell"><div class="n num">${last ? rupees(runNet(last)) : '—'}</div><div class="l">${esc(t('Last paid'))}</div>${last ? `<div class="d-wrap"><span class="d same">${esc(fmtDateOnly(last.paidAt))}</span></div>` : ''}</div>
     </div></div>
-    ${adv.given > 0 ? `<div class="note" style="margin:8px 0 0;">💵 ${esc(t('Advance'))}: ${esc(t('Given'))} ₹${adv.given.toLocaleString('en-IN')} · ${esc(t('cut so far'))} ₹${adv.recovered.toLocaleString('en-IN')} · <b>${esc(t('still to cut'))} ₹${adv.outstanding.toLocaleString('en-IN')}</b></div>` : ''}
+    ${adv.given > 0 ? `<div class="note" style="margin:8px 0 0;">💵 ${esc(t('Advance'))}: ${esc(t('Given'))} ${rupees(adv.given)} · ${esc(t('cut so far'))} ${rupees(adv.recovered)} · <b>${esc(t('still to cut'))} ${rupees(adv.outstanding)}</b></div>` : ''}
     <p class="note" style="margin:8px 0 0;">${esc(t('Worked out from your attendance as of today. The admin confirms the final amount when paying.'))}${dueTotal !== due.reduce((s,l)=>s + l.amount, 0) ? ' ' + esc(t('Waiting to be paid is after the advance is cut.')) : ''}</p>
   </div>`;
 }
-function bindPayrollAlert(){
-  document.querySelectorAll('[data-pay-mark]').forEach(b=>b.addEventListener('click', ()=>{
+function bindPayrollAlert(root){
+  (root || document).querySelectorAll('[data-pay-mark]').forEach(b=>b.addEventListener('click', ()=>{
     const [username, endKey] = b.dataset.payMark.split('|');
     const u = S.users.find(x=>x && x.username === username);
     const period = u ? payrollPeriodByEnd(payCycleOf(u), endKey, Date.now()) : null;
     const line = (u && period) ? payrollLineFor(u, period, Date.now()) : null;
     if(!line){ render(); return; }
-    // ROUND 83 -- the same cut markPayrollPaid will make, worked out the same way
-    const cut = Math.min(advanceLedgerFor(username).outstanding, line.amount);
-    const cutText = cut ? ` (${t('salary')} ₹${line.amount.toLocaleString('en-IN')} − ${t('advance')} ₹${cut.toLocaleString('en-IN')})` : '';
-    showConfirm(`${t('Mark')} ₹${(line.amount - cut).toLocaleString('en-IN')}${cutText} ${t('as paid to')} "${line.name}" ${t('for')} ${payrollPeriodLabel(line)}? ${t('This only records that you paid it — it does not move any money.')}`, ()=>{
+    // the same cut markPayrollPaid will make, worked out the same way
+    const cut = advanceCutPlan(advanceStateFor(username), line.amount).total;
+    const cutText = cut ? ` (${t('salary')} ${rupees(line.amount)} − ${t('advance')} ${rupees(cut)})` : '';
+    // ROUND 85 -- the owner's "salah 3": a cycle with days nobody marked is
+    // short by those days. Said before paying, not discovered afterwards.
+    const unmarked = line.unmarkedPastDays
+      ? ` ⚠ ${line.unmarkedPastDays} ${t('working day(s) have no attendance:')} ${line.unmarkedPastDates.map(fmtDateKeyShort).join(', ')}. ${t('They are not paid. If they worked, mark the attendance first.')}`
+      : '';
+    showConfirm(`${t('Mark')} ${rupees(line.amount - cut)}${cutText} ${t('as paid to')} "${line.name}" ${t('for')} ${payrollPeriodLabel(line)}?${unmarked} ${t('This only records that you paid it — it does not move any money.')}`, ()=>{
       if(!markPayrollPaid(username, endKey)){ render(); return; }
-      render();
+      closeModal(); render();
       showToast('Marked paid ✅');
-    }, { danger:false, confirmLabel: t('Mark paid') });
+    }, { danger: !!line.unmarkedPastDays, confirmLabel: t(line.unmarkedPastDays ? 'Pay anyway' : 'Mark paid') });
   }));
 }
 
