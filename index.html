@@ -10,7 +10,7 @@
      the whole 1.35 MB down again on a phone. Up here it lands inside the
      first kilobyte, so the check costs a few KB instead of the entire app.
      The two can never be allowed to drift -- test_round60 fails if they do. -->
-<meta name="app-build" content="2026-10-20-firestore-preview114">
+<meta name="app-build" content="2026-10-21-firestore-preview115">
 <meta name="theme-color" content="#1E3F1B">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -2497,7 +2497,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-10-20-firestore-preview114"; // ROUND 86 (2026-10-20). Owner: "employees k home page pe details nahi do. Sirf Tab me dedo. jese admin ko h." The My salary card is gone from an employee's Home; their pay is on their own Salary tab only (beside Attendance), the same as admin's is on his. firestore.rules UNCHANGED. PREVIOUSLY, ROUND 85 (2026-10-20). THE SALARY PORTAL -- the owner's confirmed plan, plus all five of the suggestions. Round 84 removed the running-cycle table from admin; the owner meant RENAME it, so it is back as "To be paid as of now", net of the advance it would cut. Admin: four figures (to pay now, to be paid as of now, advance to recover, paid this month), the owed table, the running table, advances as a dated running ledger per person, Not on payroll, and a month-by-month payment history -- and every name opens that person's sheet (khata). Employees: their own Salary tab beside Attendance, which is the SAME sheet for themselves -- figures, days of leave month by month, advances, payments -- and their device holds no one else's salary (Round 82 rules). The five suggestions: (1) a most-to-cut-per-salary on each advance, which needs EVERY ADVANCE TO KNOW ITS OWN RECOVERY -- payments now store advanceCuts {advanceId: amount}; older ones are allocated oldest-first, the way they were taken; (2) paid leave per month, monthly cycles only, in halves, paid as days worked; (3) a working day already past with NO mark is counted, listed, and warned about before Mark paid -- it is not leave and is not paid; (4) salary payments and advances are entries in Daily Work, bookable, counted, in Book all and in the backlog, and a booked advance cannot be edited until unbooked; (5) a printable salary slip per payment. firestore.rules UNCHANGED. PREVIOUSLY, ROUND 84 (2026-10-20). HALF DAY, and the admin's Salary tab no longer shows "Earned so far". Owner: "Admin ko Earned so far, this cycle ye q dikh rha h ye to Employee ko dikhna chahiye na" -- the running cycle's figure is the employee's own number and stays on their card; the admin's middle figure is now the advance still to recover. And "Half day attendence ka b option do. Salary m b": a third mark, type 'halfday', stored on the same one-record-per-person-per-day document as present and absent, so every rule about a mark (one per day, final once made, admin-only to change) applies to it unchanged. Two questions, answered once: attendanceIsWorking (a half day opens the app, allows entries, counts as present today) and attendanceDayValue (present 1, half day 0.5). Eleven places asked `type === 'present'`; each would have treated a half day as an ABSENCE -- locked the person out, put it on the monthly summary's absent list and paid nothing. Salary: a half day is 0.5 of a day for both bases; the monthly summary shows 4.5 present and lists the half days on their own line. Marked by admin or by whoever holds "mark others" (the team card has a third button); never self-marked. firestore.rules UNCHANGED -- the attendance rules never constrained the type. PREVIOUSLY, ROUND 83 (2026-10-20). SALARY ADVANCES, and the new-user role default. Owner: "Kisi b Employee ko Advance dene ka b Option rkho. (Date editable)", with his two answers: cut in FULL from the next salary marked paid (the rest from the one after if that salary is smaller), and shown to the employee in their own card. The ledger is two sums, never a stored balance: given = the salaryAdvances documents, recovered = advanceDeducted on the payrollRuns records; nothing holds a running figure two devices could overwrite. The cut is decided at the moment of Mark paid, min(outstanding, that salary), and recorded beside the gross as advanceDeducted and netPaid; every screen shows the same cut BEFORE that by allocating the outstanding to owed cycles oldest first. The date (and amount and note) is editable only while none of that advance has been cut yet -- cuts are taken oldest-first, so "untouched" is exact, and changing an advance that has already come out of a paid salary would rewrite money already handed over. salaryAdvances in firestore.rules: admin writes, the person it is about may read. ALSO: the Add user form selected NOTHING in its Role list, and ROLES is admin-first, so every new person started out as an Admin -- one careless Create made them one. It starts on a placeholder now, and both the create and edit paths refuse a missing or unknown role (the edit path used to save the Round 28 placeholder as an empty role). PREVIOUSLY, ROUND 82 (2026-10-20). THE SALARY TAB, and two fixes to the payroll form. Owner: "Salary ka Tab bana do ... Kiska kya amount ho gya or kitna dena h. Also Employees ki Unka Kitna payment h aj ki Date me" -- plus "Not on Payroll pr click kre to aage q Puch rha h salary" and "Admins ko Not on Payroll Hi rkho. Owner ke devices hn vo saare." ADMIN gets a Salary tab (forced in beside Attendance, and deliberately NOT in the Permission Manager checklist, so the company's pay can never be handed to another post): To pay now (closed cycles not marked paid -- the same rows as the Home alert, drawn by ONE function now), Earned so far this cycle, Not on payroll with a Set salary button, and Recently paid. "So far" is not a new formula: it is payrollLineFor over the whole running cycle, so future working days sit in a fixed salary's divisor exactly as they will at the end and the figure never jumps when the cycle closes; the current weekly cycle starts the day AFTER the last closed one, so on a Saturday nothing is counted twice. EVERYONE ELSE gets a My salary card on Home, and firestore.rules lets them read their OWN payrollSettings and payrollRuns documents (resource.data.username == request.auth.uid -- the form a where('username','==',me) query can be proven against) and nobody else's: their device never receives another salary. Writing stays admin's. THE FORM: "Not on payroll" now hides the basis and the amount; the Admin role replaces the whole block with one sentence, live as the Role select changes, and the reader and the writer both force an admin to none; and a cycle with no amount is REFUSED instead of silently saving as "not on payroll" -- the old behaviour made an employee vanish from the Salary screen with no message. firestore.rules: two read rules widened to own-documents-only. PREVIOUSLY, ROUND 81 (2026-10-20). DATE OF JOINING AND LEAVING, and the name tag that refused "Imran Shaikh". The owner: "back date me koi naya employee ki attendance b mang rha h". Measured first: the app had no idea WHEN anybody worked here, so every person was on every day's roster -- the Attendance screen showed a new joiner unmarked on every past day, Mark-for-someone offered him for any date, and the Monthly summary, which counts anything that is not present as ABSENT, listed fourteen absences for a man who joined on the 15th. Eleven places each wrote their own `S.users.filter(u=>u.role!=='admin')`, and the bug was the same missing condition in every one; they all ask attendanceRosterUsers(dateKey) now. joinedOn / leftOn (inclusive) live on the user doc, both optional, so every existing record is employed on every date and nothing changed by itself. A mark that already exists outside the dates is NOT deleted and NOT hidden: the Attendance screen shows it with a warning and neither the summary nor the salary counts it. markAttendanceForUser and recordPresent refuse a day outside the dates (clear stays allowed). Salary: a non-employed working day stays in a fixed salary's divisor, which is what makes a mid-cycle joiner or leaver pro rata. Past the leaving date every screen is a lock card -- the owner's choice; the Auth account itself can only be removed by Delete, and the card says so. No leaving date on your own account or on the literal "admin" account. A temporary employee's name tag is now made from the name (temp1, temp2 for a Hindi or Urdu name) instead of refusing one nobody had been told the rules for. Also: "days present" from Round 80 was never translated. firestore.rules UNCHANGED.
+const APP_BUILD = "2026-10-21-firestore-preview115"; // ROUND 87 (2026-10-21). FIREBASE COST. Owner: "4-5 users me bhi Firebase m payment mang rha h ... koi b chiz be wja to nhi h". The payment prompt itself is the Blaze plan that Cloud Functions require (seven callables: create/delete user, reset password, force logout, clear notifications, clear lockout, reset data) -- not usage. Two real wastes fixed: (1) the heartbeat wrote every MINUTE even with the app in the background or a tab left open overnight (~1,440 writes a day per device, each read again by every admin device); it now beats every 5 minutes and only while the app is on screen, once immediately on coming back, and the online window is 10 minutes; (2) Domino loaded the latest 500 entries on every phone on every cold open; it now loads from the 1st of last month (cap 500 kept), and the monthly report says plainly when an older month is partial. firestore.rules UNCHANGED. PREVIOUSLY, ROUND 86 (2026-10-20). Owner: "employees k home page pe details nahi do. Sirf Tab me dedo. jese admin ko h." The My salary card is gone from an employee's Home; their pay is on their own Salary tab only (beside Attendance), the same as admin's is on his. firestore.rules UNCHANGED. PREVIOUSLY, ROUND 85 (2026-10-20). THE SALARY PORTAL -- the owner's confirmed plan, plus all five of the suggestions. Round 84 removed the running-cycle table from admin; the owner meant RENAME it, so it is back as "To be paid as of now", net of the advance it would cut. Admin: four figures (to pay now, to be paid as of now, advance to recover, paid this month), the owed table, the running table, advances as a dated running ledger per person, Not on payroll, and a month-by-month payment history -- and every name opens that person's sheet (khata). Employees: their own Salary tab beside Attendance, which is the SAME sheet for themselves -- figures, days of leave month by month, advances, payments -- and their device holds no one else's salary (Round 82 rules). The five suggestions: (1) a most-to-cut-per-salary on each advance, which needs EVERY ADVANCE TO KNOW ITS OWN RECOVERY -- payments now store advanceCuts {advanceId: amount}; older ones are allocated oldest-first, the way they were taken; (2) paid leave per month, monthly cycles only, in halves, paid as days worked; (3) a working day already past with NO mark is counted, listed, and warned about before Mark paid -- it is not leave and is not paid; (4) salary payments and advances are entries in Daily Work, bookable, counted, in Book all and in the backlog, and a booked advance cannot be edited until unbooked; (5) a printable salary slip per payment. firestore.rules UNCHANGED. PREVIOUSLY, ROUND 84 (2026-10-20). HALF DAY, and the admin's Salary tab no longer shows "Earned so far". Owner: "Admin ko Earned so far, this cycle ye q dikh rha h ye to Employee ko dikhna chahiye na" -- the running cycle's figure is the employee's own number and stays on their card; the admin's middle figure is now the advance still to recover. And "Half day attendence ka b option do. Salary m b": a third mark, type 'halfday', stored on the same one-record-per-person-per-day document as present and absent, so every rule about a mark (one per day, final once made, admin-only to change) applies to it unchanged. Two questions, answered once: attendanceIsWorking (a half day opens the app, allows entries, counts as present today) and attendanceDayValue (present 1, half day 0.5). Eleven places asked `type === 'present'`; each would have treated a half day as an ABSENCE -- locked the person out, put it on the monthly summary's absent list and paid nothing. Salary: a half day is 0.5 of a day for both bases; the monthly summary shows 4.5 present and lists the half days on their own line. Marked by admin or by whoever holds "mark others" (the team card has a third button); never self-marked. firestore.rules UNCHANGED -- the attendance rules never constrained the type. PREVIOUSLY, ROUND 83 (2026-10-20). SALARY ADVANCES, and the new-user role default. Owner: "Kisi b Employee ko Advance dene ka b Option rkho. (Date editable)", with his two answers: cut in FULL from the next salary marked paid (the rest from the one after if that salary is smaller), and shown to the employee in their own card. The ledger is two sums, never a stored balance: given = the salaryAdvances documents, recovered = advanceDeducted on the payrollRuns records; nothing holds a running figure two devices could overwrite. The cut is decided at the moment of Mark paid, min(outstanding, that salary), and recorded beside the gross as advanceDeducted and netPaid; every screen shows the same cut BEFORE that by allocating the outstanding to owed cycles oldest first. The date (and amount and note) is editable only while none of that advance has been cut yet -- cuts are taken oldest-first, so "untouched" is exact, and changing an advance that has already come out of a paid salary would rewrite money already handed over. salaryAdvances in firestore.rules: admin writes, the person it is about may read. ALSO: the Add user form selected NOTHING in its Role list, and ROLES is admin-first, so every new person started out as an Admin -- one careless Create made them one. It starts on a placeholder now, and both the create and edit paths refuse a missing or unknown role (the edit path used to save the Round 28 placeholder as an empty role). PREVIOUSLY, ROUND 82 (2026-10-20). THE SALARY TAB, and two fixes to the payroll form. Owner: "Salary ka Tab bana do ... Kiska kya amount ho gya or kitna dena h. Also Employees ki Unka Kitna payment h aj ki Date me" -- plus "Not on Payroll pr click kre to aage q Puch rha h salary" and "Admins ko Not on Payroll Hi rkho. Owner ke devices hn vo saare." ADMIN gets a Salary tab (forced in beside Attendance, and deliberately NOT in the Permission Manager checklist, so the company's pay can never be handed to another post): To pay now (closed cycles not marked paid -- the same rows as the Home alert, drawn by ONE function now), Earned so far this cycle, Not on payroll with a Set salary button, and Recently paid. "So far" is not a new formula: it is payrollLineFor over the whole running cycle, so future working days sit in a fixed salary's divisor exactly as they will at the end and the figure never jumps when the cycle closes; the current weekly cycle starts the day AFTER the last closed one, so on a Saturday nothing is counted twice. EVERYONE ELSE gets a My salary card on Home, and firestore.rules lets them read their OWN payrollSettings and payrollRuns documents (resource.data.username == request.auth.uid -- the form a where('username','==',me) query can be proven against) and nobody else's: their device never receives another salary. Writing stays admin's. THE FORM: "Not on payroll" now hides the basis and the amount; the Admin role replaces the whole block with one sentence, live as the Role select changes, and the reader and the writer both force an admin to none; and a cycle with no amount is REFUSED instead of silently saving as "not on payroll" -- the old behaviour made an employee vanish from the Salary screen with no message. firestore.rules: two read rules widened to own-documents-only. PREVIOUSLY, ROUND 81 (2026-10-20). DATE OF JOINING AND LEAVING, and the name tag that refused "Imran Shaikh". The owner: "back date me koi naya employee ki attendance b mang rha h". Measured first: the app had no idea WHEN anybody worked here, so every person was on every day's roster -- the Attendance screen showed a new joiner unmarked on every past day, Mark-for-someone offered him for any date, and the Monthly summary, which counts anything that is not present as ABSENT, listed fourteen absences for a man who joined on the 15th. Eleven places each wrote their own `S.users.filter(u=>u.role!=='admin')`, and the bug was the same missing condition in every one; they all ask attendanceRosterUsers(dateKey) now. joinedOn / leftOn (inclusive) live on the user doc, both optional, so every existing record is employed on every date and nothing changed by itself. A mark that already exists outside the dates is NOT deleted and NOT hidden: the Attendance screen shows it with a warning and neither the summary nor the salary counts it. markAttendanceForUser and recordPresent refuse a day outside the dates (clear stays allowed). Salary: a non-employed working day stays in a fixed salary's divisor, which is what makes a mid-cycle joiner or leaver pro rata. Past the leaving date every screen is a lock card -- the owner's choice; the Auth account itself can only be removed by Delete, and the card says so. No leaving date on your own account or on the literal "admin" account. A temporary employee's name tag is now made from the name (temp1, temp2 for a Hindi or Urdu name) instead of refusing one nobody had been told the rules for. Also: "days present" from Round 80 was never translated. firestore.rules UNCHANGED.
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -3667,6 +3667,7 @@ const I18N = {
     'Yesterday':'बीता कल',
     // Domino Printing tab chrome (2026-09-07, Phase 4) -- openDominoModal
     // stays English, same modal-deferral rule as every other phase.
+    'This month and last month.':'इस महीने और पिछले महीने की।', // ROUND 87
     'Impressions log.':'इंप्रेशन का लॉग.', '+ Record impressions':'+ इंप्रेशन दर्ज करें',
     'Total impressions':'कुल इंप्रेशन', 'Total duration (HH:MM)':'कुल समय (घं:मि)', 'No entries yet.':'अभी तक कोई एंट्री नहीं.',
     'Impressions':'इंप्रेशन', 'Duration':'समय', 'Note':'नोट', 'By':'द्वारा',
@@ -4344,6 +4345,7 @@ const I18N = {
     // block's comment for scope notes.
     'Yesterday':'گزشتہ کل',
     // Domino Printing tab chrome (2026-09-07, Phase 4).
+    'This month and last month.':'اس مہینے اور پچھلے مہینے کی۔', // ROUND 87
     'Impressions log.':'اِمپریشن کا لاگ۔', '+ Record impressions':'+ امپریشن درج کریں',
     'Total impressions':'کل امپریشن', 'Total duration (HH:MM)':'کل وقت (گھ:من)', 'No entries yet.':'ابھی تک کوئی اندراج نہیں۔',
     'Impressions':'امپریشن', 'Duration':'وقت', 'Note':'نوٹ', 'By':'کی طرف سے',
@@ -7990,7 +7992,12 @@ function attachFirestoreListeners(){
   // string containing every row. Bounded to the most recent 500 (fetched
   // newest-first, then sorted oldest-first locally exactly as before); the
   // monthly report already filters by month for anything older.
-  fsBindCollection('dominoPrints', db.collection('dominoPrints').orderBy('at','desc').limit(500), (a,b)=>a.at-b.at);
+  // ROUND 87 -- this month and last month only (the cap of 500 stays as a
+  // ceiling). It was the biggest single download on every phone, every time
+  // the app reopened after half an hour away. From the 1st of last month, so
+  // last month's monthly report is still complete; an older month's report
+  // now says plainly that it is partial (see the report's Domino section).
+  fsBindCollection('dominoPrints', db.collection('dominoPrints').where('at','>=', dominoWindowStartTs(now)).orderBy('at','desc').limit(500), (a,b)=>a.at-b.at);
   // ROUND 56: loginLog moved to attachRoleGatedListeners -- admin-only, and it
   // was 5,600 documents per session for roles that never read it.
   // ROUND 18 -- see attachChatMessagesListeners()'s own big comment for
@@ -8774,15 +8781,36 @@ function sendHeartbeat(){
   S.activeSessions[S.currentUser.username] = entry;
   fsSetStaticSubKey('activeSessions', S.currentUser.username, entry); // FIXED (Task #54) -- was safeSet('app:activeSessions', S.activeSessions), which re-writes EVERY user's subkey from this device's local copy on every 60s heartbeat tick, risking stomping another user's concurrently-updated session (force-logout, fresh login) with stale cached data. Write only this device's own subkey instead.
 }
+// ROUND 87 -- the owner: "4-5 users me bhi Firebase payment mang rha h ...
+// koi b chiz be wja to nhi h". The heartbeat was the one write the app makes
+// on its own, and it ran every MINUTE -- including while the app sat in the
+// background, or a laptop tab stayed open all night (browsers still fire a
+// background timer about once a minute). One device left open was ~1,440
+// writes a day, and every admin device paid a read for each of them, just to
+// say "online". It now beats every 5 minutes, ONLY while the app is on
+// screen, and once straight away when the app comes back to the screen --
+// so "online" is still right the moment somebody opens it. The team list's
+// online window is 10 minutes to match (ACTIVE_WINDOW).
+const HEARTBEAT_EVERY_MS = 5*60*1000;
+let _lastHeartbeatAt = 0;
+function heartbeatIfVisible(){
+  if(!S.currentUser) return false;
+  if(typeof document !== 'undefined' && document.visibilityState === 'hidden') return false;
+  const messagesModalOpen = !!document.getElementById('messagesModalBody');
+  const modalOpen = !!document.getElementById('modalOverlay') && !messagesModalOpen;
+  if(modalOpen) return false; // same "don't disturb active form-editing" principle as the main sync poll
+  _lastHeartbeatAt = Date.now();
+  sendHeartbeat();
+  return true;
+}
 function startHeartbeat(){
-  sendHeartbeat(); // fire immediately so status is correct right after login, not up to 60s stale
-  setInterval(()=>{
-    if(!S.currentUser) return;
-    const messagesModalOpen = !!document.getElementById('messagesModalBody');
-    const modalOpen = !!document.getElementById('modalOverlay') && !messagesModalOpen;
-    if(modalOpen) return; // same "don't disturb active form-editing" principle as the main sync poll
-    sendHeartbeat();
-  }, 60000);
+  _lastHeartbeatAt = Date.now();
+  sendHeartbeat(); // fire immediately so status is correct right after login
+  setInterval(heartbeatIfVisible, HEARTBEAT_EVERY_MS);
+  document.addEventListener('visibilitychange', ()=>{
+    // back on screen after a minute or more away: say so now, not up to 5 minutes later
+    if(document.visibilityState === 'visible' && Date.now() - _lastHeartbeatAt > 60000) heartbeatIfVisible();
+  });
 }
 // SUPERSEDED (Task #54): replaced by Firestore's own onSnapshot listeners
 // (see attachFirestoreListeners()) -- no longer called anywhere (was
@@ -13335,6 +13363,12 @@ function fmtHHMM(mins){
   const h = Math.floor(mins/60), m = mins%60;
   return `${h}:${String(m).padStart(2,'0')}`;
 }
+// ROUND 87 -- the 1st of last month, local midnight: how far back this
+// device loads Domino entries.
+function dominoWindowStartTs(nowTs){
+  const d = new Date(nowTs || Date.now());
+  return new Date(d.getFullYear(), d.getMonth() - 1, 1, 0, 0, 0, 0).getTime();
+}
 function renderDomino(){
   const isAdmin = S.currentUser.role==='admin';
   const total = S.dominoPrints.reduce((s,x)=>s+x.impressions,0);
@@ -13344,7 +13378,7 @@ function renderDomino(){
   return `
   <div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-      <div><h2>${esc(t('Domino Printing'))}</h2><p class="desc">${esc(t('Impressions log.'))}</p></div>
+      <div><h2>${esc(t('Domino Printing'))}</h2><p class="desc">${esc(t('Impressions log.'))} ${esc(t('This month and last month.'))}</p></div>
       ${canDoEntry(S.currentUser.role,'entry_domino')?`<button class="btn btn-primary btn-sm" id="newDominoBtn">${esc(t('+ Record impressions'))}</button>`:''}
     </div>
     <div class="grid-stats" style="margin-bottom:12px;">
@@ -15726,7 +15760,10 @@ async function exportMonthPdf(year, month0){
   // Domino printing
   h1('Domino printing');
   const dom = S.dominoPrints.filter(x=>inMonth(x.at));
-  if(!dom.length) emptyNote('No entries this month.');
+  // ROUND 87 -- this device loads Domino from the 1st of last month; say so for an older month
+  const domIncomplete = monthStart < dominoWindowStartTs(Date.now());
+  if(domIncomplete) emptyNote('⚠ This month is older than the Domino entries this device keeps loaded (this month and last month) — the entries below are only the part still available, not the full month.');
+  if(!dom.length && !domIncomplete) emptyNote('No entries this month.');
   groupByDate(dom.slice().sort((a,b)=>b.at-a.at), x=>x.at).forEach(sec=>{
     h2(sec.heading);
     sec.items.forEach(x=> line(`${x.impressions} impressions${x.note?' — '+x.note:''} — by ${x.by} — ${fmtTime(x.at)}`));
@@ -22419,7 +22456,7 @@ function renderAttendanceMap(){
     <p class="desc">Who's currently in the app.</p>
     ${(() => {
       const employees = S.users.filter(u=>u.role!=='admin' || u.username===S.currentUser.username);
-      const ACTIVE_WINDOW = 3*60*1000; // heartbeat fires every 60s — 3 minutes is a generous margin before calling someone offline
+      const ACTIVE_WINDOW = 10*60*1000; // ROUND 87 -- heartbeat every 5 minutes while on screen (HEARTBEAT_EVERY_MS); two beats' margin before calling someone offline
       const rows = employees.map(u=>{
         // activeSessions[username] became {token, at, lastSeen} (2026-08-21,
         // for single-device login) -- still transparently reads a legacy
