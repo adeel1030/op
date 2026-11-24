@@ -10,7 +10,7 @@
      the whole 1.35 MB down again on a phone. Up here it lands inside the
      first kilobyte, so the check costs a few KB instead of the entire app.
      The two can never be allowed to drift -- test_round60 fails if they do. -->
-<meta name="app-build" content="2026-11-24-firestore-preview119">
+<meta name="app-build" content="2026-11-24-firestore-preview120">
 <meta name="theme-color" content="#1E3F1B">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1453,7 +1453,8 @@
   .ot-step.now i{background:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb, var(--primary) 25%, transparent);width:12px;height:12px;margin-top:-1px;}
   .ot-step.now em{color:var(--ink);font-weight:800;}
   /* Order date and money on one line instead of two. */
-  .order-tile .ot-line{display:flex;align-items:baseline;justify-content:space-between;gap:10px;}
+  .order-tile .ot-line{display:flex;align-items:baseline;justify-content:space-between;gap:2px 10px;flex-wrap:wrap;}
+  .order-tile .ot-line > span:first-child{white-space:nowrap;} /* ROUND 92 -- the date never breaks; the value moves to the next line when both do not fit */
   .ot-mrp{flex:0 0 auto;color:var(--ink);}
   .ot-mrp i{font-style:normal;color:var(--ink-soft);font-weight:400;}
   /* The ⓘ disclosure and the folded detail line. Styled as quiet text, not as
@@ -1846,18 +1847,55 @@
     table.ph-stack td:empty{display:none;}
     table.ph-stack td.num, table.ph-stack td > .num{white-space:normal;}
     table.ph-stack td[data-label]:not(:first-child)::before{content:attr(data-label);display:inline-block;margin-inline-end:5px;font-size:0.65625rem;font-weight:700;text-transform:uppercase;letter-spacing:0.02em;color:var(--ink-soft);}
-    table.ph-stack td.ph-actions{flex:1 1 100%;display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;margin-top:4px;}
+    table.ph-stack td.ph-actions{flex:0 0 auto;margin-inline-start:auto;display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;margin-top:4px;}
+    table.ph-stack td.ph-actions .row-actions{flex-wrap:nowrap;}
     table.ph-stack td.ph-actions > .row-actions{justify-content:flex-end;}
   }
-  /* ROUND 91 -- a big figure in a half-width tile at the largest text size
-     ("₹1,25,|000"). The figure now shrinks to its tile instead of breaking. */
+  /* ROUND 92 -- "home par Today wle number zda chote ho gye". Round 91 shrank
+     every figure as if it were nine characters long ("₹1,25,000"), so a
+     plain "4" in a narrow Today cell came out at half size. The size now
+     follows the figure's OWN length (--nchars, set by markNumberLengths
+     on every render): a short number keeps its full size, and only a figure
+     that would not fit its tile gets smaller -- it is never broken. */
   .stat-card-v2, .today-cell, .grid-stats > .stat{container-type:inline-size;}
-  .stat-card-v2 .n{white-space:nowrap;overflow-wrap:normal;font-size:min(1.125rem, 15cqi);}
-  .today-cell .n{white-space:nowrap;font-size:min(1.3125rem, 15cqi);}
-  .today-grid.cols-5 .today-cell .n{font-size:min(1.125rem, 15cqi);}
-  .expense-card .today-cell .n{font-size:min(1.0625rem, 15cqi);overflow-wrap:normal;}
-  .salary-figures .today-cell .n{font-size:min(1rem, 15cqi);}
-  .grid-stats > .stat .n{white-space:nowrap;font-size:min(1.4375rem, 15cqi);}
+  .stat-card-v2 .n{white-space:nowrap;overflow-wrap:normal;font-size:min(1.125rem, calc(96cqi / (var(--nchars, 4) * 0.62)));}
+  .today-cell .n{white-space:nowrap;font-size:min(1.3125rem, calc(96cqi / (var(--nchars, 4) * 0.62)));}
+  .today-grid.cols-5 .today-cell .n{font-size:min(1.125rem, calc(96cqi / (var(--nchars, 4) * 0.62)));}
+  .expense-card .today-cell .n{font-size:min(1.0625rem, calc(96cqi / (var(--nchars, 4) * 0.62)));overflow-wrap:normal;}
+  .salary-figures .today-cell .n{font-size:min(1rem, calc(96cqi / (var(--nchars, 4) * 0.62)));}
+  .grid-stats > .stat .n{white-space:nowrap;font-size:min(1.4375rem, calc(96cqi / (var(--nchars, 4) * 0.62)));}
+  /* ROUND 92 -- the order tiles inside a Home stage window ("Processing",
+     "In packing" ...) were laid out three across like the Orders screen on a
+     laptop, inside a window only 520px wide -- "tiles bht hi patle patle".
+     Inside a window they are always one full-width tile per row. */
+  .modal .order-tile-grid{display:block;}
+  .chooser-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:4px 0 6px;}
+  .chooser-tile{display:flex;flex-direction:column;align-items:center;gap:6px;padding:16px 10px;border:1px solid var(--border);border-radius:16px;background:var(--tile-highlight), var(--surface);color:var(--ink);font:inherit;cursor:pointer;text-align:center;box-shadow:var(--tile-shadow);}
+  .chooser-tile .icon-badge{width:48px;height:48px;font-size:1.5rem;}
+  .chooser-tile:active{transform:scale(0.97);}
+  .modal .order-tile-grid .order-tile{margin-bottom:10px;}
+  /* ROUND 92 -- Users on a phone: two tall cards side by side squeezed every
+     name, role and button; with a bigger text size they ran past the screen.
+     Below 600px each person is one horizontal row: picture on the left,
+     details and buttons beside it. Tablet and laptop keep the card grid. */
+  @media (max-width:599.98px){
+    .tile-grid-3.user-grid{grid-template-columns:1fr;}
+    .user-card{display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:12px;align-items:start;text-align:left !important;padding:12px !important;}
+    .user-card > :first-child{grid-row:1 / span 30;margin:2px 0 0 !important;}
+    .user-card > :not(:first-child){grid-column:2;}
+    .user-card .role-pill{justify-self:start;}
+    .user-card .row-actions{justify-content:flex-start;margin-top:8px;}
+  }
+  /* ROUND 92 -- the order line being edited: two number boxes and two
+     buttons in one row did not fit a phone, and Save went off the right
+     edge. The boxes now share one row with their names over them; the
+     buttons sit on the row below. */
+  .draft-edit-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(0,1fr));gap:8px;}
+  .draft-edit-grid label{display:block;font-size:0.6875rem;font-weight:700;color:var(--ink-soft);text-transform:uppercase;margin-bottom:3px;}
+  .draft-edit-grid input{width:100%;min-width:0;box-sizing:border-box;padding:8px;border:1.5px solid var(--border);border-radius:8px;}
+  .draft-edit-btns{display:flex;gap:8px;justify-content:flex-end;margin-top:8px;}
+  .order-booked-note{background:var(--warning-bg);color:var(--warning);border-radius:10px;padding:9px 11px;font-size:0.78125rem;margin-bottom:10px;}
+  .ot-final{color:var(--success);font-weight:800;}
   /* ROUND 91 -- the bottom bar at 360px with the largest text: six fixed
      60px+ buttons did not fit, and because the bar centres its content, the
      overflow went off BOTH ends -- "Home" sat half off the left edge where no
@@ -2610,7 +2648,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-11-24-firestore-preview119"; // ROUND 91 (2026-11-24). "Jo reh gya vo b kr do" -- the four things Round 90 left open. (1) PHONE TABLES: every cell allowed a break after any character, so 5-6 column tables were squeezed until names, headers, amounts and times broke mid-word ("Moham|mad", "03:4|7"), and some tables still hung past their card. Words are now never broken; a table that does not fit its card on a phone becomes stacked rows (first cell on top, the rest labelled with their column name, buttons at the end) -- fitTablesIn(); a table that fits stays a table, so laptop/tablet are unchanged. Big figures shrink to their tile instead of breaking; the bottom bar shares its width (at 360px with the largest text "Home" sat half off the left edge); the screen name under OMS stays on one line. (2) HINDI/URDU: ~130 headings, buttons and lines were written straight into the page, not through t(). translateTextNodesIn() checks every piece of text that lands on the page against the dictionary (typed content and chat are never touched), lines with a number or name inside use templates (I18N_PATTERNS), 112 new entries per language, Permission Manager and notification settings included; month/day names follow the language (uiDateLocale; the PDF stays English, its font has no Hindi/Urdu). (3) Ready to Dispatch, its undo and Undo Dispatch write only the fields they change (saveOrderStageFields) -- a field another device had just written is no longer wiped on a slow connection. (4) Short stock counts products, not rows (one item short in Filled and Ready was "2"); and a part fill/pack no longer closes the stock task while the item is still short. firestore.rules and firestore.indexes.json UNCHANGED. PREVIOUSLY, ROUND 90 (2026-11-24). THE FULL TEST PASS -- "Complete har Nazarye se testing krlo ab. Ik point b nahi chorna h." No new feature; every fix below was found by a test. ORDERS: (1) the Round 89 booked lock also blocked Undo Ready to Dispatch, Undo Dispatch and carton scanning on a booked order, and orders are usually booked before they are packed -- the lock now covers only Edit, Delete and Undo Ready; (2) a sales phone tried to write the automatic status change it is not allowed to write (canWriteOrderStatus; a permitted device finishes it); (3) an LR number typed in the dispatch window without a photo was thrown away; (4) an order edit window left open while another device deleted, dispatched or changed the same order used to bring it back / pull it back to In packing / leave the reserved stock different from the order -- it is refused now and the freshest copy is the one saved; (5) the packing entry advanced the order before the tasks, leaving its packaging step "pending". ENTRIES: (6) editing or deleting a filling/packing/purchase entry could push oil or Filled stock below zero (stockShortfallSince) -- refused with the reason; (7) a rejected date in the edit window left the stock reverted on that device and the stock log switched off until reload; (8) an empty quantity box saved as 0 (edit window and Adjust); (9) changing the pieces of a filling entry did not change the oil used; (10) fractions of a piece are refused in bulk edit, Adjust, retail and order lines; (11) bulk edit with nothing changed wrote zero-quantity log rows and rounded the oil; (12) the same stale-window check for entries. ALSO: a product whose name differs only by capitals/spaces is a duplicate; Domino has a typo ceiling; a tap on a window that is closing no longer saves twice; attendance cannot be marked for a future day or a day this device has not loaded; admin loads attendance back to the oldest salary month it can still pay, staff at least 7 weeks; Daily Work ignores a future date. BARCODES: label bars are exactly 2 printer dots wide at 203 dpi; the camera reader runs its own frame loop (the library helper never decoded a frame) at full HD; closing any window releases the camera; admin can free a label for reuse. LOOK: typed text in fields was unreadable in the dark themes (no text colour was ever set), a white month box in dark themes, the sticky date heading sat 14px low, the maroon alert colours, Urdu numbers, and the Domino table is 3 columns instead of 6 on a phone. firestore.rules and firestore.indexes.json UNCHANGED since Round 89. PREVIOUSLY, ROUND 89 (2026-11-23). UNDO UNTIL BOOKED, CARTON BARCODES, GOODS RETURN, STOCK COUNT, SMALLER DOWNLOADS. (1) "Har Ek Action ko Undoable rkho jb tk vo Daily me ja k book nahi hojata": own entries can be taken back from Home until booked (was 5 minutes), a manager can undo his own entries, a salary marked paid can be unmarked, a Domino entry can be taken back the same day, a sales order can be deleted by its creator while it is still only an order; and the other way round, a booked order/attendance day/return/count can no longer be unwound until the booking is undone (BOOKED_LOCK_MSG). (2) Carton barcodes: admin prints Code 128 labels, 2 x 1.5 in, one per page, numbers reserved by a transaction so none repeats; admin/manager/packing scan cartons onto an order at Ready to Dispatch (scanner gun, typing or camera -- BarcodeDetector, else ZXing from the CDN), a carton already on another order is refused; admin scans any carton and gets the whole bill. (3) Goods return against an order (or without one): good pieces back to Ready stock, damaged recorded, credit value after party discount, cartons can be scanned in, undo until booked, in Daily Work. (4) Stock count: count any pool, the DIFFERENCE is applied so entries made during the count survive; staff counts go to admin for approval; undo until booked; in Daily Work. (5) Downloads: chat 60 days (screen and download now the same; was 7 shown, all downloaded), retail/samples 60 days (was 180), a staff phone\'s own attendance from the 1st of last month (was all history; admin keeps >= 60 days for weekly payroll). The chat and staff-attendance windows need firestore.indexes.json and fall back to the old queries until it is deployed. firestore.rules CHANGED. PREVIOUSLY, ROUND 88 (2026-11-23). TABLET, KEYBOARD, USAGE. (1) "Tablet pr jb b m kholta hu to beech me phone bana ajata h": the decorative phone mock was dropped only at <=520px wide or <=760px tall and the laptop layout starts at 900px, so every tablet in portrait (521-899px wide, taller than 760) drew a 412px phone in the middle. Below 900px the app is now always full-bleed. And the nav/layout decision now comes from the same media query the CSS uses (isDesktopLayout), plus orientationchange/late rechecks, because on some Android tablets innerWidth lags a rotation -- that left the phone nav inside the laptop layout until the next rotation. (2) "search krte hn to keyboard k niche ghus jata hai": the viewport asks Android to shrink the page for the keyboard (interactive-widget=resizes-content); for browsers that still overlay (iPhone) --kb takes the covered height off the app; the bottom bar steps aside while typing; and a focused field is scrolled to the top of what is visible so the suggestion list under it fits. (3) Usage: a return to the app re-made all ~30 listeners every time (each billed at least one read); now only after 2+ minutes in the background. Domino is downloaded only by posts that can open or record it. firestore.rules UNCHANGED. PREVIOUSLY, ROUND 87 (2026-10-21). FIREBASE COST. Owner: "4-5 users me bhi Firebase m payment mang rha h ... koi b chiz be wja to nhi h". The payment prompt itself is the Blaze plan that Cloud Functions require (seven callables: create/delete user, reset password, force logout, clear notifications, clear lockout, reset data) -- not usage. Two real wastes fixed: (1) the heartbeat wrote every MINUTE even with the app in the background or a tab left open overnight (~1,440 writes a day per device, each read again by every admin device); it now beats every 5 minutes and only while the app is on screen, once immediately on coming back, and the online window is 10 minutes; (2) Domino loaded the latest 500 entries on every phone on every cold open; it now loads from the 1st of last month (cap 500 kept), and the monthly report says plainly when an older month is partial. firestore.rules UNCHANGED. PREVIOUSLY, ROUND 86 (2026-10-20). Owner: "employees k home page pe details nahi do. Sirf Tab me dedo. jese admin ko h." The My salary card is gone from an employee's Home; their pay is on their own Salary tab only (beside Attendance), the same as admin's is on his. firestore.rules UNCHANGED. PREVIOUSLY, ROUND 85 (2026-10-20). THE SALARY PORTAL -- the owner's confirmed plan, plus all five of the suggestions. Round 84 removed the running-cycle table from admin; the owner meant RENAME it, so it is back as "To be paid as of now", net of the advance it would cut. Admin: four figures (to pay now, to be paid as of now, advance to recover, paid this month), the owed table, the running table, advances as a dated running ledger per person, Not on payroll, and a month-by-month payment history -- and every name opens that person's sheet (khata). Employees: their own Salary tab beside Attendance, which is the SAME sheet for themselves -- figures, days of leave month by month, advances, payments -- and their device holds no one else's salary (Round 82 rules). The five suggestions: (1) a most-to-cut-per-salary on each advance, which needs EVERY ADVANCE TO KNOW ITS OWN RECOVERY -- payments now store advanceCuts {advanceId: amount}; older ones are allocated oldest-first, the way they were taken; (2) paid leave per month, monthly cycles only, in halves, paid as days worked; (3) a working day already past with NO mark is counted, listed, and warned about before Mark paid -- it is not leave and is not paid; (4) salary payments and advances are entries in Daily Work, bookable, counted, in Book all and in the backlog, and a booked advance cannot be edited until unbooked; (5) a printable salary slip per payment. firestore.rules UNCHANGED. PREVIOUSLY, ROUND 84 (2026-10-20). HALF DAY, and the admin's Salary tab no longer shows "Earned so far". Owner: "Admin ko Earned so far, this cycle ye q dikh rha h ye to Employee ko dikhna chahiye na" -- the running cycle's figure is the employee's own number and stays on their card; the admin's middle figure is now the advance still to recover. And "Half day attendence ka b option do. Salary m b": a third mark, type 'halfday', stored on the same one-record-per-person-per-day document as present and absent, so every rule about a mark (one per day, final once made, admin-only to change) applies to it unchanged. Two questions, answered once: attendanceIsWorking (a half day opens the app, allows entries, counts as present today) and attendanceDayValue (present 1, half day 0.5). Eleven places asked `type === 'present'`; each would have treated a half day as an ABSENCE -- locked the person out, put it on the monthly summary's absent list and paid nothing. Salary: a half day is 0.5 of a day for both bases; the monthly summary shows 4.5 present and lists the half days on their own line. Marked by admin or by whoever holds "mark others" (the team card has a third button); never self-marked. firestore.rules UNCHANGED -- the attendance rules never constrained the type. PREVIOUSLY, ROUND 83 (2026-10-20). SALARY ADVANCES, and the new-user role default. Owner: "Kisi b Employee ko Advance dene ka b Option rkho. (Date editable)", with his two answers: cut in FULL from the next salary marked paid (the rest from the one after if that salary is smaller), and shown to the employee in their own card. The ledger is two sums, never a stored balance: given = the salaryAdvances documents, recovered = advanceDeducted on the payrollRuns records; nothing holds a running figure two devices could overwrite. The cut is decided at the moment of Mark paid, min(outstanding, that salary), and recorded beside the gross as advanceDeducted and netPaid; every screen shows the same cut BEFORE that by allocating the outstanding to owed cycles oldest first. The date (and amount and note) is editable only while none of that advance has been cut yet -- cuts are taken oldest-first, so "untouched" is exact, and changing an advance that has already come out of a paid salary would rewrite money already handed over. salaryAdvances in firestore.rules: admin writes, the person it is about may read. ALSO: the Add user form selected NOTHING in its Role list, and ROLES is admin-first, so every new person started out as an Admin -- one careless Create made them one. It starts on a placeholder now, and both the create and edit paths refuse a missing or unknown role (the edit path used to save the Round 28 placeholder as an empty role). PREVIOUSLY, ROUND 82 (2026-10-20). THE SALARY TAB, and two fixes to the payroll form. Owner: "Salary ka Tab bana do ... Kiska kya amount ho gya or kitna dena h. Also Employees ki Unka Kitna payment h aj ki Date me" -- plus "Not on Payroll pr click kre to aage q Puch rha h salary" and "Admins ko Not on Payroll Hi rkho. Owner ke devices hn vo saare." ADMIN gets a Salary tab (forced in beside Attendance, and deliberately NOT in the Permission Manager checklist, so the company's pay can never be handed to another post): To pay now (closed cycles not marked paid -- the same rows as the Home alert, drawn by ONE function now), Earned so far this cycle, Not on payroll with a Set salary button, and Recently paid. "So far" is not a new formula: it is payrollLineFor over the whole running cycle, so future working days sit in a fixed salary's divisor exactly as they will at the end and the figure never jumps when the cycle closes; the current weekly cycle starts the day AFTER the last closed one, so on a Saturday nothing is counted twice. EVERYONE ELSE gets a My salary card on Home, and firestore.rules lets them read their OWN payrollSettings and payrollRuns documents (resource.data.username == request.auth.uid -- the form a where('username','==',me) query can be proven against) and nobody else's: their device never receives another salary. Writing stays admin's. THE FORM: "Not on payroll" now hides the basis and the amount; the Admin role replaces the whole block with one sentence, live as the Role select changes, and the reader and the writer both force an admin to none; and a cycle with no amount is REFUSED instead of silently saving as "not on payroll" -- the old behaviour made an employee vanish from the Salary screen with no message. firestore.rules: two read rules widened to own-documents-only. PREVIOUSLY, ROUND 81 (2026-10-20). DATE OF JOINING AND LEAVING, and the name tag that refused "Imran Shaikh". The owner: "back date me koi naya employee ki attendance b mang rha h". Measured first: the app had no idea WHEN anybody worked here, so every person was on every day's roster -- the Attendance screen showed a new joiner unmarked on every past day, Mark-for-someone offered him for any date, and the Monthly summary, which counts anything that is not present as ABSENT, listed fourteen absences for a man who joined on the 15th. Eleven places each wrote their own `S.users.filter(u=>u.role!=='admin')`, and the bug was the same missing condition in every one; they all ask attendanceRosterUsers(dateKey) now. joinedOn / leftOn (inclusive) live on the user doc, both optional, so every existing record is employed on every date and nothing changed by itself. A mark that already exists outside the dates is NOT deleted and NOT hidden: the Attendance screen shows it with a warning and neither the summary nor the salary counts it. markAttendanceForUser and recordPresent refuse a day outside the dates (clear stays allowed). Salary: a non-employed working day stays in a fixed salary's divisor, which is what makes a mid-cycle joiner or leaver pro rata. Past the leaving date every screen is a lock card -- the owner's choice; the Auth account itself can only be removed by Delete, and the card says so. No leaving date on your own account or on the literal "admin" account. A temporary employee's name tag is now made from the name (temp1, temp2 for a Hindi or Urdu name) instead of refusing one nobody had been told the rules for. Also: "days present" from Round 80 was never translated. firestore.rules UNCHANGED.
+const APP_BUILD = "2026-11-24-firestore-preview120"; // ROUND 92 (2026-11-24). Owner's list, checked on phone, tablet and laptop. (1) Today numbers were shrunk as if every figure were nine characters long; the size now follows each figure's own length (--nchars, markNumberLengths). (2) Order Edit stays until the order is dispatched -- a booked order too: the window says so, and saving un-books it with a message (book it again after changing the bill). (3) Users on a phone: one horizontal row per person. (4) Order tiles inside a Home stage window were three-across in a 520px window; one full-width tile per row now. (5) Editing an order line: the boxes and buttons ran off a phone and hid Save; boxes with names on one row, buttons under. An order line typed but not saved is asked about on Save changes, and Cancel/✕/Back with unsaved changes asks before closing. (6) Daily Work rows: buttons sit at the end of the last line instead of a line of their own. (7) Orders show MRP (discount %) → final value (orderValueHtml). (8) Home: Retail and Samples are one icon that opens a two-choice window; admin gets a Carton scan icon. A Cartons tab (admin only, under More): scan, new labels, every scanned box with search, labels printed, Excel export (SheetJS from the CDN, CSV if it cannot load). (9) Carton lookup shows party, transport, the box and every item -- no money. (10) Mark Ready to Dispatch always opens the Cartons & loose boxes window first (Skip or Done); a label can be scanned as a full carton or a loose box; the dispatch window fills Total cases from the boxes scanned. firestore.rules and firestore.indexes.json UNCHANGED. PREVIOUSLY, ROUND 91 (2026-11-24). "Jo reh gya vo b kr do" -- the four things Round 90 left open. (1) PHONE TABLES: every cell allowed a break after any character, so 5-6 column tables were squeezed until names, headers, amounts and times broke mid-word ("Moham|mad", "03:4|7"), and some tables still hung past their card. Words are now never broken; a table that does not fit its card on a phone becomes stacked rows (first cell on top, the rest labelled with their column name, buttons at the end) -- fitTablesIn(); a table that fits stays a table, so laptop/tablet are unchanged. Big figures shrink to their tile instead of breaking; the bottom bar shares its width (at 360px with the largest text "Home" sat half off the left edge); the screen name under OMS stays on one line. (2) HINDI/URDU: ~130 headings, buttons and lines were written straight into the page, not through t(). translateTextNodesIn() checks every piece of text that lands on the page against the dictionary (typed content and chat are never touched), lines with a number or name inside use templates (I18N_PATTERNS), 112 new entries per language, Permission Manager and notification settings included; month/day names follow the language (uiDateLocale; the PDF stays English, its font has no Hindi/Urdu). (3) Ready to Dispatch, its undo and Undo Dispatch write only the fields they change (saveOrderStageFields) -- a field another device had just written is no longer wiped on a slow connection. (4) Short stock counts products, not rows (one item short in Filled and Ready was "2"); and a part fill/pack no longer closes the stock task while the item is still short. firestore.rules and firestore.indexes.json UNCHANGED. PREVIOUSLY, ROUND 90 (2026-11-24). THE FULL TEST PASS -- "Complete har Nazarye se testing krlo ab. Ik point b nahi chorna h." No new feature; every fix below was found by a test. ORDERS: (1) the Round 89 booked lock also blocked Undo Ready to Dispatch, Undo Dispatch and carton scanning on a booked order, and orders are usually booked before they are packed -- the lock now covers only Edit, Delete and Undo Ready; (2) a sales phone tried to write the automatic status change it is not allowed to write (canWriteOrderStatus; a permitted device finishes it); (3) an LR number typed in the dispatch window without a photo was thrown away; (4) an order edit window left open while another device deleted, dispatched or changed the same order used to bring it back / pull it back to In packing / leave the reserved stock different from the order -- it is refused now and the freshest copy is the one saved; (5) the packing entry advanced the order before the tasks, leaving its packaging step "pending". ENTRIES: (6) editing or deleting a filling/packing/purchase entry could push oil or Filled stock below zero (stockShortfallSince) -- refused with the reason; (7) a rejected date in the edit window left the stock reverted on that device and the stock log switched off until reload; (8) an empty quantity box saved as 0 (edit window and Adjust); (9) changing the pieces of a filling entry did not change the oil used; (10) fractions of a piece are refused in bulk edit, Adjust, retail and order lines; (11) bulk edit with nothing changed wrote zero-quantity log rows and rounded the oil; (12) the same stale-window check for entries. ALSO: a product whose name differs only by capitals/spaces is a duplicate; Domino has a typo ceiling; a tap on a window that is closing no longer saves twice; attendance cannot be marked for a future day or a day this device has not loaded; admin loads attendance back to the oldest salary month it can still pay, staff at least 7 weeks; Daily Work ignores a future date. BARCODES: label bars are exactly 2 printer dots wide at 203 dpi; the camera reader runs its own frame loop (the library helper never decoded a frame) at full HD; closing any window releases the camera; admin can free a label for reuse. LOOK: typed text in fields was unreadable in the dark themes (no text colour was ever set), a white month box in dark themes, the sticky date heading sat 14px low, the maroon alert colours, Urdu numbers, and the Domino table is 3 columns instead of 6 on a phone. firestore.rules and firestore.indexes.json UNCHANGED since Round 89. PREVIOUSLY, ROUND 89 (2026-11-23). UNDO UNTIL BOOKED, CARTON BARCODES, GOODS RETURN, STOCK COUNT, SMALLER DOWNLOADS. (1) "Har Ek Action ko Undoable rkho jb tk vo Daily me ja k book nahi hojata": own entries can be taken back from Home until booked (was 5 minutes), a manager can undo his own entries, a salary marked paid can be unmarked, a Domino entry can be taken back the same day, a sales order can be deleted by its creator while it is still only an order; and the other way round, a booked order/attendance day/return/count can no longer be unwound until the booking is undone (BOOKED_LOCK_MSG). (2) Carton barcodes: admin prints Code 128 labels, 2 x 1.5 in, one per page, numbers reserved by a transaction so none repeats; admin/manager/packing scan cartons onto an order at Ready to Dispatch (scanner gun, typing or camera -- BarcodeDetector, else ZXing from the CDN), a carton already on another order is refused; admin scans any carton and gets the whole bill. (3) Goods return against an order (or without one): good pieces back to Ready stock, damaged recorded, credit value after party discount, cartons can be scanned in, undo until booked, in Daily Work. (4) Stock count: count any pool, the DIFFERENCE is applied so entries made during the count survive; staff counts go to admin for approval; undo until booked; in Daily Work. (5) Downloads: chat 60 days (screen and download now the same; was 7 shown, all downloaded), retail/samples 60 days (was 180), a staff phone\'s own attendance from the 1st of last month (was all history; admin keeps >= 60 days for weekly payroll). The chat and staff-attendance windows need firestore.indexes.json and fall back to the old queries until it is deployed. firestore.rules CHANGED. PREVIOUSLY, ROUND 88 (2026-11-23). TABLET, KEYBOARD, USAGE. (1) "Tablet pr jb b m kholta hu to beech me phone bana ajata h": the decorative phone mock was dropped only at <=520px wide or <=760px tall and the laptop layout starts at 900px, so every tablet in portrait (521-899px wide, taller than 760) drew a 412px phone in the middle. Below 900px the app is now always full-bleed. And the nav/layout decision now comes from the same media query the CSS uses (isDesktopLayout), plus orientationchange/late rechecks, because on some Android tablets innerWidth lags a rotation -- that left the phone nav inside the laptop layout until the next rotation. (2) "search krte hn to keyboard k niche ghus jata hai": the viewport asks Android to shrink the page for the keyboard (interactive-widget=resizes-content); for browsers that still overlay (iPhone) --kb takes the covered height off the app; the bottom bar steps aside while typing; and a focused field is scrolled to the top of what is visible so the suggestion list under it fits. (3) Usage: a return to the app re-made all ~30 listeners every time (each billed at least one read); now only after 2+ minutes in the background. Domino is downloaded only by posts that can open or record it. firestore.rules UNCHANGED. PREVIOUSLY, ROUND 87 (2026-10-21). FIREBASE COST. Owner: "4-5 users me bhi Firebase m payment mang rha h ... koi b chiz be wja to nhi h". The payment prompt itself is the Blaze plan that Cloud Functions require (seven callables: create/delete user, reset password, force logout, clear notifications, clear lockout, reset data) -- not usage. Two real wastes fixed: (1) the heartbeat wrote every MINUTE even with the app in the background or a tab left open overnight (~1,440 writes a day per device, each read again by every admin device); it now beats every 5 minutes and only while the app is on screen, once immediately on coming back, and the online window is 10 minutes; (2) Domino loaded the latest 500 entries on every phone on every cold open; it now loads from the 1st of last month (cap 500 kept), and the monthly report says plainly when an older month is partial. firestore.rules UNCHANGED. PREVIOUSLY, ROUND 86 (2026-10-20). Owner: "employees k home page pe details nahi do. Sirf Tab me dedo. jese admin ko h." The My salary card is gone from an employee's Home; their pay is on their own Salary tab only (beside Attendance), the same as admin's is on his. firestore.rules UNCHANGED. PREVIOUSLY, ROUND 85 (2026-10-20). THE SALARY PORTAL -- the owner's confirmed plan, plus all five of the suggestions. Round 84 removed the running-cycle table from admin; the owner meant RENAME it, so it is back as "To be paid as of now", net of the advance it would cut. Admin: four figures (to pay now, to be paid as of now, advance to recover, paid this month), the owed table, the running table, advances as a dated running ledger per person, Not on payroll, and a month-by-month payment history -- and every name opens that person's sheet (khata). Employees: their own Salary tab beside Attendance, which is the SAME sheet for themselves -- figures, days of leave month by month, advances, payments -- and their device holds no one else's salary (Round 82 rules). The five suggestions: (1) a most-to-cut-per-salary on each advance, which needs EVERY ADVANCE TO KNOW ITS OWN RECOVERY -- payments now store advanceCuts {advanceId: amount}; older ones are allocated oldest-first, the way they were taken; (2) paid leave per month, monthly cycles only, in halves, paid as days worked; (3) a working day already past with NO mark is counted, listed, and warned about before Mark paid -- it is not leave and is not paid; (4) salary payments and advances are entries in Daily Work, bookable, counted, in Book all and in the backlog, and a booked advance cannot be edited until unbooked; (5) a printable salary slip per payment. firestore.rules UNCHANGED. PREVIOUSLY, ROUND 84 (2026-10-20). HALF DAY, and the admin's Salary tab no longer shows "Earned so far". Owner: "Admin ko Earned so far, this cycle ye q dikh rha h ye to Employee ko dikhna chahiye na" -- the running cycle's figure is the employee's own number and stays on their card; the admin's middle figure is now the advance still to recover. And "Half day attendence ka b option do. Salary m b": a third mark, type 'halfday', stored on the same one-record-per-person-per-day document as present and absent, so every rule about a mark (one per day, final once made, admin-only to change) applies to it unchanged. Two questions, answered once: attendanceIsWorking (a half day opens the app, allows entries, counts as present today) and attendanceDayValue (present 1, half day 0.5). Eleven places asked `type === 'present'`; each would have treated a half day as an ABSENCE -- locked the person out, put it on the monthly summary's absent list and paid nothing. Salary: a half day is 0.5 of a day for both bases; the monthly summary shows 4.5 present and lists the half days on their own line. Marked by admin or by whoever holds "mark others" (the team card has a third button); never self-marked. firestore.rules UNCHANGED -- the attendance rules never constrained the type. PREVIOUSLY, ROUND 83 (2026-10-20). SALARY ADVANCES, and the new-user role default. Owner: "Kisi b Employee ko Advance dene ka b Option rkho. (Date editable)", with his two answers: cut in FULL from the next salary marked paid (the rest from the one after if that salary is smaller), and shown to the employee in their own card. The ledger is two sums, never a stored balance: given = the salaryAdvances documents, recovered = advanceDeducted on the payrollRuns records; nothing holds a running figure two devices could overwrite. The cut is decided at the moment of Mark paid, min(outstanding, that salary), and recorded beside the gross as advanceDeducted and netPaid; every screen shows the same cut BEFORE that by allocating the outstanding to owed cycles oldest first. The date (and amount and note) is editable only while none of that advance has been cut yet -- cuts are taken oldest-first, so "untouched" is exact, and changing an advance that has already come out of a paid salary would rewrite money already handed over. salaryAdvances in firestore.rules: admin writes, the person it is about may read. ALSO: the Add user form selected NOTHING in its Role list, and ROLES is admin-first, so every new person started out as an Admin -- one careless Create made them one. It starts on a placeholder now, and both the create and edit paths refuse a missing or unknown role (the edit path used to save the Round 28 placeholder as an empty role). PREVIOUSLY, ROUND 82 (2026-10-20). THE SALARY TAB, and two fixes to the payroll form. Owner: "Salary ka Tab bana do ... Kiska kya amount ho gya or kitna dena h. Also Employees ki Unka Kitna payment h aj ki Date me" -- plus "Not on Payroll pr click kre to aage q Puch rha h salary" and "Admins ko Not on Payroll Hi rkho. Owner ke devices hn vo saare." ADMIN gets a Salary tab (forced in beside Attendance, and deliberately NOT in the Permission Manager checklist, so the company's pay can never be handed to another post): To pay now (closed cycles not marked paid -- the same rows as the Home alert, drawn by ONE function now), Earned so far this cycle, Not on payroll with a Set salary button, and Recently paid. "So far" is not a new formula: it is payrollLineFor over the whole running cycle, so future working days sit in a fixed salary's divisor exactly as they will at the end and the figure never jumps when the cycle closes; the current weekly cycle starts the day AFTER the last closed one, so on a Saturday nothing is counted twice. EVERYONE ELSE gets a My salary card on Home, and firestore.rules lets them read their OWN payrollSettings and payrollRuns documents (resource.data.username == request.auth.uid -- the form a where('username','==',me) query can be proven against) and nobody else's: their device never receives another salary. Writing stays admin's. THE FORM: "Not on payroll" now hides the basis and the amount; the Admin role replaces the whole block with one sentence, live as the Role select changes, and the reader and the writer both force an admin to none; and a cycle with no amount is REFUSED instead of silently saving as "not on payroll" -- the old behaviour made an employee vanish from the Salary screen with no message. firestore.rules: two read rules widened to own-documents-only. PREVIOUSLY, ROUND 81 (2026-10-20). DATE OF JOINING AND LEAVING, and the name tag that refused "Imran Shaikh". The owner: "back date me koi naya employee ki attendance b mang rha h". Measured first: the app had no idea WHEN anybody worked here, so every person was on every day's roster -- the Attendance screen showed a new joiner unmarked on every past day, Mark-for-someone offered him for any date, and the Monthly summary, which counts anything that is not present as ABSENT, listed fourteen absences for a man who joined on the 15th. Eleven places each wrote their own `S.users.filter(u=>u.role!=='admin')`, and the bug was the same missing condition in every one; they all ask attendanceRosterUsers(dateKey) now. joinedOn / leftOn (inclusive) live on the user doc, both optional, so every existing record is employed on every date and nothing changed by itself. A mark that already exists outside the dates is NOT deleted and NOT hidden: the Attendance screen shows it with a warning and neither the summary nor the salary counts it. markAttendanceForUser and recordPresent refuse a day outside the dates (clear stays allowed). Salary: a non-employed working day stays in a fixed salary's divisor, which is what makes a mid-cycle joiner or leaver pro rata. Past the leaving date every screen is a lock card -- the owner's choice; the Auth account itself can only be removed by Delete, and the card says so. No leaving date on your own account or on the literal "admin" account. A temporary employee's name tag is now made from the name (temp1, temp2 for a Hindi or Urdu name) instead of refusing one nobody had been told the rules for. Also: "days present" from Round 80 was never translated. firestore.rules UNCHANGED.
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -3172,7 +3210,7 @@ const MAX_STOCK_ADJUST_PC = 500000;
 const MAX_STOCK_ADJUST_L = 200000;
 
 const ROLES = {
-  admin:{label:'Admin', tabs:['home','orders','customers','stock','domino','tasks','expenses','dailywork','attendance','salary','users']},
+  admin:{label:'Admin', tabs:['home','orders','customers','stock','domino','tasks','expenses','dailywork','attendance','salary','cartons','users']},
   manager:{label:'Manager', tabs:['home','orders','stock','domino','tasks','expenses','checkin','dailywork']},
   sales:{label:'Sales', tabs:['home','orders','customers','stock','tasks','checkin']},
   filling:{label:'Filling Team', tabs:['home','tasks','checkin','stock']},
@@ -3215,6 +3253,12 @@ function applyRolePermissionsToROLES(){
     if(role==='admin' && !ROLES[role].tabs.includes('salary')){
       const at = ROLES[role].tabs.indexOf('attendance');
       ROLES[role].tabs.splice(at === -1 ? ROLES[role].tabs.length : at + 1, 0, 'salary');
+    }
+    // ROUND 92 -- the Cartons tab (scan, new labels, the full list, Excel):
+    // admin only, and like Salary deliberately not in the Permission Manager.
+    if(role==='admin' && !ROLES[role].tabs.includes('cartons')){
+      const at = ROLES[role].tabs.indexOf('salary'); // under More -- the bottom bar keeps its five
+      ROLES[role].tabs.splice(at === -1 ? ROLES[role].tabs.length : at + 1, 0, 'cartons');
     }
     // ROUND 85 -- "Employees ko b Salary ka Tab do Attendance ke sath".
     // Everybody else gets it beside their own Attendance tab. It shows them
@@ -3421,16 +3465,17 @@ const TAB_LABEL = {
   attendance:'Attendance', users:'Users', tasks:'Tasks', checkin:'Mark Attendance',
   stock:'Stock', expenses:'Expenses', log:'Data Log', domino:'Domino Printing', dailywork:'Daily Work',
   salary:'Salary', // ROUND 82
+  cartons:'Cartons', // ROUND 92
 };
 const TAB_ICON = {
   home:'🏠', orders:'🧾', customers:'👤', attendance:'📋', users:'⚙️',
   tasks:'✅', checkin:'📍', stock:'📦',
-  expenses:'💰', log:'🗂️', domino:'🖨️', dailywork:'📆', salary:'💸',
+  expenses:'💰', log:'🗂️', domino:'🖨️', dailywork:'📆', salary:'💸', cartons:'🏷️',
 };
 const TAB_SHORT = {
   home:'Home', orders:'Orders', customers:'Clients', attendance:'Attend', users:'Team',
   tasks:'Tasks', checkin:'Attend', stock:'Stock',
-  expenses:'Expense', log:'Log', domino:'Domino', dailywork:'Daily', salary:'Salary',
+  expenses:'Expense', log:'Log', domino:'Domino', dailywork:'Daily', salary:'Salary', cartons:'Cartons',
 };
 // LANGUAGE SAMPLE (2026-09-03, explicit user request: "App ko Urdu & Hindi
 // language me bhi kre to kya sahi translation milega, kya procedure hai?
@@ -3513,6 +3558,59 @@ function normalizeTheme(code){
 }
 const I18N = {
   hi: {
+    // ROUND 92 -- order edit, cartons tab, retail/samples chooser
+    'This order is already booked in Daily Work. Saving a change removes the booking — change the bill in your accounts and book it again.':'यह ऑर्डर Daily Work में बुक हो चुका है। बदलाव सेव करने पर बुकिंग हट जाएगी — अकाउंट्स में बिल बदलें और दोबारा बुक करें।',
+    'Order updated. Its booking was removed — book it again in Daily Work after changing the bill in your accounts.':'ऑर्डर बदल गया। इसकी बुकिंग हटा दी गई — अकाउंट्स में बिल बदलकर Daily Work में दोबारा बुक करें।',
+    'An item was changed but its Save was not pressed. Close without saving?':'एक आइटम बदला गया पर उसका Save नहीं दबाया। बिना सेव किए बंद करें?',
+    'Your changes are not saved. Close without saving?':'आपके बदलाव सेव नहीं हुए। बिना सेव किए बंद करें?',
+    'Close without saving':'बिना सेव किए बंद करें',
+    'An item was changed but its Save was not pressed. Save that change too?':'एक आइटम बदला गया पर उसका Save नहीं दबाया। वह बदलाव भी सेव करें?',
+    'Save it too':'वह भी सेव करें',
+    'Save item':'आइटम सेव करें',
+    'Value':'रकम',
+    'Retail / Samples':'रिटेल / सैंपल',
+    'Sale or sample from ready stock':'तैयार स्टॉक से बिक्री या सैंपल',
+    'What do you want to record?':'क्या दर्ज करना है?',
+    'Cash sale from ready stock':'तैयार स्टॉक से नकद बिक्री',
+    'Give sample from ready stock':'तैयार स्टॉक से सैंपल दें',
+    'Carton scan':'कार्टन स्कैन',
+    'Whose order is this box':'यह डिब्बा किसके ऑर्डर का है',
+    'Cartons & loose boxes':'कार्टन और खुले डिब्बे',
+    'Scan the label on every carton and loose box going out with this order. You can also skip this and scan later from the order.':'इस ऑर्डर के साथ जा रहे हर कार्टन और खुले डिब्बे का लेबल स्कैन करें। चाहें तो इसे छोड़कर बाद में ऑर्डर से स्कैन कर सकते हैं।',
+    'Item in this box':'इस डिब्बे में आइटम',
+    'Full carton':'पूरा कार्टन',
+    'Loose box':'खुला डिब्बा',
+    'boxes scanned':'डिब्बे स्कैन हुए',
+    'Done — Ready to Dispatch':'हो गया — भेजने को तैयार',
+    'Skip — Ready to Dispatch':'छोड़ें — भेजने को तैयार',
+    'Not dispatched yet':'अभी भेजा नहीं गया',
+    'This box':'यह डिब्बा',
+    'Scanned by':'स्कैन किया',
+    'Everything in this order':'इस ऑर्डर का पूरा माल',
+    'Boxes on this order':'इस ऑर्डर के डिब्बे',
+    'loose':'खुले',
+    'Only admin can open this.':'इसे सिर्फ़ एडमिन खोल सकते हैं।',
+    'Last 30 days':'पिछले 30 दिन',
+    'Last 90 days':'पिछले 90 दिन',
+    'Scan any box to see whose order it is, print new labels, and see or download every scanned box.':'कोई भी डिब्बा स्कैन करके देखें किसका ऑर्डर है, नए लेबल छापें, और हर स्कैन हुआ डिब्बा देखें या डाउनलोड करें।',
+    'New labels':'नए लेबल',
+    'Export to Excel':'Excel में डाउनलोड',
+    'Refresh':'ताज़ा करें',
+    'Boxes scanned':'स्कैन हुए डिब्बे',
+    'Loose boxes':'खुले डिब्बे',
+    'Labels printed':'छपे लेबल',
+    'Loading…':'लोड हो रहा है…',
+    'Search box, party, item, order no.':'डिब्बा, पार्टी, आइटम, ऑर्डर नं. खोजें',
+    'No box scanned in this period.':'इस समय में कोई डिब्बा स्कैन नहीं हुआ।',
+    'Box':'डिब्बा',
+    'Scanned':'स्कैन',
+    'Export to Excel has all of them.':'Excel डाउनलोड में सारे हैं।',
+    'Numbers':'नंबर',
+    'Count':'गिनती',
+    'No labels printed yet.':'अभी कोई लेबल नहीं छपा।',
+    'Excel file downloaded':'Excel फ़ाइल डाउनलोड हुई',
+    'Excel library could not load — downloaded as CSV (opens in Excel)':'Excel लाइब्रेरी लोड नहीं हुई — CSV में डाउनलोड हुआ (Excel में खुलता है)',
+    'Carton':'कार्टन',
     // ROUND 91 -- text that was written straight into the page (see translateTextNodesIn)
     'Filled: {n} pc available':'भरा हुआ: {n} पीस मौजूद',
     'Quick Actions':'झटपट काम',
@@ -4548,6 +4646,59 @@ const I18N = {
     'Only an admin can write an order note':'ऑर्डर नोट सिर्फ़ एडमिन लिख सकता है',
   },
   ur: {
+    // ROUND 92 -- order edit, cartons tab, retail/samples chooser
+    'This order is already booked in Daily Work. Saving a change removes the booking — change the bill in your accounts and book it again.':'یہ آرڈر Daily Work میں بُک ہو چکا ہے۔ تبدیلی محفوظ کرنے پر بکنگ ہٹ جائے گی — اکاؤنٹس میں بل بدلیں اور دوبارہ بُک کریں۔',
+    'Order updated. Its booking was removed — book it again in Daily Work after changing the bill in your accounts.':'آرڈر بدل گیا۔ اس کی بکنگ ہٹا دی گئی — اکاؤنٹس میں بل بدل کر Daily Work میں دوبارہ بُک کریں۔',
+    'An item was changed but its Save was not pressed. Close without saving?':'ایک آئٹم بدلا گیا مگر اس کا Save نہیں دبایا۔ بغیر محفوظ کیے بند کریں؟',
+    'Your changes are not saved. Close without saving?':'آپ کی تبدیلیاں محفوظ نہیں ہوئیں۔ بغیر محفوظ کیے بند کریں؟',
+    'Close without saving':'بغیر محفوظ کیے بند کریں',
+    'An item was changed but its Save was not pressed. Save that change too?':'ایک آئٹم بدلا گیا مگر اس کا Save نہیں دبایا۔ وہ تبدیلی بھی محفوظ کریں؟',
+    'Save it too':'وہ بھی محفوظ کریں',
+    'Save item':'آئٹم محفوظ کریں',
+    'Value':'رقم',
+    'Retail / Samples':'ریٹیل / سیمپل',
+    'Sale or sample from ready stock':'تیار اسٹاک سے فروخت یا سیمپل',
+    'What do you want to record?':'کیا درج کرنا ہے؟',
+    'Cash sale from ready stock':'تیار اسٹاک سے نقد فروخت',
+    'Give sample from ready stock':'تیار اسٹاک سے سیمپل دیں',
+    'Carton scan':'کارٹن اسکین',
+    'Whose order is this box':'یہ ڈبہ کس کے آرڈر کا ہے',
+    'Cartons & loose boxes':'کارٹن اور کھلے ڈبے',
+    'Scan the label on every carton and loose box going out with this order. You can also skip this and scan later from the order.':'اس آرڈر کے ساتھ جا رہے ہر کارٹن اور کھلے ڈبے کا لیبل اسکین کریں۔ چاہیں تو اسے چھوڑ کر بعد میں آرڈر سے اسکین کر سکتے ہیں۔',
+    'Item in this box':'اس ڈبے میں آئٹم',
+    'Full carton':'پورا کارٹن',
+    'Loose box':'کھلا ڈبہ',
+    'boxes scanned':'ڈبے اسکین ہوئے',
+    'Done — Ready to Dispatch':'ہو گیا — بھیجنے کو تیار',
+    'Skip — Ready to Dispatch':'چھوڑیں — بھیجنے کو تیار',
+    'Not dispatched yet':'ابھی بھیجا نہیں گیا',
+    'This box':'یہ ڈبہ',
+    'Scanned by':'اسکین کیا',
+    'Everything in this order':'اس آرڈر کا پورا مال',
+    'Boxes on this order':'اس آرڈر کے ڈبے',
+    'loose':'کھلے',
+    'Only admin can open this.':'اسے صرف ایڈمن کھول سکتے ہیں۔',
+    'Last 30 days':'پچھلے 30 دن',
+    'Last 90 days':'پچھلے 90 دن',
+    'Scan any box to see whose order it is, print new labels, and see or download every scanned box.':'کوئی بھی ڈبہ اسکین کر کے دیکھیں کس کا آرڈر ہے، نئے لیبل چھاپیں، اور ہر اسکین ہوا ڈبہ دیکھیں یا ڈاؤن لوڈ کریں۔',
+    'New labels':'نئے لیبل',
+    'Export to Excel':'Excel میں ڈاؤن لوڈ',
+    'Refresh':'تازہ کریں',
+    'Boxes scanned':'اسکین ہوئے ڈبے',
+    'Loose boxes':'کھلے ڈبے',
+    'Labels printed':'چھپے لیبل',
+    'Loading…':'لوڈ ہو رہا ہے…',
+    'Search box, party, item, order no.':'ڈبہ، پارٹی، آئٹم، آرڈر نمبر تلاش کریں',
+    'No box scanned in this period.':'اس مدت میں کوئی ڈبہ اسکین نہیں ہوا۔',
+    'Box':'ڈبہ',
+    'Scanned':'اسکین',
+    'Export to Excel has all of them.':'Excel ڈاؤن لوڈ میں سارے ہیں۔',
+    'Numbers':'نمبر',
+    'Count':'گنتی',
+    'No labels printed yet.':'ابھی کوئی لیبل نہیں چھپا۔',
+    'Excel file downloaded':'Excel فائل ڈاؤن لوڈ ہوئی',
+    'Excel library could not load — downloaded as CSV (opens in Excel)':'Excel لائبریری لوڈ نہیں ہوئی — CSV میں ڈاؤن لوڈ ہوا (Excel میں کھلتا ہے)',
+    'Carton':'کارٹن',
     // ROUND 91 -- text that was written straight into the page (see translateTextNodesIn)
     'Filled: {n} pc available':'بھرا ہوا: {n} پیس موجود',
     'Quick Actions':'فوری کام',
@@ -5547,6 +5698,12 @@ function translatePatternText(v, dict){
 // Each cell gets its column name (already translated) as data-label for the
 // stacked look. Re-checked whenever new content lands, and on rotate/resize.
 const PH_STACK_MAX_W = 600;
+function markNumberLengths(root){
+  if(!root || !root.querySelectorAll) return;
+  root.querySelectorAll('.stat-card-v2 .n, .today-cell .n, .grid-stats > .stat .n').forEach(el=>{
+    el.style.setProperty('--nchars', String(Math.max(3, (el.textContent || '').trim().length)));
+  });
+}
 function fitTablesIn(root){
   if(!root || !root.querySelectorAll) return;
   const tables = root.tagName === 'TABLE' ? [root] : [...root.querySelectorAll('table')];
@@ -11855,6 +12012,7 @@ function render(){
   // the "byte-for-byte identical, skip it" early return above), and each
   // is itself a no-op unless the specific value/status it's looking at
   // genuinely changed since the last time it saw that same key.
+  markNumberLengths(root); // ROUND 92 -- see the Today-number CSS note
   animateStatNumbers(newContent || root);
   flashChangedBadges(newContent || root);
   flashNewBadges(root); // Round 17 -- bell/notif-dot badges live both inside .content and in the persistent top bar, so this checks the whole root, not just newContent
@@ -13125,7 +13283,7 @@ function undoMarkOrderReady(orderId, onDone){
 // only) that sits between the order being fully stocked (Ready) and the
 // actual dispatch booking (Processed & Dispatched, which opens the LR/
 // transport modal). No stock side-effects — purely a status + audit trail.
-function markOrderPacked(orderId, onDone){
+function markOrderPacked(orderId, onDone, cartonsDone){
   if(!canMoveOrderStage(S.currentUser.role)) return; // ROUND 65: was admin+manager hard-coded
   const o = S.orders.find(x=>x.id===orderId); if(!o) return;
   if(o.status!=='ready') return;
@@ -13137,6 +13295,11 @@ function markOrderPacked(orderId, onDone){
   // complete, so this branch is false and the order actually moves.
   if(orderNeedsChecklist(o) && !checklistState(o,'pack').complete){
     openItemChecklistModal(orderId, 'pack', ()=>markOrderPacked(orderId, onDone));
+    return;
+  }
+  // ROUND 92 -- then the cartons & loose boxes window, every time (skippable).
+  if(!cartonsDone && canScanCartons(S.currentUser.role)){
+    openCartonScanModal(orderId, { flow:'pack', onContinue: ()=>markOrderPacked(orderId, onDone, true) });
     return;
   }
   o.status = 'packed';
@@ -13370,6 +13533,12 @@ function openDispatchModal(orderId){
     </div>
   `);
   let dispatchPhotoType = 'lr';
+  // ROUND 92 -- the boxes scanned on this order fill in "Total No. of Cases"
+  // (still editable, and only if nobody has typed a number yet).
+  try{ fsDb.collection('cartons').where('orderId', '==', orderId).get().then(q=>{
+    const el = document.getElementById('dispatchCases');
+    if(el && !el.value && q.size) el.value = String(q.size);
+  }).catch(()=>{}); }catch(e){}
   const dispatchLRNumberField = document.getElementById('dispatchLRNumberField');
   const lrFileInputEl = document.getElementById('dispatchLRFile');
   const submitBtnEl = document.getElementById('dispatchSubmitBtn');
@@ -13875,6 +14044,7 @@ function renderView(){
     case 'domino': return renderDomino();
     case 'dailywork': return renderDailyWork();
     case 'salary': return renderSalary(); // ROUND 82
+    case 'cartons': return renderCartonsTab(); // ROUND 92
     case 'log': return renderLog();
     default: return '';
   }
@@ -13899,6 +14069,7 @@ function bindView(){
     case 'domino': return bindDomino();
     case 'dailywork': return bindDailyWork();
     case 'salary': return bindSalary(); // ROUND 82
+    case 'cartons': return bindCartonsTab(); // ROUND 92
     case 'log': return bindLog();
   }
 }
@@ -14171,8 +14342,8 @@ function renderDailyWork(){
     <h2>🛍️ ${esc(t('New Orders'))} — ${entryCountText(newOrderEntries.length)}${totalOrderValue?` · ₹${totalOrderValue.toLocaleString('en-IN')}`:''}</h2>
     <p class="desc" style="margin-top:-6px;">${esc(t('Delete an order from Home/Orders\' Accept · Reject · Delete flow, not from here.'))}</p>
     ${newOrderEntries.length===0?`<div class="empty">${esc(t('No orders created this day.'))}</div>`:`
-    <table><thead><tr><th>${esc(t('Party'))}</th><th>${esc(t('Items'))}</th><th>${esc(t('MRP Value'))}</th><th>${esc(t('By'))}</th><th>${esc(t('Time'))}</th><th></th></tr></thead><tbody>
-    ${newOrderEntries.map(o=>{ const liveCust = liveCustomerFor(o); const disc = liveCust ? (liveCust.discountPercent||0) : 0; return `<tr${o.booked?' style="opacity:0.55;"':''}><td>${esc(orderDisplayLabel(o))}</td><td>${o.items.filter(i=>!i.cancelled).map(i=>`${esc(i.name)} ${esc(i.size)} <span class="mono">×${i.qty}</span>`).join('<br/>')}</td><td class="mono">₹${orderMrpValue(o).toLocaleString('en-IN')}${disc>0?` (${disc}% ${esc(t('off'))})`:''}</td><td>${esc(o.createdBy)}</td><td class="mono">${fmtTime(o.createdAt)}</td><td>${actionCell(o,'orders',false)}</td></tr>`; }).join('')}
+    <table><thead><tr><th>${esc(t('Party'))}</th><th>${esc(t('Items'))}</th><th>${esc(t('Value'))}</th><th>${esc(t('By'))}</th><th>${esc(t('Time'))}</th><th></th></tr></thead><tbody>
+    ${newOrderEntries.map(o=>{ const liveCust = liveCustomerFor(o); const disc = liveCust ? (liveCust.discountPercent||0) : 0; return `<tr${o.booked?' style="opacity:0.55;"':''}><td>${esc(orderDisplayLabel(o))}</td><td>${o.items.filter(i=>!i.cancelled).map(i=>`${esc(i.name)} ${esc(i.size)} <span class="mono">×${i.qty}</span>`).join('<br/>')}</td><td class="mono">${orderValueHtml(o)}</td><td>${esc(o.createdBy)}</td><td class="mono">${fmtTime(o.createdAt)}</td><td>${actionCell(o,'orders',false)}</td></tr>`; }).join('')}
     </tbody></table>`}
   </div>`;
 
@@ -14467,7 +14638,7 @@ function printDailyWork(){
       retailEntries.map(e=>`<tr><td>${(e.items||[]).map(i=>`${esc(i.itemLabel)} ×${i.qty}`).join(', ')}</td><td>${e.type==='sale'?'Sale':'Sample'}</td><td>${e.type==='sale'?'₹'+(e.totalAmount||0).toLocaleString('en-IN'):'—'}</td><td>${fmtTime(e.at)}</td></tr>`).join(''));
 
     html += `<h2>🛍️ New Orders ${totalOrderValue?`— Total ₹${totalOrderValue.toLocaleString('en-IN')}`:''}</h2>` + table(['Party','Items','MRP Value','By','Time'],
-      newOrderEntries.map(o=>`<tr><td>${esc(orderDisplayLabel(o))}</td><td>${o.items.filter(i=>!i.cancelled).map(i=>`${esc(i.name)} ${esc(i.size)} ×${i.qty}`).join(', ')}</td><td>₹${orderMrpValue(o).toLocaleString('en-IN')}</td><td>${esc(o.createdBy)}</td><td>${fmtTime(o.createdAt)}</td></tr>`).join(''));
+      newOrderEntries.map(o=>`<tr><td>${esc(orderDisplayLabel(o))}</td><td>${o.items.filter(i=>!i.cancelled).map(i=>`${esc(i.name)} ${esc(i.size)} ×${i.qty}`).join(', ')}</td><td>${esc(orderValueHtml(o, true))}</td><td>${esc(o.createdBy)}</td><td>${fmtTime(o.createdAt)}</td></tr>`).join(''));
   }
 
   // ROUND 85 -- salary payments and advances on the day's sheet, admin only
@@ -17334,6 +17505,17 @@ function orderLineMrp(i){
 function orderMrpValue(o){
   return ((o && o.items) || []).reduce((sum,i)=>sum + orderLineMrp(i), 0);
 }
+// ROUND 92 -- "MRP Value (bracket me discount) or uske sath final value bhi".
+// The party's discount is read live (liveCustomerFor), the same as the
+// discount shown beside it always was.
+function orderDiscountPct(o){ const c = liveCustomerFor(o); return c ? (Number(c.discountPercent) || 0) : 0; }
+function orderFinalValue(o){ const d = orderDiscountPct(o); return Math.round(orderMrpValue(o) * (1 - d / 100)); }
+function orderValueHtml(o, plain){
+  const mrp = orderMrpValue(o), d = orderDiscountPct(o);
+  const money = n=>'₹' + Number(n).toLocaleString('en-IN');
+  if(plain) return d > 0 ? `${money(mrp)} (${d}% ${t('off')}) → ${money(orderFinalValue(o))}` : money(mrp);
+  return `<span class="ot-mrp">${esc(t('MRP'))} <b>${money(mrp)}</b>${d > 0 ? ` <i>(${d}% ${esc(t('off'))})</i> → <b class="ot-final">${money(orderFinalValue(o))}</b>` : ''}</span>`;
+}
 // PERF BUGFIX (2026-09-02, crash/stress sweep): renderOrderTile used to call
 // computeFifoShortages() itself, ONCE PER TILE -- and computeFifoShortages()
 // walks every single order (and every item on it) in S.orders each time it
@@ -17508,7 +17690,7 @@ function renderOrderTile(o, showUndoDispatch, fifoShortages){
          moves onto the Order Date line rather than owning a line of its own. -->
     <div class="ot-meta ot-line">
       <span>${esc(t('Order Date'))} - <b>${esc(fmtDMY(o.createdAt))}</b></span>
-      ${isAdmin ? (()=>{ const liveCust = liveCustomerFor(o); const disc = liveCust ? (liveCust.discountPercent||0) : 0; return `<span class="ot-mrp"><b>₹${orderMrpValue(o).toLocaleString('en-IN')}</b>${disc>0?` <i>(${disc}% off)</i>`:''}</span>`; })() : ''}
+      ${isAdmin ? (()=>orderValueHtml(o))() : ''}
     </div>
     ${orderDispatchLineHtml(o)}
     <button type="button" class="ot-detail-btn" data-ot-detail="${o.id}" aria-expanded="false">ⓘ ${esc(t('Details'))}</button>
@@ -17533,7 +17715,8 @@ function renderOrderTile(o, showUndoDispatch, fifoShortages){
            the exact same pattern Round 17 used for Delete. "Undo Dispatch"
            (right above) is the only way back to an editable state -- once
            undone, status reverts to 'packed' and Edit reappears normally. -->
-      ${(isAdmin && o.status!=='processed' && !o.booked)?`<button class="btn btn-sm btn-outline" data-edit-order="${o.id}">${esc(t('Edit'))}</button>`:''}
+      ${/* ROUND 92 -- "Order Edit ka option Last tk daale rkhna h jb tk Order Final Dispatch nhi hojata": a booked order can be edited too; saving un-books it (see openOrderModal) */''}
+      ${(isAdmin && o.status!=='processed')?`<button class="btn btn-sm btn-outline" data-edit-order="${o.id}">${esc(t('Edit'))}</button>`:''}
       <!-- ROUND 36: deliberately NOT gated on status. A note is information
            about the order, not an edit of it, so it stays available even once
            the order is Processed & Dispatched (the dispatch lock exists to
@@ -18019,6 +18202,7 @@ function findRecentDuplicateOrder(customerName, draftItems){
     return o.items.some(existingItem => draftItems.some(d => d.key===existingItem.key && d.qty===existingItem.qty));
   }) || null;
 }
+let _orderUnbookedByEdit = false;
 function openOrderModal(existingOrder){
   if(existingOrder && S.currentUser.role!=='admin') return; // editing an existing order is admin-only
   // RACE GUARD (Round 18, same pattern as Delete's Round 17 race guard):
@@ -18032,7 +18216,9 @@ function openOrderModal(existingOrder){
     showAlert(t('This order has been Processed & Dispatched and is now locked. Use "Undo Dispatch" first if you need to make changes.'));
     return;
   }
-  if(existingOrder && existingOrder.booked){ showAlert(t(BOOKED_LOCK_MSG)); return; } // ROUND 89
+  // ROUND 92 -- no longer locked by booking: editable until it is dispatched.
+  // A booked order is un-booked when the change is saved, so Daily Work asks
+  // for it to be booked again (the bill in the accounts has to change too).
   editingOrderId = existingOrder ? existingOrder.id : null;
   orderDraft = existingOrder ? existingOrder.items.map(x=>({...x})) : [];
   // ROUND 90: what this order looked like when the window opened -- see the
@@ -18042,6 +18228,7 @@ function openOrderModal(existingOrder){
   editingDraftIndex = null;
   showModal(`
     <h3>${esc(t(existingOrder?'Edit order':'New order'))}</h3>
+    ${existingOrder && existingOrder.booked ? `<div class="order-booked-note">⚠ ${esc(t('This order is already booked in Daily Work. Saving a change removes the booking — change the bill in your accounts and book it again.'))}</div>` : ''}
     <div class="field"><label>${esc(t('Customer / Party'))}</label>
       <input id="ordCustomer" list="ordCustomerList" required value="${existingOrder?esc(existingOrder.customerName):''}" placeholder="${esc(t('Type party name…'))}" autocomplete="off" />
       <datalist id="ordCustomerList">${S.customers.map(c=>`<option value="${esc(c.name)}"></option>`).join('')}</datalist>
@@ -18086,6 +18273,27 @@ function openOrderModal(existingOrder){
   ordItemSel.addEventListener('input', refreshOrdCaseRow);
   ordItemSel.addEventListener('change', refreshOrdCaseRow);
   renderDraftList();
+  // ROUND 92 -- "glti se humne kisi item ko edit kiya or save krna bhul gye to
+  // warning bhi do". Closing this window (Cancel, ✕, the phone's Back) with
+  // changes that were never saved now asks first.
+  const ordOpenedState = ()=>JSON.stringify([existingOrder ? existingOrder.customerName : '', existingOrder ? localDateKey(existingOrder.createdAt) : '',
+    (existingOrder ? existingOrder.items : []).map(x=>[x.key, x.qty, !!x.cancelled])]);
+  const ordNowState = ()=>{
+    const d = document.getElementById('ordDateInput');
+    return JSON.stringify([(document.getElementById('ordCustomer') || {}).value || '', d ? d.value : (existingOrder ? localDateKey(existingOrder.createdAt) : ''),
+      orderDraft.map(x=>[x.key, x.qty, !!x.cancelled])]);
+  };
+  const ordOpened = ordOpenedState();
+  const ordCancelBtn = document.getElementById('cancelModal');
+  if(ordCancelBtn) ordCancelBtn.addEventListener('click', e=>{
+    if(ordCancelBtn.dataset.confirmedClose === '1') return;
+    const lineOpen = draftLineEditPending();
+    if(!lineOpen && ordNowState() === ordOpened) return; // nothing to lose
+    e.stopImmediatePropagation(); e.preventDefault();
+    showConfirm(t(lineOpen ? 'An item was changed but its Save was not pressed. Close without saving?' : 'Your changes are not saved. Close without saving?'),
+      ()=>{ ordCancelBtn.dataset.confirmedClose = '1'; editingDraftIndex = null; closeModal(); },
+      { confirmLabel: t('Close without saving'), danger: true });
+  }, true);
   document.getElementById('addItemBtn').addEventListener('click', ()=>{
     const it = resolveItemFromText(ordItemSel.value);
     if(!it){ showAlert(t('Pick a valid item from the list.')); return; }
@@ -18120,6 +18328,18 @@ function openOrderModal(existingOrder){
     // below so a genuine retry after fixing the input still works.
     const submitBtnEl = document.getElementById('submitOrderBtn');
     if(submitBtnEl.disabled) return;
+    // ROUND 92 -- an item line still open in edit mode: its new quantity was
+    // typed but its own Save never pressed. Ask, instead of silently saving
+    // the order with the OLD quantity.
+    if(draftLineEditPending()){
+      showConfirm(t('An item was changed but its Save was not pressed. Save that change too?'), ()=>{
+        const b = document.querySelector('[data-save-draft-edit]');
+        if(b) b.click();
+        if(editingDraftIndex === null) submitBtnEl.click(); // the line was valid and is saved -- now save the order
+      }, { confirmLabel: t('Save it too') });
+      return;
+    }
+    if(editingDraftIndex !== null){ editingDraftIndex = null; renderDraftList(); } // opened but nothing typed
     // ROUND 90: this window may have been open while another device worked
     // on the same order. Saving it anyway used to (a) bring back an order
     // deleted there, (b) pull a dispatched order back to In packing, and
@@ -18221,11 +18441,13 @@ function openOrderModal(existingOrder){
           }
         }
         existingOrder.items = orderDraft.slice();
+        if(existingOrder.booked){ existingOrder.booked = false; _orderUnbookedByEdit = true; } // ROUND 92 -- see openOrderModal
         savePartitionForItem('orders', existingOrder);
         autoAdvanceOrders();
         syncStockTasksFromAlerts();
         closeModal(); render();
         showToast(shortItems.length? `Order updated — ⚠ short on ${shortItems.join(', ')}` : 'Order updated');
+        if(_orderUnbookedByEdit){ _orderUnbookedByEdit = false; showAlert(t('Order updated. Its booking was removed — book it again in Daily Work after changing the bill in your accounts.')); }
       } else {
         // ROUND 12 (2026-08-31, explicit user request -- "Jo Order OMS me
         // se add ho rhe h vo direct hi Accepted me ajaye or Jo Order form
@@ -18291,6 +18513,14 @@ function openOrderModal(existingOrder){
   });
 }
 let editingDraftIndex = null;
+// ROUND 92 -- true when an order line is open for editing AND its boxes no
+// longer hold what they opened with (something was typed, Save not pressed).
+function draftLineEditPending(){
+  if(editingDraftIndex === null || editingDraftIndex === undefined) return false;
+  const row = document.querySelector('.draft-edit-row'); if(!row) return false;
+  const c = document.getElementById('editDraftCases'), p = document.getElementById('editDraftPcs');
+  return (c && String(c.value) !== String(row.dataset.origCases)) || (p && String(p.value) !== String(row.dataset.origPcs));
+}
 function renderDraftList(){
   const el = document.getElementById('draftList');
   if(!el) return;
@@ -18301,13 +18531,17 @@ function renderDraftList(){
     if(editingDraftIndex===i){
       const cases = caseSize ? Math.floor(d.qty/caseSize) : 0;
       const pcs = caseSize ? d.qty % caseSize : d.qty;
-      return `<div style="padding:8px 0;border-bottom:1px solid var(--border);">
+      // ROUND 92 -- boxes on one row with their names, buttons below: the
+      // old single row ran past a phone's edge and hid Save.
+      return `<div class="draft-edit-row" data-orig-cases="${cases}" data-orig-pcs="${pcs}" style="padding:8px 0;border-bottom:1px solid var(--border);">
         <div style="font-size:0.8125rem;font-weight:700;margin-bottom:6px;">${esc(d.name)} ${esc(d.size)}${caseSize?` <span class="mono" style="font-weight:400;">(${caseSize} ${esc(t('pc/case'))})</span>`:''}</div>
-        <div style="display:flex;gap:6px;align-items:center;">
-          ${caseSize?`<input type="number" min="0" id="editDraftCases" value="${cases}" placeholder="${esc(t('Cases'))}" style="flex:1;padding:8px;border:1.5px solid var(--border);border-radius:8px;font-size:0.78125rem;" />`:''}
-          <input type="number" min="0" id="editDraftPcs" value="${pcs}" placeholder="${esc(t('Pcs'))}" style="flex:1;padding:8px;border:1.5px solid var(--border);border-radius:8px;font-size:0.78125rem;" />
-          <button type="button" class="btn btn-sm btn-accent" data-save-draft-edit="${i}">${esc(t('Save'))}</button>
-          <button type="button" class="btn btn-sm btn-outline" data-cancel-draft-edit="${i}">✕</button>
+        <div class="draft-edit-grid">
+          ${caseSize?`<div><label for="editDraftCases">${esc(t('Cases'))}</label><input type="number" min="0" inputmode="numeric" id="editDraftCases" value="${cases}" /></div>`:''}
+          <div><label for="editDraftPcs">${esc(t('Pieces'))}</label><input type="number" min="0" inputmode="numeric" id="editDraftPcs" value="${pcs}" /></div>
+        </div>
+        <div class="draft-edit-btns">
+          <button type="button" class="btn btn-sm btn-outline" data-cancel-draft-edit="${i}">${esc(t('Cancel'))}</button>
+          <button type="button" class="btn btn-sm btn-accent" data-save-draft-edit="${i}">✓ ${esc(t('Save item'))}</button>
         </div>
       </div>`;
     }
@@ -18893,9 +19127,9 @@ function renderUsers(){
          exists above TEAM_PAGE_SIZE, so at today's ten people the list is
          exactly what it always was. */''}
     ${(!S.teamShowAll && S.users.length > TEAM_PAGE_SIZE) ? `<p class="desc">${esc(t('Showing'))} ${TEAM_PAGE_SIZE} ${esc(t('of'))} ${S.users.length}. <button type="button" class="btn btn-sm btn-outline" style="width:auto;" id="teamShowAllBtn">${esc(t('Show all'))}</button></p>` : ''}
-    <div class="tile-grid-3">
+    <div class="tile-grid-3 user-grid">
       ${(S.teamShowAll ? S.users : S.users.slice(0, TEAM_PAGE_SIZE)).map(u=>`
-        <div style="background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:14px 12px;text-align:center;">
+        <div class="user-card" style="background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:14px 12px;text-align:center;">
           ${u.photo?`<img src="${esc(u.photo)}" style="width:52px;height:52px;border-radius:50%;object-fit:cover;margin:0 auto 8px;display:block;" />`:`<span style="width:52px;height:52px;border-radius:50%;background:var(--surface);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1.125rem;color:var(--primary);margin:0 auto 8px;">${esc((u.name||'?').charAt(0).toUpperCase())}</span>`}
           <div style="font-weight:800;font-size:0.84375rem;">${esc(u.name)}</div>
           <div class="mono" style="margin:2px 0 4px;">${esc(u.username)}</div>
@@ -20167,15 +20401,164 @@ function markThreadRead(otherUsername){
     }
   });
 }
+/* ===== ROUND 92: THE CARTONS TAB (admin) ==================================
+   "Carton scan, new label, uski puri list visible bhi or Exportable in xls
+   bhi uska alg se hi ik tab bana do only admin k liye." Read once when the
+   tab opens (not a live listener -- this list only grows, and every open
+   phone listening to it would pay for every scan), with Refresh to re-read.
+   No money anywhere on this tab. */
+const CARTON_TAB_SHOW = 300;
+const _cartonTab = { loaded:false, loading:false, range:'90', rows:[], series:[], counters:[], error:'' };
+function loadCartonTabData(force){
+  if(_cartonTab.loading || (_cartonTab.loaded && !force)) return;
+  _cartonTab.loading = true; _cartonTab.error = '';
+  let q = fsDb.collection('cartons');
+  if(_cartonTab.range !== 'all') q = q.where('scannedAt', '>=', Date.now() - Number(_cartonTab.range) * 864e5).orderBy('scannedAt', 'desc');
+  Promise.all([q.limit(5000).get(), fsDb.collection('barcodeSeries').get()]).then(([cs, ss])=>{
+    _cartonTab.rows = cs.docs.map(d=>Object.assign({}, d.data(), { code: d.id })).sort((a,b)=>(b.scannedAt||0)-(a.scannedAt||0));
+    const all = ss.docs.map(d=>Object.assign({}, d.data(), { id: d.id }));
+    _cartonTab.counters = all.filter(x=>String(x.id).startsWith('counter_'));
+    _cartonTab.series = all.filter(x=>!String(x.id).startsWith('counter_')).sort((a,b)=>(b.at||0)-(a.at||0));
+  }).catch(err=>{ _cartonTab.error = (err && err.message) || String(err); })
+    .finally(()=>{ _cartonTab.loading = false; _cartonTab.loaded = true; if(S.view === 'cartons') render(); });
+}
+function cartonTabRowData(c){
+  const o = S.orders.find(x=>x.id === c.orderId) || null;
+  return {
+    code: c.code, kind: c.kind === 'loose' ? t('Loose box') : t('Carton'), item: c.itemLabel || '', pcs: Number(c.pcs) || '',
+    orderNo: c.orderNumber || (o && o.orderNumber) || '', party: c.customerName || (o && o.customerName) || '', city: (o && o.customerCity) || '',
+    status: o ? t(ORDER_STAGE_LABEL[o.status] || o.status) : '', transport: (o && o.transportName) || '', lr: (o && o.lrNumber) || '',
+    dispatched: o && o.dispatchedAt ? fmtDate(o.dispatchedAt) : '', by: c.scannedByName || c.scannedByUsername || '', at: c.scannedAt ? fmtDate(c.scannedAt) : '',
+  };
+}
+function renderCartonsTab(){
+  if(!S.currentUser || S.currentUser.role !== 'admin') return `<div class="card"><div class="empty">${esc(t('Only admin can open this.'))}</div></div>`;
+  if(!_cartonTab.loaded && !_cartonTab.loading) setTimeout(()=>loadCartonTabData(), 0);
+  const rows = _cartonTab.rows;
+  const loose = rows.filter(r=>r.kind === 'loose').length;
+  const printed = _cartonTab.series.reduce((sum, x)=>sum + (Number(x.count) || 0), 0);
+  const shown = rows.slice(0, CARTON_TAB_SHOW);
+  const rangeLabel = { '30': t('Last 30 days'), '90': t('Last 90 days'), 'all': t('All') };
+  return `
+  <div class="card">
+    <h2>🏷️ ${esc(t('Cartons'))}</h2>
+    <p class="desc">${esc(t('Scan any box to see whose order it is, print new labels, and see or download every scanned box.'))}</p>
+    <div class="row-actions" style="flex-wrap:wrap;">
+      <button type="button" class="btn btn-primary btn-sm" id="ctScan">🔎 ${esc(t('Scan a carton'))}</button>
+      <button type="button" class="btn btn-outline btn-sm" id="ctLabels">🏷️ ${esc(t('New labels'))}</button>
+      <button type="button" class="btn btn-outline btn-sm" id="ctExport"${rows.length || _cartonTab.series.length ? '' : ' disabled'}>⬇ ${esc(t('Export to Excel'))}</button>
+      <button type="button" class="btn btn-outline btn-sm" id="ctRefresh">↻ ${esc(t('Refresh'))}</button>
+    </div>
+  </div>
+  <div class="card">
+    <div class="today-grid cols-3">
+      <div class="today-cell"><div class="n num">${rows.length.toLocaleString('en-IN')}</div><div class="l">${esc(t('Boxes scanned'))}</div></div>
+      <div class="today-cell"><div class="n num">${loose.toLocaleString('en-IN')}</div><div class="l">${esc(t('Loose boxes'))}</div></div>
+      <div class="today-cell"><div class="n num">${printed.toLocaleString('en-IN')}</div><div class="l">${esc(t('Labels printed'))}</div></div>
+    </div>
+    <div class="note" style="margin-top:6px;">${esc(rangeLabel[_cartonTab.range] || '')}${_cartonTab.loading ? ' · ' + esc(t('Loading…')) : ''}</div>
+  </div>
+  <div class="card">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
+      <select id="ctRange" style="flex:0 0 auto;width:auto;">${['30','90','all'].map(k=>`<option value="${k}"${_cartonTab.range === k ? ' selected' : ''}>${esc(rangeLabel[k])}</option>`).join('')}</select>
+      <input id="ctSearch" type="text" enterkeyhint="search" autocomplete="off" placeholder="${esc(t('Search box, party, item, order no.'))}" style="flex:1 1 180px;min-width:0;padding:11px 12px;border:1.5px solid var(--border);border-radius:12px;background-color:var(--input-bg);color:var(--ink);font:inherit;font-size:0.875rem;" />
+    </div>
+    ${_cartonTab.error ? `<div class="alert-banner">${esc(_cartonTab.error)}</div>` : ''}
+    ${!_cartonTab.loaded || (_cartonTab.loading && !rows.length) ? `<div class="empty">${esc(t('Loading…'))}</div>`
+      : rows.length === 0 ? `<div class="empty">${esc(t('No box scanned in this period.'))}</div>`
+      : `<table id="ctTable" data-no-stack><thead><tr><th>${esc(t('Box'))}</th><th>${esc(t('Order'))}</th></tr></thead><tbody>
+        ${shown.map(c=>{ const r = cartonTabRowData(c); const hay = [r.code, r.item, r.orderNo, r.party, r.city, r.transport, r.by].join(' ').toLowerCase();
+          return `<tr data-ct-hay="${esc(hay)}"><td style="width:42%;"><b class="mono">${esc(r.code)}</b>${c.kind === 'loose' ? ` <span class="badge">${esc(t('Loose box'))}</span>` : ''}
+              <div>${esc(r.item)}${r.pcs ? ` <span class="note">· ${r.pcs} ${esc(t('pc'))}</span>` : ''}</div></td>
+            <td><b>${esc(r.party)}</b><div class="note">${esc(r.orderNo)}${r.status ? ' · ' + esc(r.status) : ''}${r.transport ? ' · 🚚 ' + esc(r.transport) : ''}</div>
+              <div class="note">${esc(t('Scanned by'))} ${esc(r.by)} · ${esc(r.at)}</div></td></tr>`; }).join('')}
+        </tbody></table>
+        ${rows.length > shown.length ? `<p class="note" style="margin-top:8px;">${esc(t('Showing the newest'))} ${shown.length} ${esc(t('of'))} ${rows.length}. ${esc(t('Export to Excel has all of them.'))}</p>` : ''}`}
+  </div>
+  <div class="card">
+    <h2>${esc(t('Labels printed'))}</h2>
+    ${_cartonTab.series.length ? `<table><thead><tr><th>${esc(t('Numbers'))}</th><th class="num">${esc(t('Count'))}</th><th>${esc(t('By'))}</th></tr></thead><tbody>
+      ${_cartonTab.series.map(x=>`<tr><td class="mono">${esc(cartonCodeFor(x.prefix || CARTON_DEFAULT_PREFIX, x.from))} – ${esc(cartonCodeFor(x.prefix || CARTON_DEFAULT_PREFIX, x.to))}</td><td class="num">${Number(x.count) || 0}</td><td>${esc(x.byName || x.byUsername || '')}<div class="note">${esc(x.at ? fmtDate(x.at) : '')}</div></td></tr>`).join('')}
+    </tbody></table>` : `<div class="empty">${esc(_cartonTab.loaded ? t('No labels printed yet.') : t('Loading…'))}</div>`}
+  </div>`;
+}
+function bindCartonsTab(){
+  const on = (id, fn)=>{ const b = document.getElementById(id); if(b) b.addEventListener('click', fn); };
+  on('ctScan', openCartonLookupModal);
+  on('ctLabels', async ()=>{ await openCartonLabelsModal(); });
+  on('ctRefresh', ()=>loadCartonTabData(true));
+  on('ctExport', exportCartonsExcel);
+  const rg = document.getElementById('ctRange');
+  if(rg) rg.addEventListener('change', ()=>{ _cartonTab.range = rg.value; _cartonTab.rows = []; loadCartonTabData(true); render(); });
+  const sr = document.getElementById('ctSearch');
+  if(sr){
+    if(_cartonTab.q){ sr.value = _cartonTab.q; }
+    const apply = ()=>{ const q = sr.value.trim().toLowerCase(); _cartonTab.q = sr.value;
+      document.querySelectorAll('#ctTable tbody tr').forEach(tr=>{ tr.hidden = !!q && !(tr.dataset.ctHay || '').includes(q); }); };
+    sr.addEventListener('input', apply); apply();
+  }
+}
+const XLSX_URL = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+let _xlsxLoading = null;
+function loadXlsxOnce(){
+  if(window.XLSX && window.XLSX.utils) return Promise.resolve(window.XLSX);
+  if(_xlsxLoading) return _xlsxLoading;
+  _xlsxLoading = new Promise((resolve, reject)=>{
+    const sc = document.createElement('script'); sc.src = XLSX_URL; sc.async = true;
+    sc.onload = ()=> (window.XLSX && window.XLSX.utils) ? resolve(window.XLSX) : reject(new Error('Excel library did not load'));
+    sc.onerror = ()=>{ _xlsxLoading = null; reject(new Error('Excel library did not load')); };
+    document.head.appendChild(sc);
+  });
+  return _xlsxLoading;
+}
+async function exportCartonsExcel(){
+  const head = ['Box', 'Type', 'Item', 'Pcs', 'Order no.', 'Party', 'City', 'Order stage', 'Transport', 'LR', 'Dispatched', 'Scanned by', 'Scanned at'];
+  const body = _cartonTab.rows.map(c=>{ const r = cartonTabRowData(c); return [r.code, r.kind, r.item, r.pcs, r.orderNo, r.party, r.city, r.status, r.transport, r.lr, r.dispatched, r.by, r.at]; });
+  const sHead = ['From', 'To', 'Count', 'Printed by', 'Printed at'];
+  const sBody = _cartonTab.series.map(x=>[cartonCodeFor(x.prefix || CARTON_DEFAULT_PREFIX, x.from), cartonCodeFor(x.prefix || CARTON_DEFAULT_PREFIX, x.to), Number(x.count) || 0, x.byName || x.byUsername || '', x.at ? fmtDate(x.at) : '']);
+  const name = `cartons-${localDateKey(Date.now())}`;
+  try{
+    const X = await loadXlsxOnce();
+    const wb = X.utils.book_new();
+    const ws = X.utils.aoa_to_sheet([head, ...body]); ws['!cols'] = head.map((h, i)=>({ wch: [12,10,30,6,16,28,14,20,18,14,18,18,18][i] || 14 }));
+    X.utils.book_append_sheet(wb, ws, 'Cartons');
+    X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet([sHead, ...sBody]), 'Labels printed');
+    X.writeFile(wb, name + '.xlsx');
+    showToast(t('Excel file downloaded'));
+  }catch(err){
+    // No internet for the library: the same rows as a CSV, which Excel opens.
+    const csv = [head, ...body].map(r=>r.map(v=>`"${String(v == null ? '' : v).replace(/"/g, '""')}"`).join(',')).join('\r\n');
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type:'text/csv' })); a.download = name + '.csv';
+    document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    showToast(t('Excel library could not load — downloaded as CSV (opens in Excel)'));
+  }
+}
+function openRetailChooserModal(){
+  showModal(`
+    <h3>💵 ${esc(t('Retail / Samples'))}</h3>
+    <p class="desc" style="margin-top:-6px;">${esc(t('What do you want to record?'))}</p>
+    <div class="chooser-grid">
+      <button type="button" class="chooser-tile" data-choose="sale"><span class="icon-badge green">💵</span><b>${esc(t('Retail Sale'))}</b><span class="note">${esc(t('Cash sale from ready stock'))}</span></button>
+      <button type="button" class="chooser-tile" data-choose="sample"><span class="icon-badge orange">🎁</span><b>${esc(t('Samples'))}</b><span class="note">${esc(t('Give sample from ready stock'))}</span></button>
+    </div>
+    <div class="modal-actions"><button type="button" class="btn btn-outline" id="cancelModal">${esc(t('Cancel'))}</button></div>`);
+  document.querySelectorAll('[data-choose]').forEach(b=>b.addEventListener('click', ()=>{ const k = b.dataset.choose; closeModal('instant'); __modalOpenedViaQuickAction = true; openRetailModal(k); }));
+}
 function quickActionIcons(role){
   const icons = [];
   if(canDoEntry(role, 'entry_purchase')) icons.push({key:'purchase', ico:'🛢️', color:'green', lbl:'Purchase', sub:'Buy raw material'});
   if(canDoEntry(role, 'entry_filling')) icons.push({key:'filling', ico:'🧴', color:'blue', lbl:'Filling', sub:'Fill products'});
   if(canDoEntry(role, 'entry_packing')) icons.push({key:'packing', ico:'📦', color:'orange', lbl:'Packing', sub:'Pack products'});
   if(canDoEntry(role, 'entry_domino')) icons.push({key:'domino', ico:'🖨️', color:'purple', lbl:'Domino', sub:'Log printing'});
-  if(canDoEntry(role, 'entry_retail')) icons.push({key:'retailsale', ico:'💵', color:'green', lbl:'Retail Sale', sub:'Cash sale from ready stock'});
-  if(canDoEntry(role, 'entry_samples')) icons.push({key:'samples', ico:'🎁', color:'orange', lbl:'Samples', sub:'Give sample from ready stock'});
+  // ROUND 92 -- "sample and retail wle icons ko merge kr ke ik hi Icon kr do,
+  // uspe click kre to window me 2 icons khule". One tile when the post has
+  // both; a post with only one of the two still gets that one directly.
+  const canRetail = canDoEntry(role, 'entry_retail'), canSamples = canDoEntry(role, 'entry_samples');
+  if(canRetail && canSamples) icons.push({key:'retailsamples', ico:'💵', color:'green', lbl:'Retail / Samples', sub:'Sale or sample from ready stock'});
+  else if(canRetail) icons.push({key:'retailsale', ico:'💵', color:'green', lbl:'Retail Sale', sub:'Cash sale from ready stock'});
+  else if(canSamples) icons.push({key:'samples', ico:'🎁', color:'orange', lbl:'Samples', sub:'Give sample from ready stock'});
   if(canDoEntry(role, 'entry_batch')) icons.push({key:'batch', ico:'🏷️', color:'purple', lbl:'Batch', sub:"This month's batch number"});
+  if(role === 'admin') icons.push({key:'cartonscan', ico:'🔎', color:'orange', lbl:'Carton scan', sub:'Whose order is this box'}); // ROUND 92
   // ROUND 49: NO badge here any more. The unread count lives on the topbar
   // bell -- and renderShell's own comment records that the bell was added
   // precisely BECAUSE the count used to live only on this tile; nobody then
@@ -20594,6 +20977,8 @@ function bindQuickActionIcons(){
     if(k==='messages') openMessagesModal();
     if(k==='retailsale') openRetailModal('sale');
     if(k==='samples') openRetailModal('sample');
+    if(k==='retailsamples') openRetailChooserModal(); // ROUND 92
+    if(k==='cartonscan') openCartonLookupModal(); // ROUND 92
     if(k==='batch') openBatchModal();
   }));
 }
@@ -23118,14 +23503,18 @@ function seesPartyNames(){ const r = S.currentUser && S.currentUser.role; return
 function cartonOrderRef(c){ return (c && (c.orderNumber || c.orderLabel || c.orderId)) || ''; }
 function cartonPartyText(c){ return seesPartyNames() && c && c.customerName ? ` (${c.customerName})` : ''; }
 function canScanCartons(role){ return role === 'admin' || canDoEntry(role, 'entry_carton_scan'); }
+// ROUND 92 -- "Also for Loose Boxes too". A line of 30 pc at 12 a case goes
+// out as 2 full cartons and 1 LOOSE box of 6. Both carry a label and both are
+// scanned; the label is tagged as one or the other (carton.kind = 'loose').
+// An item with no case size is one box, counted as a carton, as before.
 function orderCaseNeed(o){
-  // per item: full cases expected (a remainder of loose pieces counts as one more carton)
   return (o.items || []).filter(i=>!i.cancelled).map(i=>{
     const it = findItem(i.key) || {};
     const cs = Number(it.caseSize || i.caseSize) || 0;
     const qty = Number(i.qty) || 0;
-    const cartons = cs > 0 ? Math.ceil(qty / cs) : (qty > 0 ? 1 : 0);
-    return { key: i.key, label: `${i.name} ${i.size}`, qty, caseSize: cs, cartons };
+    const full = cs > 0 ? Math.floor(qty / cs) : (qty > 0 ? 1 : 0);
+    const loose = cs > 0 && qty % cs > 0 ? 1 : 0;
+    return { key: i.key, label: `${i.name} ${i.size}`, qty, caseSize: cs, full, loose, cartons: full + loose };
   });
 }
 let _cartonModalUnsub = null;
@@ -23133,53 +23522,76 @@ function closeCartonListener(){ if(_cartonModalUnsub){ try{ _cartonModalUnsub();
 // ROUND 90 -- dispatched = final (Undo Dispatch reopens it). Deliberately NOT
 // locked by `booked`: the bill is normally booked before the goods are packed.
 function cartonOrderLocked(o){ return !o || o.status === 'processed' || o.status === 'rejected'; }
-function openCartonScanModal(orderId){
+// ROUND 92 -- opts.flow === 'pack': this window is the step between "Mark
+// Ready to Dispatch" and the order actually moving ("Ready to Dispatch pr jb
+// b click kre to usme Cartons ki Details ki window bhi aaye always ... lekin
+// ye skippable ho LR Upload ki tarah"). Skip and Done both carry on; Done is
+// just the name of the button once something has been scanned.
+function openCartonScanModal(orderId, opts){
   const o = S.orders.find(x=>x.id === orderId); if(!o) return;
   const role = S.currentUser && S.currentUser.role;
   if(!canScanCartons(role)){ showAlert(t('You do not have permission to scan cartons.')); return; }
+  const packFlow = !!(opts && opts.flow === 'pack' && typeof opts.onContinue === 'function');
   let cartons = [];
   const need = orderCaseNeed(o);
   let pickKey = (need[0] || {}).key || '';
+  let kind = 'carton';
   const draw = ()=>{
     const live = S.orders.find(x=>x.id === orderId) || o;
     const locked = cartonOrderLocked(live);
-    const byKey = {}; cartons.forEach(c=>{ byKey[c.itemKey] = (byKey[c.itemKey] || 0) + 1; });
+    const full = {}, loose = {};
+    cartons.forEach(c=>{ const m = c.kind === 'loose' ? loose : full; m[c.itemKey] = (m[c.itemKey] || 0) + 1; });
     const totalNeed = need.reduce((s, n)=>s + n.cartons, 0);
+    const anyLoose = need.some(n=>n.loose);
     const body = document.getElementById('cartonScanBody'); if(!body) return;
     body.innerHTML = `
-      <table><thead><tr><th>${esc(t('Item'))}</th><th>${esc(t('Cartons'))}</th></tr></thead><tbody>
-        ${need.map(n=>`<tr${(byKey[n.key] || 0) >= n.cartons ? ' style="background:var(--success-bg);"' : ''}><td><b>${esc(n.label)}</b><div class="note">${n.qty} ${esc(t('pc'))}${n.caseSize ? ` · ${n.caseSize}/${esc(t('case'))}` : ''}</div></td>
-          <td class="num">${byKey[n.key] || 0}/${n.cartons}</td></tr>`).join('')}
+      <table data-no-stack><thead><tr><th>${esc(t('Item'))}</th><th class="num">${esc(t('Cartons'))}</th>${anyLoose ? `<th class="num">${esc(t('Loose box'))}</th>` : ''}</tr></thead><tbody>
+        ${need.map(n=>{ const done = (full[n.key] || 0) >= n.full && (loose[n.key] || 0) >= n.loose;
+          return `<tr${done ? ' style="background:var(--success-bg);"' : ''}><td><b>${esc(n.label)}</b><div class="note">${n.qty} ${esc(t('pc'))}${n.caseSize ? ` · ${n.caseSize}/${esc(t('case'))}` : ''}</div></td>
+          <td class="num">${full[n.key] || 0}/${n.full}</td>${anyLoose ? `<td class="num">${n.loose ? `${loose[n.key] || 0}/${n.loose}` : '—'}</td>` : ''}</tr>`; }).join('')}
       </tbody></table>
-      <p class="note" style="margin:6px 0 10px;"><b>${cartons.length}/${totalNeed}</b> ${esc(t('cartons scanned'))}${cartons.length >= totalNeed && totalNeed ? ' ✅' : ''}</p>
-      ${cartons.length ? `<table><tbody>${cartons.slice().sort((a,b)=>(b.scannedAt||0)-(a.scannedAt||0)).map(c=>`<tr><td class="mono"><b>${esc(c.code)}</b><div class="note" style="font-family:inherit;">${esc(c.itemLabel || '')} · ${esc(c.scannedByName || '')} · ${esc(fmtTime(c.scannedAt))}</div></td>
-          <td class="row-actions">${(!locked && (role === 'admin' || c.scannedByUsername === S.currentUser.username)) ? `<button type="button" class="btn btn-sm btn-outline" data-carton-remove="${esc(c.code)}">${esc(t('↩ Undo'))}</button>` : ''}</td></tr>`).join('')}</tbody></table>` : `<div class="empty">${esc(t('No carton scanned yet.'))}</div>`}`;
+      <p class="note" style="margin:6px 0 10px;"><b>${cartons.length}/${totalNeed}</b> ${esc(t('boxes scanned'))}${cartons.length >= totalNeed && totalNeed ? ' ✅' : ''}</p>
+      ${cartons.length ? `<table data-no-stack><tbody>${cartons.slice().sort((a,b)=>(b.scannedAt||0)-(a.scannedAt||0)).map(c=>`<tr><td><b class="mono">${esc(c.code)}</b> ${c.kind === 'loose' ? `<span class="badge">${esc(t('Loose box'))}</span>` : ''}<div class="note">${esc(c.itemLabel || '')} · ${esc(c.scannedByName || '')} · ${esc(fmtTime(c.scannedAt))}</div></td>
+          <td class="row-actions" style="width:1%;">${(!locked && (role === 'admin' || c.scannedByUsername === S.currentUser.username)) ? `<button type="button" class="btn btn-sm btn-outline" data-carton-remove="${esc(c.code)}">${esc(t('↩ Undo'))}</button>` : ''}</td></tr>`).join('')}</tbody></table>` : `<div class="empty" style="padding:14px;">${esc(t('No carton scanned yet.'))}</div>`}`;
     body.querySelectorAll('[data-carton-remove]').forEach(b=>b.addEventListener('click', ()=>removeCartonFromOrder(b.dataset.cartonRemove, orderId)));
     const scanArea = document.getElementById('cartonScanArea'); if(scanArea) scanArea.hidden = locked;
     const lockNote = document.getElementById('cartonLockNote'); if(lockNote) lockNote.hidden = !locked;
+    const go = document.getElementById('cartonFlowGo'); if(go) go.textContent = cartons.length ? `✓ ${t('Done — Ready to Dispatch')}` : t('Skip — Ready to Dispatch');
   };
   showModal(`
-    <h3>📦 ${esc(t('Cartons'))} — ${esc(orderDisplayLabel(o))}</h3>
-    ${o.orderNumber ? `<p class="desc mono" style="margin-top:-6px;">${esc(o.orderNumber)}</p>` : ''}
+    <h3>📦 ${esc(t('Cartons & loose boxes'))} — ${esc(orderDisplayLabel(o))}</h3>
+    ${packFlow ? `<p class="desc" style="margin-top:-6px;">${esc(t('Scan the label on every carton and loose box going out with this order. You can also skip this and scan later from the order.'))}</p>` : (o.orderNumber ? `<p class="desc mono" style="margin-top:-6px;">${esc(o.orderNumber)}</p>` : '')}
     <div id="cartonScanArea">
-      ${need.length > 1 ? `<div class="field" style="margin-bottom:8px;"><label>${esc(t('Item in this carton'))}</label><select id="cartonItemSel">${need.map(n=>`<option value="${esc(n.key)}">${esc(n.label)}</option>`).join('')}</select></div>` : ''}
+      ${need.length > 1 ? `<div class="field" style="margin-bottom:8px;"><label>${esc(t('Item in this box'))}</label><select id="cartonItemSel">${need.map(n=>`<option value="${esc(n.key)}">${esc(n.label)}</option>`).join('')}</select></div>` : ''}
+      <div class="seg-toggle" role="group" style="display:flex;gap:6px;margin-bottom:8px;">
+        <button type="button" class="btn btn-sm btn-primary" data-box-kind="carton" style="flex:1;">📦 ${esc(t('Full carton'))}</button>
+        <button type="button" class="btn btn-sm btn-outline" data-box-kind="loose" style="flex:1;">🗃️ ${esc(t('Loose box'))}</button>
+      </div>
       ${scannerHtml('cartonScan')}
     </div>
     <p class="note" id="cartonLockNote" hidden>${esc(t('This order is dispatched — its cartons can no longer change.'))}</p>
     <div id="cartonScanBody" style="margin-top:10px;"></div>
-    <div class="modal-actions"><button type="button" class="btn btn-outline" id="cancelModal">${esc(t('Close'))}</button></div>`);
+    <div class="modal-actions">${packFlow
+      ? `<button type="button" class="btn btn-outline" id="cancelModal">${esc(t('Cancel'))}</button><button type="button" class="btn btn-success" id="cartonFlowGo">${esc(t('Skip — Ready to Dispatch'))}</button>`
+      : `<button type="button" class="btn btn-outline" id="cancelModal">${esc(t('Close'))}</button>`}</div>`);
   const sel = document.getElementById('cartonItemSel');
   if(sel) sel.addEventListener('change', ()=>{ pickKey = sel.value; });
-  bindScanner('cartonScan', code=>{ addCartonToOrder(code, orderId, sel ? sel.value : pickKey); });
+  document.querySelectorAll('[data-box-kind]').forEach(b=>b.addEventListener('click', ()=>{
+    kind = b.dataset.boxKind;
+    document.querySelectorAll('[data-box-kind]').forEach(x=>{ const on = x.dataset.boxKind === kind; x.classList.toggle('btn-primary', on); x.classList.toggle('btn-outline', !on); });
+  }));
+  bindScanner('cartonScan', code=>{ addCartonToOrder(code, orderId, sel ? sel.value : pickKey, kind); });
+  const goBtn = document.getElementById('cartonFlowGo');
+  if(goBtn) goBtn.addEventListener('click', ()=>{ closeModal('instant'); opts.onContinue(); });
   closeCartonListener();
   _cartonModalUnsub = fsDb.collection('cartons').where('orderId', '==', orderId).onSnapshot(snap=>{
     cartons = snap.docs.map(d=>Object.assign({}, d.data(), { code: d.id }));
     draw();
   }, err=>{ fsReportWriteError(err, 'cartons'); });
   draw();
-  const inp = document.getElementById('cartonScanInput'); if(inp && !isDesktopLayout()) { /* no auto keyboard on a phone */ } else if(inp) inp.focus();
+  const inp = document.getElementById('cartonScanInput'); if(inp && isDesktopLayout()) inp.focus();
 }
-async function addCartonToOrder(code, orderId, itemKey){
+async function addCartonToOrder(code, orderId, itemKey, kind){
   const o = S.orders.find(x=>x.id === orderId);
   if(!o) return { error:'no-order' };
   if(cartonOrderLocked(o)){ showAlert(t('This order is dispatched — its cartons can no longer change.')); return { error:'locked' }; }
@@ -23194,6 +23606,7 @@ async function addCartonToOrder(code, orderId, itemKey){
       const rec = { code, orderId, orderNumber: o.orderNumber || '', customerName: o.customerName || '',
         itemKey, itemLabel: line.name ? `${line.name} ${line.size}` : (it.name ? `${it.name} ${it.size}` : itemKey),
         pcs: Number(it.caseSize) || 0, scannedAt: Date.now(),
+        ...(kind === 'loose' ? { kind: 'loose', pcs: (()=>{ const cs = Number(it.caseSize) || 0; const q = Number(line.qty) || 0; return cs > 0 ? (q % cs || cs) : 0; })() } : {}),
         scannedByUsername: S.currentUser.username, scannedByName: S.currentUser.name || S.currentUser.username };
       tx.set(ref, rec);
       return { added: rec };
@@ -23236,31 +23649,31 @@ async function lookupCarton(code){
   try{ const q = await fsDb.collection('cartons').where('orderId', '==', c.orderId).get(); all = q.docs.map(d=>Object.assign({}, d.data(), { code: d.id })); }catch(e){}
   return { found:true, code, carton: c, order: o, cartons: all };
 }
+// ROUND 92 -- "jb hum carton scan kre to Order ke peso ki details na dikhe":
+// who it went to, by which transport, what is in THIS box, and everything
+// that went with it -- no amounts, no MRP, no discount.
 function cartonBillHtml(r){
   if(!r.found) return `<div class="alert-banner">${esc(r.code)} — ${esc(t('this carton number has not been used on any order yet.'))}</div>`;
   const c = r.carton, o = r.order;
   if(!o) return `<div class="alert-banner">${esc(r.code)} — ${esc(t('the order for this carton is no longer in the system.'))} (${esc(cartonOrderRef(c))}${esc(cartonPartyText(c))})</div>
     ${S.currentUser.role === 'admin' ? `<button type="button" class="btn btn-outline btn-sm" data-carton-release="${esc(r.code)}" style="margin-top:8px;">${esc(t('Free this label for reuse'))}</button>` : ''}`;
-  const cust = liveCustomerFor(o);
-  const disc = cust ? (Number(cust.discountPercent) || 0) : 0;
   const lines = (o.items || []).filter(i=>!i.cancelled);
-  const mrpTotal = lines.reduce((s, i)=>s + orderLineMrp(i), 0);
-  const net = Math.round(mrpTotal * (1 - disc / 100));
+  const loose = r.cartons.filter(x=>x.kind === 'loose').length;
   return `
     <div class="card" style="margin:0 0 10px;">
       <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;"><b style="font-size:1.05rem;">${esc(o.customerName || '')}</b><span class="badge">${esc(t(ORDER_STAGE_LABEL[o.status] || o.status))}</span></div>
-      <div class="note">${esc(o.orderNumber || '')} · ${esc(fmtDateOnly(o.createdAt))}${o.customerCity ? ' · ' + esc(o.customerCity) : ''}</div>
-      <div class="note" style="margin-top:6px;">📦 ${esc(t('This carton'))}: <b class="mono">${esc(c.code)}</b> — ${esc(c.itemLabel || '')}${c.pcs ? ` (${c.pcs} ${esc(t('pc'))})` : ''} · ${esc(c.scannedByName || '')} · ${esc(fmtDate(c.scannedAt))}</div>
+      <div class="note">${esc(o.orderNumber || '')} · ${esc(fmtDateOnly(o.createdAt))}${o.customerCity ? ' · 📍 ' + esc(o.customerCity) : ''}</div>
+      <div style="margin-top:8px;font-size:0.875rem;">🚚 ${o.transportName ? `<b>${esc(o.transportName)}</b>${o.lrNumber ? ` · ${/^LR/i.test(o.lrNumber) ? '' : 'LR '}${esc(o.lrNumber)}` : ''}${o.dispatchedAt ? ` · ${esc(fmtDate(o.dispatchedAt))}` : ''}` : `<span class="note">${esc(t('Not dispatched yet'))}</span>`}</div>
+      <div style="margin-top:6px;font-size:0.875rem;">📦 ${esc(t('This box'))}: <b class="mono">${esc(c.code)}</b>${c.kind === 'loose' ? ` <span class="badge">${esc(t('Loose box'))}</span>` : ''} — <b>${esc(c.itemLabel || '')}</b>${c.pcs ? ` (${c.pcs} ${esc(t('pc'))})` : ''}</div>
+      <div class="note">${esc(t('Scanned by'))} ${esc(c.scannedByName || '')} · ${esc(fmtDate(c.scannedAt))}</div>
     </div>
-    <table><thead><tr><th>${esc(t('Item'))}</th><th>${esc(t('Qty'))}</th><th>${esc(t('Amount'))}</th></tr></thead><tbody>
-      ${lines.map(i=>{ const it = findItem(i.key) || {}; return `<tr><td>${esc(i.name)} ${esc(i.size)}</td><td class="mono">${esc(fmtQtyPreferCase(Number(i.qty) || 0, Number(it.caseSize) || 0))}</td><td class="num">${rupees(orderLineMrp(i))}</td></tr>`; }).join('')}
-      <tr><td><b>${esc(t('MRP total'))}</b></td><td></td><td class="num"><b>${rupees(mrpTotal)}</b></td></tr>
-      ${disc ? `<tr><td>${esc(t('Discount'))} ${disc}%</td><td></td><td class="num">− ${rupees(mrpTotal - net)}</td></tr><tr><td><b>${esc(t('Net'))}</b></td><td></td><td class="num"><b>${rupees(net)}</b></td></tr>` : ''}
+    <h4 style="margin:4px 0 6px;">${esc(t('Everything in this order'))}</h4>
+    <table><thead><tr><th>${esc(t('Item'))}</th><th class="num">${esc(t('Qty'))}</th></tr></thead><tbody>
+      ${lines.map(i=>{ const it = findItem(i.key) || {}; return `<tr><td>${esc(i.name)} ${esc(i.size)}</td><td class="num">${esc(fmtQtyPreferCase(Number(i.qty) || 0, Number(it.caseSize) || 0))}</td></tr>`; }).join('')}
     </tbody></table>
     <div class="note" style="margin-top:8px;">
       ${o.packedAt ? `${esc(t('Ready to Dispatch'))}: ${esc(fmtDate(o.packedAt))}${o.packedBy ? ' · ' + esc(o.packedBy) : ''}<br/>` : ''}
-      ${o.dispatchedAt ? `${esc(t('Dispatched'))}: ${esc(fmtDate(o.dispatchedAt))}${o.transportName ? ' · ' + esc(o.transportName) : ''}${o.lrNumber ? ' · LR ' + esc(o.lrNumber) : ''}<br/>` : ''}
-      ${esc(t('Cartons on this order'))}: ${r.cartons.length} — <span class="mono">${r.cartons.map(x=>esc(x.code)).join(', ')}</span>
+      ${esc(t('Boxes on this order'))}: ${r.cartons.length}${loose ? ` (${loose} ${esc(t('loose'))})` : ''} — <span class="mono">${r.cartons.map(x=>esc(x.code)).join(', ')}</span>
     </div>`;
 }
 function openCartonLookupModal(){
@@ -25667,7 +26080,7 @@ function showModal(innerHtml, extraClass){
   overlay.innerHTML = `<div class="modal${extraClass?' '+extraClass:''}"><button type="button" class="modal-x" id="modalCloseX" aria-label="Close" title="Close">✕</button><div class="sheet-handle"></div>${innerHtml}</div>`;
   const host = document.querySelector('.device-screen') || document.body;
   host.appendChild(overlay);
-  translateTextNodesIn(overlay); fitTablesIn(overlay); // ROUND 91 -- see render()
+  translateTextNodesIn(overlay); fitTablesIn(overlay); markNumberLengths(overlay); // ROUND 91/92 -- see render()
   const modalEl = overlay.querySelector('.modal');
   const originFresh = __lastTapX!==null && (Date.now()-__lastTapAt) < 800;
   const ox = originFresh ? Math.round(__lastTapX/window.innerWidth*100) : 50;
@@ -25981,6 +26394,7 @@ const KBD_GO_LETTER = {
   home:'h', orders:'o', customers:'c', stock:'s', domino:'d', tasks:'t',
   expenses:'e', dailywork:'w', attendance:'a', users:'u', log:'l',
   salary:'y', // ROUND 82 -- "yy": no common word doubles it, which is what Round 41's doubled-letter nav needs
+  cartons:'b', // ROUND 92 -- "bb" (barcodes)
 };
 // ROUND 41 -- code -> view for the doubled-letter navigation, derived from the
 // same single KBD_GO_LETTER map as everything else.
