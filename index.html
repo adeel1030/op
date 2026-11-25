@@ -10,7 +10,7 @@
      the whole 1.35 MB down again on a phone. Up here it lands inside the
      first kilobyte, so the check costs a few KB instead of the entire app.
      The two can never be allowed to drift -- test_round60 fails if they do. -->
-<meta name="app-build" content="2026-11-25-firestore-preview131">
+<meta name="app-build" content="2026-11-25-firestore-preview132">
 <meta name="theme-color" content="#1E3F1B">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1895,6 +1895,11 @@
      grids: those are short, always on screen, and carry the stagger animation,
      which content-visibility would interrupt. */
   .order-tile-grid .order-tile{ content-visibility:auto; contain-intrinsic-size:auto 132px; }
+  /* ROUND 104 -- for the one frame after a data refresh every tile is laid out
+     for real, so the scroll position is put back against true heights (not the
+     132/190px placeholders); 'auto' then remembers those sizes, so nothing
+     shifts when the off-screen tiles go back to being skipped. */
+  .content.cv-measure .order-tile-grid .order-tile{ content-visibility:visible; }
   .order-tile.tile-ready{background:var(--tile-highlight), var(--state-ready-bg);border-color:var(--state-ready-border);}
   .order-tile.tile-processing{background:var(--tile-highlight), var(--state-processing-bg);border-color:var(--state-processing-border);}
   .order-tile.tile-packed{background:var(--tile-highlight), var(--state-packed-bg);border-color:var(--state-packed-border);}
@@ -2181,11 +2186,23 @@
      like a page reload, not a tab change. */
   .topbar{ view-transition-name:oms-topbar; }
   .navbar{ view-transition-name:oms-navbar; }
-  ::view-transition-old(root){ animation:none; opacity:0; }
-  ::view-transition-new(root){ animation:vtContentIn .22s cubic-bezier(.2,.8,.3,1); }
+  /* ROUND 104 -- "pages ik se dusre jb khule to blackout na ho fade ho k khule".
+     The old screen used to be hidden at once (opacity 0) while the new one
+     started from opacity 0 -- for a moment NEITHER was on screen and the
+     dark canvas behind them showed through: the blackout. Now the old screen
+     stays fully painted underneath and the new one fades in on top of it, a
+     true cross-fade with no dark frame. mix-blend-mode:normal stops the
+     default plus-lighter blend from over-brightening the overlap. */
+  ::view-transition-image-pair(root){ isolation:auto; }
+  ::view-transition-old(root){ animation:none; opacity:1; mix-blend-mode:normal; }
+  ::view-transition-new(root){ animation:vtContentIn .26s cubic-bezier(.2,.8,.3,1) both; mix-blend-mode:normal; }
   @keyframes vtContentIn{ from{ opacity:0; transform:translateY(6px); } to{ opacity:1; transform:none; } }
-  .content{animation:contentFadeIn .18s ease;}
-  @keyframes contentFadeIn{from{opacity:0.4;}to{opacity:1;}}
+  ::view-transition-group(oms-topbar), ::view-transition-group(oms-navbar){ animation-duration:.26s; }
+  /* no View Transitions (older iPhone / Android WebView): a gentle fade-and-rise of the new screen */
+  .content{animation:contentFadeIn .24s cubic-bezier(.2,.8,.3,1);}
+  @keyframes contentFadeIn{from{opacity:0;}to{opacity:1;}}
+  /* ROUND 104 -- the top bar keeps its condensed state through a data refresh without re-animating */
+  .topbar.tb-instant, .topbar.tb-instant *{ transition:none !important; }
 
   /* ---------- ROUND 53: theme family + Light/Dark switch ---------- */
   /* Every colour here is a token, so the switch is itself themed -- a control
@@ -3527,6 +3544,47 @@
   .ot-actions .btn-del-order.is-blocked{ color:var(--ink-soft); border-style:dashed; opacity:.75; }
   .ot-more-btn{ white-space:nowrap; width:auto !important; padding-left:12px !important; padding-right:12px !important; font-family:var(--font-body, inherit) !important; letter-spacing:0 !important; }
 
+  /* ============ ROUND 103 -- merge / duplicate orders ============ */
+  .ot-dup{ display:inline-flex; align-items:center; flex-wrap:wrap; gap:6px; margin:2px 0 4px; padding:3px 9px; border-radius:999px; font-size:0.75rem; font-weight:600; cursor:pointer;
+    color:var(--warning); background:var(--warning-bg); border:1px dashed color-mix(in srgb, var(--warning) 55%, transparent); width:auto; font-family:inherit; line-height:1.3; }
+  .ot-dup:hover{ filter:brightness(0.97); }
+  .ot-dup-same{ display:inline-block; padding:1px 7px; border-radius:999px; font-size:0.6875rem; font-weight:700; color:#fff; background:var(--danger); white-space:nowrap; }
+  .dup-banner{ margin:4px 0 12px; padding:10px 12px; border-radius:12px; background:var(--warning-bg); border:1px solid color-mix(in srgb, var(--warning) 40%, var(--border)); }
+  .dup-h{ font-weight:700; font-size:0.875rem; color:var(--ink); margin-bottom:6px; display:flex; align-items:center; gap:8px; }
+  .dup-n{ display:inline-grid; place-items:center; min-width:20px; height:20px; padding:0 6px; border-radius:999px; background:var(--warning); color:#fff; font-size:0.6875rem; }
+  .dup-row{ display:flex; align-items:center; flex-wrap:wrap; gap:6px 10px; padding:6px 0; border-top:1px dashed color-mix(in srgb, var(--warning) 30%, var(--border)); }
+  .dup-row:first-of-type{ border-top:0; }
+  .dup-party{ font-weight:600; color:var(--ink); min-width:0; overflow-wrap:anywhere; }
+  .dup-cnt{ font-size:0.75rem; color:var(--ink-soft); }
+  .dup-row .dup-go{ margin-left:auto; width:auto; }
+  .mg-list{ display:flex; flex-direction:column; gap:8px; }
+  .mg-row{ position:relative; padding:10px 12px; border-radius:12px; border:1.5px solid var(--border); background:var(--surface); transition: border-color .15s, background-color .15s; }
+  .mg-row.is-target{ border-color:var(--primary); background:color-mix(in srgb, var(--primary) 6%, var(--surface)); }
+  .mg-row.is-in{ border-color:color-mix(in srgb, var(--primary) 45%, var(--border)); }
+  .mg-row.is-blocked{ opacity:.7; border-style:dashed; }
+  .mg-pick{ display:flex; align-items:center; flex-wrap:wrap; gap:6px 8px; cursor:pointer; margin:0; font-weight:400; }
+  .mg-pick input{ width:20px; height:20px; margin:0; flex:none; accent-color:var(--primary); }
+  .mg-num{ font-weight:700; font-family:var(--font-mono, ui-monospace, monospace); }
+  .mg-date{ font-size:0.75rem; color:var(--ink-soft); }
+  .mg-keep{ font-size:0.6875rem; font-weight:700; color:var(--primary); }
+  .mg-keep[hidden]{ display:none; }
+  .mg-lines{ margin:6px 0 0 28px; font-size:0.8125rem; color:var(--ink-soft); line-height:1.5; }
+  .mg-why{ margin:4px 0 0 28px; font-size:0.75rem; color:var(--danger); }
+  .mg-row > .note{ margin:2px 0 0 28px; }
+  .mg-row .mg-del{ margin:8px 0 0 28px; width:auto; color:var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); }
+  .mg-preview{ margin-top:12px; padding:10px 12px; border-radius:12px; background:var(--bg-soft); border:1px solid var(--border); }
+  .mg-preview:empty{ display:none; }
+  .mg-pv-h{ font-size:0.875rem; margin-bottom:6px; display:flex; align-items:center; flex-wrap:wrap; gap:6px; }
+  .mg-pv-lines{ display:flex; flex-direction:column; gap:2px; margin-bottom:6px; }
+  .mg-pv-line{ display:flex; justify-content:space-between; gap:10px; font-size:0.8125rem; padding:3px 0; border-bottom:1px dashed var(--border); }
+  .mg-pv-line:last-child{ border-bottom:0; }
+  .mg-warn{ color:var(--danger); font-size:0.8125rem; font-weight:600; margin-bottom:6px; }
+  .mg-preview .note{ margin-top:4px; }
+  .mg-preview #mgAccept{ width:auto; }
+  #mgGo:disabled{ opacity:.5; cursor:not-allowed; }
+  .mg-modal #mgGo{ white-space:nowrap; }
+  @media (max-width:560px){ .mg-modal .modal-actions{ flex-wrap:wrap; } .mg-modal .modal-actions #mgGo{ flex:1 1 100%; order:-1; } .mg-modal .modal-actions .btn{ flex:1 1 auto; } }
+
 
   /* ============ ROUND 102 -- the dispatch film ============ */
   .dsp{ position:fixed; inset:0; z-index:470; background:rgba(8,12,10,0.38); animation: dspFade .25s ease both; pointer-events:none; }
@@ -3668,7 +3726,7 @@ const COMPANY_LOGO = "icon-512.png";
 const COMPANY_NAME = "M A Products INDIA";
 const COMPANY_ADDRESS = "1310A, Near Chaman Wada, Tilak Bazar, Delhi-110006";
 const COMPANY_GSTIN = "07EHRPK1709L2ZU";
-const APP_BUILD = "2026-11-25-firestore-preview131"; // ROUND 102 (2026-11-25). The dispatch film: the order tile lifts out and grows, folds into a carton (flaps, tape, party label), a big truck drives in, the carton drops in, the shutter rolls down, the truck drives off with "On its way!". ~4s, never blocks taps; Light = small truck, Off = nothing. ROUND 101 (2026-11-25). Place and transport show on every order tile for every role (were only for stage-movers, so a manager without that permission never saw them). Order delete is findable: the fold button reads "⋯ More N", Delete is a red "🗑 Delete order"; on a booked or dispatched order admin sees it greyed and a tap explains what to undo first (the delete rules are unchanged). ROUND 100 (2026-11-25). Compact order tiles: place / transport / date on one line, value and Details on one line, a thin stage rail without its label, tighter item rows and padding. Same buttons and hooks. ROUND 99 (2026-11-25). Order tiles: items in three columns -- Item | Status (green ✔ or red short-by) | Qty, with a small header. Laptop sidebar rows tighter (20px icons). Windows: Save / Cancel stick to the bottom only when the window is really long (watchModalLength adds .is-long), flush with the bottom edge (no white strip); short windows such as Record filling show their buttons in place again. ROUND 98 (2026-11-25). Daily Work entries are cards (what / figure / who-when / Book) instead of 6-column tables that ran together on a phone; the ID card sits centred under the sheet's X; one colour per order stage everywhere (badge, strip, rail, headings, chips, Home tiles); thicker frosted bottom bar; the app's own two-tone icons replace emoji in the bottom bar, sidebar, More, top bar, Quick Actions and stage tiles (Domino = MRP printer); order tiles list items as rows with the quantity on the right; Today card deltas are small tags; Customers is a slim list that opens a party profile (stats, last order, top item, 6-month bars; money only for admin); Save/Cancel ride the bottom edge of long windows; new welcome/login screen. No rules or index change. ROUND 97 (2026-11-24). Also: carton labels can be REPRINTED (labels window has New / Reprint; a Reprint button on every printed batch in the Cartons tab; "Print this label again" on a scanned box) -- a reprint uses no new number, is logged as kind:reprint and is not counted as new labels; Scan a carton / Carton labels left the Stock tab (they live in the Cartons tab). Round 97 main: Owner picked 1, 2, 6, 7, 8, 9: (1) the stage rail on order tiles is bigger, ticks in done steps, a filled line and a pulsing current dot; (2) an Order journey (who did what, when) inside Details and the two-pane detail -- acceptedAt/By, rejectedAt/By, readyAt/By, dispatchedBy are recorded from now on, only on admin/manager writes so the rules are unchanged; (6) party avatars are coloured coins with two initials; (7) a truck drives across the screen on dispatch; (8) empty screens get a floating picture; (9) search marks what was typed in Customers, stock lists and the Cartons tab. ROUND 96b (2026-11-24). (1) Shine in every theme, in its own colours (Green green-gold, Indigo blue, Sand amber, Maroon rose, dark versions silver): drifting light, top-bar sweep, glints on Today/count tiles and big buttons, glowing Quick Action icons, light over the greeting with dust, urgent-bell ring, login logo, and the save burst -- transform/opacity only. Light keeps only the top-bar sweep and a small burst. (2) Several loose boxes per item: pieces already in loose boxes are counted, the tick list offers only what is left, the header says Loose box no. N, the loose column shows pieces boxed/left. ROUND 96 (2026-11-24). "Loose wle me Carton Scanner me Multiple Items aa skte h na ... Sometimes Bade cartons bna diye jaate h loose items ke": a LOOSE box label can now carry any number of items, each with its own pieces (carton.items[] {key,label,pcs}; itemKey = the first, itemLabel = all of them, pcs = the total, so older screens still read it). The cartons window shows a tick list with pieces when Loose box is chosen, pre-ticked with the items whose loose pieces are not yet boxed; the counter treats one mixed box as covering every item in it; lookup, Cartons tab, Excel and goods-return scanning read every item in the box. Full cartons unchanged; old boxes unchanged; no rules or index change. PREVIOUSLY, ROUND 95 (2026-11-24). BEAUTY ROUND, owner's choices: Black + Gold, Full animations with a switch, everyone may pick it, polish every theme. (1) Carton scanner: the camera is the big primary button, typing (and a scanner gun) the small row under it. (2) Every theme: Inter font, a stage-colour strip on every order tile, a sliding pill under the chosen bottom-bar tab, a tap ripple, empty screens on a plate, a soft press on buttons, the username on the profile card readable. (3) New theme family "lux": Royal Black & Gold (dark) and Ivory & Gold (light) -- serif gold-foil headings, drifting gold light behind the page, black lacquer top bar with a sweeping light, gold hairline glass cards, a glint across the figures and tiles, gold foil buttons, glowing gold nav pill with a hop, gold edge windows, gold dust on the greeting, a gold burst on every saved entry, a light across the login logo, a heartbeat on the stock bell. (4) Profile > Preferences > Animations: Full / Light / Off (this device; "reduce motion" phones start at Light); looping effects pause when the app is in the background. firestore.rules and firestore.indexes.json UNCHANGED. PREVIOUSLY, ROUND 94 (2026-11-24). DESIGN ROUND, owner picked 1,2,3,4,5,6,8,9,11,12: (1) Clients on a phone are one compact row each; (2) Today labels 11px; (3) small buttons 40px tall on a phone; (4) one date format -- "24 Nov 2026", "24 Nov", "24 Nov 03:21 PM" (fmtDayMonth); (5) quantities in words -- "1 case + 4 pc" instead of "1c 4pc", "Stock after:" instead of "Updated Qty:"; (6) ONE stock bell in the top bar instead of up to three, opening one panel; (8) Daily Work jump chips with what is still to book; (9) the order window shows the picked item's free Ready stock and what is left after this order; (11) Profile > Bottom bar: pick the four tabs beside Home (this device); (12) from 1100px wide the Orders screen is two panes -- list and the chosen order in full. firestore.rules and firestore.indexes.json UNCHANGED. PREVIOUSLY, ROUND 93 (2026-11-24). "client search krne ke baad us client ke ya kisi ke bhi ... kaam nhi krte": a search redraws only the list, and the ⋯ (more actions) buttons on the redrawn cards/rows were never wired -- that only happened on a full render. Every search box (Clients; Stock raw/filled/ready) now re-wires them, and re-labels the phone's stacked rows. ALSO: Users A to Z; Clients A to Z with parties added today on top for that day (byNameAZ). firestore.rules and firestore.indexes.json UNCHANGED. PREVIOUSLY, ROUND 92 (2026-11-24). Owner's list, checked on phone, tablet and laptop. (1) Today numbers were shrunk as if every figure were nine characters long; the size now follows each figure's own length (--nchars, markNumberLengths). (2) Order Edit stays until the order is dispatched -- a booked order too: the window says so, and saving un-books it with a message (book it again after changing the bill). (3) Users on a phone: one horizontal row per person. (4) Order tiles inside a Home stage window were three-across in a 520px window; one full-width tile per row now. (5) Editing an order line: the boxes and buttons ran off a phone and hid Save; boxes with names on one row, buttons under. An order line typed but not saved is asked about on Save changes, and Cancel/✕/Back with unsaved changes asks before closing. (6) Daily Work rows: buttons sit at the end of the last line instead of a line of their own. (7) Orders show MRP (discount %) → final value (orderValueHtml). (8) Home: Retail and Samples are one icon that opens a two-choice window; admin gets a Carton scan icon. A Cartons tab (admin only, under More): scan, new labels, every scanned box with search, labels printed, Excel export (SheetJS from the CDN, CSV if it cannot load). (9) Carton lookup shows party, transport, the box and every item -- no money. (10) Mark Ready to Dispatch always opens the Cartons & loose boxes window first (Skip or Done); a label can be scanned as a full carton or a loose box; the dispatch window fills Total cases from the boxes scanned. firestore.rules and firestore.indexes.json UNCHANGED. PREVIOUSLY, ROUND 91 (2026-11-24). "Jo reh gya vo b kr do" -- the four things Round 90 left open. (1) PHONE TABLES: every cell allowed a break after any character, so 5-6 column tables were squeezed until names, headers, amounts and times broke mid-word ("Moham|mad", "03:4|7"), and some tables still hung past their card. Words are now never broken; a table that does not fit its card on a phone becomes stacked rows (first cell on top, the rest labelled with their column name, buttons at the end) -- fitTablesIn(); a table that fits stays a table, so laptop/tablet are unchanged. Big figures shrink to their tile instead of breaking; the bottom bar shares its width (at 360px with the largest text "Home" sat half off the left edge); the screen name under OMS stays on one line. (2) HINDI/URDU: ~130 headings, buttons and lines were written straight into the page, not through t(). translateTextNodesIn() checks every piece of text that lands on the page against the dictionary (typed content and chat are never touched), lines with a number or name inside use templates (I18N_PATTERNS), 112 new entries per language, Permission Manager and notification settings included; month/day names follow the language (uiDateLocale; the PDF stays English, its font has no Hindi/Urdu). (3) Ready to Dispatch, its undo and Undo Dispatch write only the fields they change (saveOrderStageFields) -- a field another device had just written is no longer wiped on a slow connection. (4) Short stock counts products, not rows (one item short in Filled and Ready was "2"); and a part fill/pack no longer closes the stock task while the item is still short. firestore.rules and firestore.indexes.json UNCHANGED. PREVIOUSLY, ROUND 90 (2026-11-24). THE FULL TEST PASS -- "Complete har Nazarye se testing krlo ab. Ik point b nahi chorna h." No new feature; every fix below was found by a test. ORDERS: (1) the Round 89 booked lock also blocked Undo Ready to Dispatch, Undo Dispatch and carton scanning on a booked order, and orders are usually booked before they are packed -- the lock now covers only Edit, Delete and Undo Ready; (2) a sales phone tried to write the automatic status change it is not allowed to write (canWriteOrderStatus; a permitted device finishes it); (3) an LR number typed in the dispatch window without a photo was thrown away; (4) an order edit window left open while another device deleted, dispatched or changed the same order used to bring it back / pull it back to In packing / leave the reserved stock different from the order -- it is refused now and the freshest copy is the one saved; (5) the packing entry advanced the order before the tasks, leaving its packaging step "pending". ENTRIES: (6) editing or deleting a filling/packing/purchase entry could push oil or Filled stock below zero (stockShortfallSince) -- refused with the reason; (7) a rejected date in the edit window left the stock reverted on that device and the stock log switched off until reload; (8) an empty quantity box saved as 0 (edit window and Adjust); (9) changing the pieces of a filling entry did not change the oil used; (10) fractions of a piece are refused in bulk edit, Adjust, retail and order lines; (11) bulk edit with nothing changed wrote zero-quantity log rows and rounded the oil; (12) the same stale-window check for entries. ALSO: a product whose name differs only by capitals/spaces is a duplicate; Domino has a typo ceiling; a tap on a window that is closing no longer saves twice; attendance cannot be marked for a future day or a day this device has not loaded; admin loads attendance back to the oldest salary month it can still pay, staff at least 7 weeks; Daily Work ignores a future date. BARCODES: label bars are exactly 2 printer dots wide at 203 dpi; the camera reader runs its own frame loop (the library helper never decoded a frame) at full HD; closing any window releases the camera; admin can free a label for reuse. LOOK: typed text in fields was unreadable in the dark themes (no text colour was ever set), a white month box in dark themes, the sticky date heading sat 14px low, the maroon alert colours, Urdu numbers, and the Domino table is 3 columns instead of 6 on a phone. firestore.rules and firestore.indexes.json UNCHANGED since Round 89. PREVIOUSLY, ROUND 89 (2026-11-23). UNDO UNTIL BOOKED, CARTON BARCODES, GOODS RETURN, STOCK COUNT, SMALLER DOWNLOADS. (1) "Har Ek Action ko Undoable rkho jb tk vo Daily me ja k book nahi hojata": own entries can be taken back from Home until booked (was 5 minutes), a manager can undo his own entries, a salary marked paid can be unmarked, a Domino entry can be taken back the same day, a sales order can be deleted by its creator while it is still only an order; and the other way round, a booked order/attendance day/return/count can no longer be unwound until the booking is undone (BOOKED_LOCK_MSG). (2) Carton barcodes: admin prints Code 128 labels, 2 x 1.5 in, one per page, numbers reserved by a transaction so none repeats; admin/manager/packing scan cartons onto an order at Ready to Dispatch (scanner gun, typing or camera -- BarcodeDetector, else ZXing from the CDN), a carton already on another order is refused; admin scans any carton and gets the whole bill. (3) Goods return against an order (or without one): good pieces back to Ready stock, damaged recorded, credit value after party discount, cartons can be scanned in, undo until booked, in Daily Work. (4) Stock count: count any pool, the DIFFERENCE is applied so entries made during the count survive; staff counts go to admin for approval; undo until booked; in Daily Work. (5) Downloads: chat 60 days (screen and download now the same; was 7 shown, all downloaded), retail/samples 60 days (was 180), a staff phone\'s own attendance from the 1st of last month (was all history; admin keeps >= 60 days for weekly payroll). The chat and staff-attendance windows need firestore.indexes.json and fall back to the old queries until it is deployed. firestore.rules CHANGED. PREVIOUSLY, ROUND 88 (2026-11-23). TABLET, KEYBOARD, USAGE. (1) "Tablet pr jb b m kholta hu to beech me phone bana ajata h": the decorative phone mock was dropped only at <=520px wide or <=760px tall and the laptop layout starts at 900px, so every tablet in portrait (521-899px wide, taller than 760) drew a 412px phone in the middle. Below 900px the app is now always full-bleed. And the nav/layout decision now comes from the same media query the CSS uses (isDesktopLayout), plus orientationchange/late rechecks, because on some Android tablets innerWidth lags a rotation -- that left the phone nav inside the laptop layout until the next rotation. (2) "search krte hn to keyboard k niche ghus jata hai": the viewport asks Android to shrink the page for the keyboard (interactive-widget=resizes-content); for browsers that still overlay (iPhone) --kb takes the covered height off the app; the bottom bar steps aside while typing; and a focused field is scrolled to the top of what is visible so the suggestion list under it fits. (3) Usage: a return to the app re-made all ~30 listeners every time (each billed at least one read); now only after 2+ minutes in the background. Domino is downloaded only by posts that can open or record it. firestore.rules UNCHANGED. PREVIOUSLY, ROUND 87 (2026-10-21). FIREBASE COST. Owner: "4-5 users me bhi Firebase m payment mang rha h ... koi b chiz be wja to nhi h". The payment prompt itself is the Blaze plan that Cloud Functions require (seven callables: create/delete user, reset password, force logout, clear notifications, clear lockout, reset data) -- not usage. Two real wastes fixed: (1) the heartbeat wrote every MINUTE even with the app in the background or a tab left open overnight (~1,440 writes a day per device, each read again by every admin device); it now beats every 5 minutes and only while the app is on screen, once immediately on coming back, and the online window is 10 minutes; (2) Domino loaded the latest 500 entries on every phone on every cold open; it now loads from the 1st of last month (cap 500 kept), and the monthly report says plainly when an older month is partial. firestore.rules UNCHANGED. PREVIOUSLY, ROUND 86 (2026-10-20). Owner: "employees k home page pe details nahi do. Sirf Tab me dedo. jese admin ko h." The My salary card is gone from an employee's Home; their pay is on their own Salary tab only (beside Attendance), the same as admin's is on his. firestore.rules UNCHANGED. PREVIOUSLY, ROUND 85 (2026-10-20). THE SALARY PORTAL -- the owner's confirmed plan, plus all five of the suggestions. Round 84 removed the running-cycle table from admin; the owner meant RENAME it, so it is back as "To be paid as of now", net of the advance it would cut. Admin: four figures (to pay now, to be paid as of now, advance to recover, paid this month), the owed table, the running table, advances as a dated running ledger per person, Not on payroll, and a month-by-month payment history -- and every name opens that person's sheet (khata). Employees: their own Salary tab beside Attendance, which is the SAME sheet for themselves -- figures, days of leave month by month, advances, payments -- and their device holds no one else's salary (Round 82 rules). The five suggestions: (1) a most-to-cut-per-salary on each advance, which needs EVERY ADVANCE TO KNOW ITS OWN RECOVERY -- payments now store advanceCuts {advanceId: amount}; older ones are allocated oldest-first, the way they were taken; (2) paid leave per month, monthly cycles only, in halves, paid as days worked; (3) a working day already past with NO mark is counted, listed, and warned about before Mark paid -- it is not leave and is not paid; (4) salary payments and advances are entries in Daily Work, bookable, counted, in Book all and in the backlog, and a booked advance cannot be edited until unbooked; (5) a printable salary slip per payment. firestore.rules UNCHANGED. PREVIOUSLY, ROUND 84 (2026-10-20). HALF DAY, and the admin's Salary tab no longer shows "Earned so far". Owner: "Admin ko Earned so far, this cycle ye q dikh rha h ye to Employee ko dikhna chahiye na" -- the running cycle's figure is the employee's own number and stays on their card; the admin's middle figure is now the advance still to recover. And "Half day attendence ka b option do. Salary m b": a third mark, type 'halfday', stored on the same one-record-per-person-per-day document as present and absent, so every rule about a mark (one per day, final once made, admin-only to change) applies to it unchanged. Two questions, answered once: attendanceIsWorking (a half day opens the app, allows entries, counts as present today) and attendanceDayValue (present 1, half day 0.5). Eleven places asked `type === 'present'`; each would have treated a half day as an ABSENCE -- locked the person out, put it on the monthly summary's absent list and paid nothing. Salary: a half day is 0.5 of a day for both bases; the monthly summary shows 4.5 present and lists the half days on their own line. Marked by admin or by whoever holds "mark others" (the team card has a third button); never self-marked. firestore.rules UNCHANGED -- the attendance rules never constrained the type. PREVIOUSLY, ROUND 83 (2026-10-20). SALARY ADVANCES, and the new-user role default. Owner: "Kisi b Employee ko Advance dene ka b Option rkho. (Date editable)", with his two answers: cut in FULL from the next salary marked paid (the rest from the one after if that salary is smaller), and shown to the employee in their own card. The ledger is two sums, never a stored balance: given = the salaryAdvances documents, recovered = advanceDeducted on the payrollRuns records; nothing holds a running figure two devices could overwrite. The cut is decided at the moment of Mark paid, min(outstanding, that salary), and recorded beside the gross as advanceDeducted and netPaid; every screen shows the same cut BEFORE that by allocating the outstanding to owed cycles oldest first. The date (and amount and note) is editable only while none of that advance has been cut yet -- cuts are taken oldest-first, so "untouched" is exact, and changing an advance that has already come out of a paid salary would rewrite money already handed over. salaryAdvances in firestore.rules: admin writes, the person it is about may read. ALSO: the Add user form selected NOTHING in its Role list, and ROLES is admin-first, so every new person started out as an Admin -- one careless Create made them one. It starts on a placeholder now, and both the create and edit paths refuse a missing or unknown role (the edit path used to save the Round 28 placeholder as an empty role). PREVIOUSLY, ROUND 82 (2026-10-20). THE SALARY TAB, and two fixes to the payroll form. Owner: "Salary ka Tab bana do ... Kiska kya amount ho gya or kitna dena h. Also Employees ki Unka Kitna payment h aj ki Date me" -- plus "Not on Payroll pr click kre to aage q Puch rha h salary" and "Admins ko Not on Payroll Hi rkho. Owner ke devices hn vo saare." ADMIN gets a Salary tab (forced in beside Attendance, and deliberately NOT in the Permission Manager checklist, so the company's pay can never be handed to another post): To pay now (closed cycles not marked paid -- the same rows as the Home alert, drawn by ONE function now), Earned so far this cycle, Not on payroll with a Set salary button, and Recently paid. "So far" is not a new formula: it is payrollLineFor over the whole running cycle, so future working days sit in a fixed salary's divisor exactly as they will at the end and the figure never jumps when the cycle closes; the current weekly cycle starts the day AFTER the last closed one, so on a Saturday nothing is counted twice. EVERYONE ELSE gets a My salary card on Home, and firestore.rules lets them read their OWN payrollSettings and payrollRuns documents (resource.data.username == request.auth.uid -- the form a where('username','==',me) query can be proven against) and nobody else's: their device never receives another salary. Writing stays admin's. THE FORM: "Not on payroll" now hides the basis and the amount; the Admin role replaces the whole block with one sentence, live as the Role select changes, and the reader and the writer both force an admin to none; and a cycle with no amount is REFUSED instead of silently saving as "not on payroll" -- the old behaviour made an employee vanish from the Salary screen with no message. firestore.rules: two read rules widened to own-documents-only. PREVIOUSLY, ROUND 81 (2026-10-20). DATE OF JOINING AND LEAVING, and the name tag that refused "Imran Shaikh". The owner: "back date me koi naya employee ki attendance b mang rha h". Measured first: the app had no idea WHEN anybody worked here, so every person was on every day's roster -- the Attendance screen showed a new joiner unmarked on every past day, Mark-for-someone offered him for any date, and the Monthly summary, which counts anything that is not present as ABSENT, listed fourteen absences for a man who joined on the 15th. Eleven places each wrote their own `S.users.filter(u=>u.role!=='admin')`, and the bug was the same missing condition in every one; they all ask attendanceRosterUsers(dateKey) now. joinedOn / leftOn (inclusive) live on the user doc, both optional, so every existing record is employed on every date and nothing changed by itself. A mark that already exists outside the dates is NOT deleted and NOT hidden: the Attendance screen shows it with a warning and neither the summary nor the salary counts it. markAttendanceForUser and recordPresent refuse a day outside the dates (clear stays allowed). Salary: a non-employed working day stays in a fixed salary's divisor, which is what makes a mid-cycle joiner or leaver pro rata. Past the leaving date every screen is a lock card -- the owner's choice; the Auth account itself can only be removed by Delete, and the card says so. No leaving date on your own account or on the literal "admin" account. A temporary employee's name tag is now made from the name (temp1, temp2 for a Hindi or Urdu name) instead of refusing one nobody had been told the rules for. Also: "days present" from Round 80 was never translated. firestore.rules UNCHANGED.
+const APP_BUILD = "2026-11-25-firestore-preview132"; // ROUND 104 (2026-11-25). Smoothness. Tab changes cross-fade (old screen stays painted under the new one fading in -- no dark frame; a data refresh landing mid-switch waits for it). Data arriving (orders, expenses, anything) no longer moves the screen: the item at the top of the view stays in place even when something is inserted above it (anchor by layout offset, tiles laid out for real for that one frame so content-visibility placeholders cannot shift it), every scroll box keeps its place (sidebar, detail pane, tables, bottom bar), the condensed top bar stays condensed with no bounce, a list that was briefly short does not ratchet you to the top, a focused field keeps focus and cursor, and a refresh waits (max ~1.2s) while a finger is on the screen / a flick is gliding. A reload (new build, push tap) lands back on the same tab and place (sessionStorage, same person, 30 min). Tapping a push with the app open focuses it instead of reloading (OneSignal click: origin/focus). Tasks / check-in / back-to-Home fade too. ROUND 103 (2026-11-25). Merge / duplicate orders (admin): a party with 2+ open orders (New..Ready to Dispatch) gets a banner on Orders and a "Possible duplicate" tag on its tiles, "Same items" in red when the lines are identical. The merge window ticks the orders to join; the OLDEST keeps its number and date, lines add up, cancelled source lines are dropped, stock never moves (a New + accepted mix must accept first), scanned cartons move to the kept order, In packing / Ready to Dispatch go back to In packing, notes are joined, the journey shows "Merged #..". One transaction re-checks booked / dispatched / stock state. "Delete this one" uses the same delete flow (deleteOrderFlow). "Not a duplicate" stops the flag. Rules unchanged. ROUND 102 (2026-11-25). The dispatch film: the order tile lifts out and grows, folds into a carton (flaps, tape, party label), a big truck drives in, the carton drops in, the shutter rolls down, the truck drives off with "On its way!". ~4s, never blocks taps; Light = small truck, Off = nothing. ROUND 101 (2026-11-25). Place and transport show on every order tile for every role (were only for stage-movers, so a manager without that permission never saw them). Order delete is findable: the fold button reads "⋯ More N", Delete is a red "🗑 Delete order"; on a booked or dispatched order admin sees it greyed and a tap explains what to undo first (the delete rules are unchanged). ROUND 100 (2026-11-25). Compact order tiles: place / transport / date on one line, value and Details on one line, a thin stage rail without its label, tighter item rows and padding. Same buttons and hooks. ROUND 99 (2026-11-25). Order tiles: items in three columns -- Item | Status (green ✔ or red short-by) | Qty, with a small header. Laptop sidebar rows tighter (20px icons). Windows: Save / Cancel stick to the bottom only when the window is really long (watchModalLength adds .is-long), flush with the bottom edge (no white strip); short windows such as Record filling show their buttons in place again. ROUND 98 (2026-11-25). Daily Work entries are cards (what / figure / who-when / Book) instead of 6-column tables that ran together on a phone; the ID card sits centred under the sheet's X; one colour per order stage everywhere (badge, strip, rail, headings, chips, Home tiles); thicker frosted bottom bar; the app's own two-tone icons replace emoji in the bottom bar, sidebar, More, top bar, Quick Actions and stage tiles (Domino = MRP printer); order tiles list items as rows with the quantity on the right; Today card deltas are small tags; Customers is a slim list that opens a party profile (stats, last order, top item, 6-month bars; money only for admin); Save/Cancel ride the bottom edge of long windows; new welcome/login screen. No rules or index change. ROUND 97 (2026-11-24). Also: carton labels can be REPRINTED (labels window has New / Reprint; a Reprint button on every printed batch in the Cartons tab; "Print this label again" on a scanned box) -- a reprint uses no new number, is logged as kind:reprint and is not counted as new labels; Scan a carton / Carton labels left the Stock tab (they live in the Cartons tab). Round 97 main: Owner picked 1, 2, 6, 7, 8, 9: (1) the stage rail on order tiles is bigger, ticks in done steps, a filled line and a pulsing current dot; (2) an Order journey (who did what, when) inside Details and the two-pane detail -- acceptedAt/By, rejectedAt/By, readyAt/By, dispatchedBy are recorded from now on, only on admin/manager writes so the rules are unchanged; (6) party avatars are coloured coins with two initials; (7) a truck drives across the screen on dispatch; (8) empty screens get a floating picture; (9) search marks what was typed in Customers, stock lists and the Cartons tab. ROUND 96b (2026-11-24). (1) Shine in every theme, in its own colours (Green green-gold, Indigo blue, Sand amber, Maroon rose, dark versions silver): drifting light, top-bar sweep, glints on Today/count tiles and big buttons, glowing Quick Action icons, light over the greeting with dust, urgent-bell ring, login logo, and the save burst -- transform/opacity only. Light keeps only the top-bar sweep and a small burst. (2) Several loose boxes per item: pieces already in loose boxes are counted, the tick list offers only what is left, the header says Loose box no. N, the loose column shows pieces boxed/left. ROUND 96 (2026-11-24). "Loose wle me Carton Scanner me Multiple Items aa skte h na ... Sometimes Bade cartons bna diye jaate h loose items ke": a LOOSE box label can now carry any number of items, each with its own pieces (carton.items[] {key,label,pcs}; itemKey = the first, itemLabel = all of them, pcs = the total, so older screens still read it). The cartons window shows a tick list with pieces when Loose box is chosen, pre-ticked with the items whose loose pieces are not yet boxed; the counter treats one mixed box as covering every item in it; lookup, Cartons tab, Excel and goods-return scanning read every item in the box. Full cartons unchanged; old boxes unchanged; no rules or index change. PREVIOUSLY, ROUND 95 (2026-11-24). BEAUTY ROUND, owner's choices: Black + Gold, Full animations with a switch, everyone may pick it, polish every theme. (1) Carton scanner: the camera is the big primary button, typing (and a scanner gun) the small row under it. (2) Every theme: Inter font, a stage-colour strip on every order tile, a sliding pill under the chosen bottom-bar tab, a tap ripple, empty screens on a plate, a soft press on buttons, the username on the profile card readable. (3) New theme family "lux": Royal Black & Gold (dark) and Ivory & Gold (light) -- serif gold-foil headings, drifting gold light behind the page, black lacquer top bar with a sweeping light, gold hairline glass cards, a glint across the figures and tiles, gold foil buttons, glowing gold nav pill with a hop, gold edge windows, gold dust on the greeting, a gold burst on every saved entry, a light across the login logo, a heartbeat on the stock bell. (4) Profile > Preferences > Animations: Full / Light / Off (this device; "reduce motion" phones start at Light); looping effects pause when the app is in the background. firestore.rules and firestore.indexes.json UNCHANGED. PREVIOUSLY, ROUND 94 (2026-11-24). DESIGN ROUND, owner picked 1,2,3,4,5,6,8,9,11,12: (1) Clients on a phone are one compact row each; (2) Today labels 11px; (3) small buttons 40px tall on a phone; (4) one date format -- "24 Nov 2026", "24 Nov", "24 Nov 03:21 PM" (fmtDayMonth); (5) quantities in words -- "1 case + 4 pc" instead of "1c 4pc", "Stock after:" instead of "Updated Qty:"; (6) ONE stock bell in the top bar instead of up to three, opening one panel; (8) Daily Work jump chips with what is still to book; (9) the order window shows the picked item's free Ready stock and what is left after this order; (11) Profile > Bottom bar: pick the four tabs beside Home (this device); (12) from 1100px wide the Orders screen is two panes -- list and the chosen order in full. firestore.rules and firestore.indexes.json UNCHANGED. PREVIOUSLY, ROUND 93 (2026-11-24). "client search krne ke baad us client ke ya kisi ke bhi ... kaam nhi krte": a search redraws only the list, and the ⋯ (more actions) buttons on the redrawn cards/rows were never wired -- that only happened on a full render. Every search box (Clients; Stock raw/filled/ready) now re-wires them, and re-labels the phone's stacked rows. ALSO: Users A to Z; Clients A to Z with parties added today on top for that day (byNameAZ). firestore.rules and firestore.indexes.json UNCHANGED. PREVIOUSLY, ROUND 92 (2026-11-24). Owner's list, checked on phone, tablet and laptop. (1) Today numbers were shrunk as if every figure were nine characters long; the size now follows each figure's own length (--nchars, markNumberLengths). (2) Order Edit stays until the order is dispatched -- a booked order too: the window says so, and saving un-books it with a message (book it again after changing the bill). (3) Users on a phone: one horizontal row per person. (4) Order tiles inside a Home stage window were three-across in a 520px window; one full-width tile per row now. (5) Editing an order line: the boxes and buttons ran off a phone and hid Save; boxes with names on one row, buttons under. An order line typed but not saved is asked about on Save changes, and Cancel/✕/Back with unsaved changes asks before closing. (6) Daily Work rows: buttons sit at the end of the last line instead of a line of their own. (7) Orders show MRP (discount %) → final value (orderValueHtml). (8) Home: Retail and Samples are one icon that opens a two-choice window; admin gets a Carton scan icon. A Cartons tab (admin only, under More): scan, new labels, every scanned box with search, labels printed, Excel export (SheetJS from the CDN, CSV if it cannot load). (9) Carton lookup shows party, transport, the box and every item -- no money. (10) Mark Ready to Dispatch always opens the Cartons & loose boxes window first (Skip or Done); a label can be scanned as a full carton or a loose box; the dispatch window fills Total cases from the boxes scanned. firestore.rules and firestore.indexes.json UNCHANGED. PREVIOUSLY, ROUND 91 (2026-11-24). "Jo reh gya vo b kr do" -- the four things Round 90 left open. (1) PHONE TABLES: every cell allowed a break after any character, so 5-6 column tables were squeezed until names, headers, amounts and times broke mid-word ("Moham|mad", "03:4|7"), and some tables still hung past their card. Words are now never broken; a table that does not fit its card on a phone becomes stacked rows (first cell on top, the rest labelled with their column name, buttons at the end) -- fitTablesIn(); a table that fits stays a table, so laptop/tablet are unchanged. Big figures shrink to their tile instead of breaking; the bottom bar shares its width (at 360px with the largest text "Home" sat half off the left edge); the screen name under OMS stays on one line. (2) HINDI/URDU: ~130 headings, buttons and lines were written straight into the page, not through t(). translateTextNodesIn() checks every piece of text that lands on the page against the dictionary (typed content and chat are never touched), lines with a number or name inside use templates (I18N_PATTERNS), 112 new entries per language, Permission Manager and notification settings included; month/day names follow the language (uiDateLocale; the PDF stays English, its font has no Hindi/Urdu). (3) Ready to Dispatch, its undo and Undo Dispatch write only the fields they change (saveOrderStageFields) -- a field another device had just written is no longer wiped on a slow connection. (4) Short stock counts products, not rows (one item short in Filled and Ready was "2"); and a part fill/pack no longer closes the stock task while the item is still short. firestore.rules and firestore.indexes.json UNCHANGED. PREVIOUSLY, ROUND 90 (2026-11-24). THE FULL TEST PASS -- "Complete har Nazarye se testing krlo ab. Ik point b nahi chorna h." No new feature; every fix below was found by a test. ORDERS: (1) the Round 89 booked lock also blocked Undo Ready to Dispatch, Undo Dispatch and carton scanning on a booked order, and orders are usually booked before they are packed -- the lock now covers only Edit, Delete and Undo Ready; (2) a sales phone tried to write the automatic status change it is not allowed to write (canWriteOrderStatus; a permitted device finishes it); (3) an LR number typed in the dispatch window without a photo was thrown away; (4) an order edit window left open while another device deleted, dispatched or changed the same order used to bring it back / pull it back to In packing / leave the reserved stock different from the order -- it is refused now and the freshest copy is the one saved; (5) the packing entry advanced the order before the tasks, leaving its packaging step "pending". ENTRIES: (6) editing or deleting a filling/packing/purchase entry could push oil or Filled stock below zero (stockShortfallSince) -- refused with the reason; (7) a rejected date in the edit window left the stock reverted on that device and the stock log switched off until reload; (8) an empty quantity box saved as 0 (edit window and Adjust); (9) changing the pieces of a filling entry did not change the oil used; (10) fractions of a piece are refused in bulk edit, Adjust, retail and order lines; (11) bulk edit with nothing changed wrote zero-quantity log rows and rounded the oil; (12) the same stale-window check for entries. ALSO: a product whose name differs only by capitals/spaces is a duplicate; Domino has a typo ceiling; a tap on a window that is closing no longer saves twice; attendance cannot be marked for a future day or a day this device has not loaded; admin loads attendance back to the oldest salary month it can still pay, staff at least 7 weeks; Daily Work ignores a future date. BARCODES: label bars are exactly 2 printer dots wide at 203 dpi; the camera reader runs its own frame loop (the library helper never decoded a frame) at full HD; closing any window releases the camera; admin can free a label for reuse. LOOK: typed text in fields was unreadable in the dark themes (no text colour was ever set), a white month box in dark themes, the sticky date heading sat 14px low, the maroon alert colours, Urdu numbers, and the Domino table is 3 columns instead of 6 on a phone. firestore.rules and firestore.indexes.json UNCHANGED since Round 89. PREVIOUSLY, ROUND 89 (2026-11-23). UNDO UNTIL BOOKED, CARTON BARCODES, GOODS RETURN, STOCK COUNT, SMALLER DOWNLOADS. (1) "Har Ek Action ko Undoable rkho jb tk vo Daily me ja k book nahi hojata": own entries can be taken back from Home until booked (was 5 minutes), a manager can undo his own entries, a salary marked paid can be unmarked, a Domino entry can be taken back the same day, a sales order can be deleted by its creator while it is still only an order; and the other way round, a booked order/attendance day/return/count can no longer be unwound until the booking is undone (BOOKED_LOCK_MSG). (2) Carton barcodes: admin prints Code 128 labels, 2 x 1.5 in, one per page, numbers reserved by a transaction so none repeats; admin/manager/packing scan cartons onto an order at Ready to Dispatch (scanner gun, typing or camera -- BarcodeDetector, else ZXing from the CDN), a carton already on another order is refused; admin scans any carton and gets the whole bill. (3) Goods return against an order (or without one): good pieces back to Ready stock, damaged recorded, credit value after party discount, cartons can be scanned in, undo until booked, in Daily Work. (4) Stock count: count any pool, the DIFFERENCE is applied so entries made during the count survive; staff counts go to admin for approval; undo until booked; in Daily Work. (5) Downloads: chat 60 days (screen and download now the same; was 7 shown, all downloaded), retail/samples 60 days (was 180), a staff phone\'s own attendance from the 1st of last month (was all history; admin keeps >= 60 days for weekly payroll). The chat and staff-attendance windows need firestore.indexes.json and fall back to the old queries until it is deployed. firestore.rules CHANGED. PREVIOUSLY, ROUND 88 (2026-11-23). TABLET, KEYBOARD, USAGE. (1) "Tablet pr jb b m kholta hu to beech me phone bana ajata h": the decorative phone mock was dropped only at <=520px wide or <=760px tall and the laptop layout starts at 900px, so every tablet in portrait (521-899px wide, taller than 760) drew a 412px phone in the middle. Below 900px the app is now always full-bleed. And the nav/layout decision now comes from the same media query the CSS uses (isDesktopLayout), plus orientationchange/late rechecks, because on some Android tablets innerWidth lags a rotation -- that left the phone nav inside the laptop layout until the next rotation. (2) "search krte hn to keyboard k niche ghus jata hai": the viewport asks Android to shrink the page for the keyboard (interactive-widget=resizes-content); for browsers that still overlay (iPhone) --kb takes the covered height off the app; the bottom bar steps aside while typing; and a focused field is scrolled to the top of what is visible so the suggestion list under it fits. (3) Usage: a return to the app re-made all ~30 listeners every time (each billed at least one read); now only after 2+ minutes in the background. Domino is downloaded only by posts that can open or record it. firestore.rules UNCHANGED. PREVIOUSLY, ROUND 87 (2026-10-21). FIREBASE COST. Owner: "4-5 users me bhi Firebase m payment mang rha h ... koi b chiz be wja to nhi h". The payment prompt itself is the Blaze plan that Cloud Functions require (seven callables: create/delete user, reset password, force logout, clear notifications, clear lockout, reset data) -- not usage. Two real wastes fixed: (1) the heartbeat wrote every MINUTE even with the app in the background or a tab left open overnight (~1,440 writes a day per device, each read again by every admin device); it now beats every 5 minutes and only while the app is on screen, once immediately on coming back, and the online window is 10 minutes; (2) Domino loaded the latest 500 entries on every phone on every cold open; it now loads from the 1st of last month (cap 500 kept), and the monthly report says plainly when an older month is partial. firestore.rules UNCHANGED. PREVIOUSLY, ROUND 86 (2026-10-20). Owner: "employees k home page pe details nahi do. Sirf Tab me dedo. jese admin ko h." The My salary card is gone from an employee's Home; their pay is on their own Salary tab only (beside Attendance), the same as admin's is on his. firestore.rules UNCHANGED. PREVIOUSLY, ROUND 85 (2026-10-20). THE SALARY PORTAL -- the owner's confirmed plan, plus all five of the suggestions. Round 84 removed the running-cycle table from admin; the owner meant RENAME it, so it is back as "To be paid as of now", net of the advance it would cut. Admin: four figures (to pay now, to be paid as of now, advance to recover, paid this month), the owed table, the running table, advances as a dated running ledger per person, Not on payroll, and a month-by-month payment history -- and every name opens that person's sheet (khata). Employees: their own Salary tab beside Attendance, which is the SAME sheet for themselves -- figures, days of leave month by month, advances, payments -- and their device holds no one else's salary (Round 82 rules). The five suggestions: (1) a most-to-cut-per-salary on each advance, which needs EVERY ADVANCE TO KNOW ITS OWN RECOVERY -- payments now store advanceCuts {advanceId: amount}; older ones are allocated oldest-first, the way they were taken; (2) paid leave per month, monthly cycles only, in halves, paid as days worked; (3) a working day already past with NO mark is counted, listed, and warned about before Mark paid -- it is not leave and is not paid; (4) salary payments and advances are entries in Daily Work, bookable, counted, in Book all and in the backlog, and a booked advance cannot be edited until unbooked; (5) a printable salary slip per payment. firestore.rules UNCHANGED. PREVIOUSLY, ROUND 84 (2026-10-20). HALF DAY, and the admin's Salary tab no longer shows "Earned so far". Owner: "Admin ko Earned so far, this cycle ye q dikh rha h ye to Employee ko dikhna chahiye na" -- the running cycle's figure is the employee's own number and stays on their card; the admin's middle figure is now the advance still to recover. And "Half day attendence ka b option do. Salary m b": a third mark, type 'halfday', stored on the same one-record-per-person-per-day document as present and absent, so every rule about a mark (one per day, final once made, admin-only to change) applies to it unchanged. Two questions, answered once: attendanceIsWorking (a half day opens the app, allows entries, counts as present today) and attendanceDayValue (present 1, half day 0.5). Eleven places asked `type === 'present'`; each would have treated a half day as an ABSENCE -- locked the person out, put it on the monthly summary's absent list and paid nothing. Salary: a half day is 0.5 of a day for both bases; the monthly summary shows 4.5 present and lists the half days on their own line. Marked by admin or by whoever holds "mark others" (the team card has a third button); never self-marked. firestore.rules UNCHANGED -- the attendance rules never constrained the type. PREVIOUSLY, ROUND 83 (2026-10-20). SALARY ADVANCES, and the new-user role default. Owner: "Kisi b Employee ko Advance dene ka b Option rkho. (Date editable)", with his two answers: cut in FULL from the next salary marked paid (the rest from the one after if that salary is smaller), and shown to the employee in their own card. The ledger is two sums, never a stored balance: given = the salaryAdvances documents, recovered = advanceDeducted on the payrollRuns records; nothing holds a running figure two devices could overwrite. The cut is decided at the moment of Mark paid, min(outstanding, that salary), and recorded beside the gross as advanceDeducted and netPaid; every screen shows the same cut BEFORE that by allocating the outstanding to owed cycles oldest first. The date (and amount and note) is editable only while none of that advance has been cut yet -- cuts are taken oldest-first, so "untouched" is exact, and changing an advance that has already come out of a paid salary would rewrite money already handed over. salaryAdvances in firestore.rules: admin writes, the person it is about may read. ALSO: the Add user form selected NOTHING in its Role list, and ROLES is admin-first, so every new person started out as an Admin -- one careless Create made them one. It starts on a placeholder now, and both the create and edit paths refuse a missing or unknown role (the edit path used to save the Round 28 placeholder as an empty role). PREVIOUSLY, ROUND 82 (2026-10-20). THE SALARY TAB, and two fixes to the payroll form. Owner: "Salary ka Tab bana do ... Kiska kya amount ho gya or kitna dena h. Also Employees ki Unka Kitna payment h aj ki Date me" -- plus "Not on Payroll pr click kre to aage q Puch rha h salary" and "Admins ko Not on Payroll Hi rkho. Owner ke devices hn vo saare." ADMIN gets a Salary tab (forced in beside Attendance, and deliberately NOT in the Permission Manager checklist, so the company's pay can never be handed to another post): To pay now (closed cycles not marked paid -- the same rows as the Home alert, drawn by ONE function now), Earned so far this cycle, Not on payroll with a Set salary button, and Recently paid. "So far" is not a new formula: it is payrollLineFor over the whole running cycle, so future working days sit in a fixed salary's divisor exactly as they will at the end and the figure never jumps when the cycle closes; the current weekly cycle starts the day AFTER the last closed one, so on a Saturday nothing is counted twice. EVERYONE ELSE gets a My salary card on Home, and firestore.rules lets them read their OWN payrollSettings and payrollRuns documents (resource.data.username == request.auth.uid -- the form a where('username','==',me) query can be proven against) and nobody else's: their device never receives another salary. Writing stays admin's. THE FORM: "Not on payroll" now hides the basis and the amount; the Admin role replaces the whole block with one sentence, live as the Role select changes, and the reader and the writer both force an admin to none; and a cycle with no amount is REFUSED instead of silently saving as "not on payroll" -- the old behaviour made an employee vanish from the Salary screen with no message. firestore.rules: two read rules widened to own-documents-only. PREVIOUSLY, ROUND 81 (2026-10-20). DATE OF JOINING AND LEAVING, and the name tag that refused "Imran Shaikh". The owner: "back date me koi naya employee ki attendance b mang rha h". Measured first: the app had no idea WHEN anybody worked here, so every person was on every day's roster -- the Attendance screen showed a new joiner unmarked on every past day, Mark-for-someone offered him for any date, and the Monthly summary, which counts anything that is not present as ABSENT, listed fourteen absences for a man who joined on the 15th. Eleven places each wrote their own `S.users.filter(u=>u.role!=='admin')`, and the bug was the same missing condition in every one; they all ask attendanceRosterUsers(dateKey) now. joinedOn / leftOn (inclusive) live on the user doc, both optional, so every existing record is employed on every date and nothing changed by itself. A mark that already exists outside the dates is NOT deleted and NOT hidden: the Attendance screen shows it with a warning and neither the summary nor the salary counts it. markAttendanceForUser and recordPresent refuse a day outside the dates (clear stays allowed). Salary: a non-employed working day stays in a fixed salary's divisor, which is what makes a mid-cycle joiner or leaver pro rata. Past the leaving date every screen is a lock card -- the owner's choice; the Auth account itself can only be removed by Delete, and the card says so. No leaving date on your own account or on the literal "admin" account. A temporary employee's name tag is now made from the name (temp1, temp2 for a Hindi or Urdu name) instead of refusing one nobody had been told the rules for. Also: "days present" from Round 80 was never translated. firestore.rules UNCHANGED.
 
 const DEFAULT_CATALOG = [
   { cat:"Olife Gold — Pure Olive Oil", rawCat:"Pure Olive Oil", items:[
@@ -4627,6 +4685,42 @@ function normalizeTheme(code){
 }
 const I18N = {
   hi: {
+    // ROUND 103 -- merge / duplicate orders
+    'Review: merge or delete':'देखें: मिलाएँ या हटाएँ',
+    'Possible duplicate':'शायद डुप्लिकेट',
+    'open orders':'खुले ऑर्डर',
+    'Same items':'एक जैसे सामान',
+    'Possible duplicate orders':'शायद डुप्लिकेट ऑर्डर',
+    'more':'और',
+    'Booked in Daily Work — undo the booking first':'डेली वर्क में बुक है — पहले बुकिंग वापस लें',
+    'Saving… try again in a moment':'सेव हो रहा है… थोड़ी देर में फिर कोशिश करें',
+    'Already dispatched':'पहले ही डिस्पैच हो चुका',
+    'Cannot be merged':'मिलाया नहीं जा सकता',
+    'Pick at least 2 orders to merge.':'मिलाने के लिए कम से कम 2 ऑर्डर चुनें।',
+    'Only orders of the same party can be merged.':'सिर्फ़ एक ही पार्टी के ऑर्डर मिलाए जा सकते हैं।',
+    'A New order has not taken its stock yet. Accept it first, then merge.':'एक नए ऑर्डर ने अभी स्टॉक नहीं लिया है। पहले उसे Accept करें, फिर मिलाएँ।',
+    'That order was deleted on another device.':'वह ऑर्डर दूसरे डिवाइस पर हटा दिया गया।',
+    'That order changed on another device. Please look again.':'वह ऑर्डर दूसरे डिवाइस पर बदल गया। दोबारा देखें।',
+    'Merging needs the internet. Nothing was changed.':'मिलाने के लिए इंटरनेट चाहिए। कुछ नहीं बदला।',
+    'Merged into':'इसमें मिलाया',
+    'cartons moved':'कार्टन जोड़े गए',
+    'OK — these will not be flagged again.':'ठीक है — इन्हें दोबारा नहीं दिखाया जाएगा।',
+    'No other open order for this party.':'इस पार्टी का और कोई खुला ऑर्डर नहीं है।',
+    'Keeps this number':'यही नंबर रहेगा',
+    'No items':'कोई सामान नहीं',
+    'Delete this one':'इसे हटाएँ',
+    'Merge or delete orders':'ऑर्डर मिलाएँ या हटाएँ',
+    'Tick the orders to join into one. The oldest keeps its number and date.':'जिन ऑर्डर को एक करना है उन पर टिक करें। सबसे पुराने का नंबर और तारीख़ रहेगी।',
+    'Not a duplicate':'डुप्लिकेट नहीं है',
+    'Merge':'मिलाएँ',
+    'Accept New order first':'पहले नया ऑर्डर Accept करें',
+    'Accepting…':'Accept हो रहा है…',
+    'After merge':'मिलाने के बाद',
+    'will be removed (joined into the kept order). Stock does not change.':'हट जाएँगे (रखे गए ऑर्डर में जुड़ जाएँगे)। स्टॉक नहीं बदलेगा।',
+    'Scanned cartons move to the kept order; it goes back to In packing so cartons are counted again.':'स्कैन किए कार्टन रखे गए ऑर्डर में आ जाएँगे; ऑर्डर वापस पैकिंग में जाएगा ताकि कार्टन फिर से गिने जाएँ।',
+    'Some items are still in Processing, so the merged order is in Processing.':'कुछ सामान अभी प्रोसेसिंग में है, इसलिए मिला हुआ ऑर्डर प्रोसेसिंग में रहेगा।',
+    'Merging…':'मिला रहे हैं…',
+    'Merged':'मिलाया गया',
     // ROUND 98 -- daily work, party profile
     'item':'सामान',
     'Delete order':'ऑर्डर हटाएँ', 'More':'और', 'Less':'कम',
@@ -5781,6 +5875,42 @@ const I18N = {
     'Only an admin can write an order note':'ऑर्डर नोट सिर्फ़ एडमिन लिख सकता है',
   },
   ur: {
+    // ROUND 103 -- merge / duplicate orders
+    'Review: merge or delete':'دیکھیں: ملائیں یا ہٹائیں',
+    'Possible duplicate':'شاید ڈپلیکیٹ',
+    'open orders':'کھلے آرڈر',
+    'Same items':'ایک جیسا سامان',
+    'Possible duplicate orders':'شاید ڈپلیکیٹ آرڈر',
+    'more':'مزید',
+    'Booked in Daily Work — undo the booking first':'ڈیلی ورک میں بک ہے — پہلے بکنگ واپس لیں',
+    'Saving… try again in a moment':'محفوظ ہو رہا ہے… تھوڑی دیر میں پھر کوشش کریں',
+    'Already dispatched':'پہلے ہی ڈسپیچ ہو چکا',
+    'Cannot be merged':'ملایا نہیں جا سکتا',
+    'Pick at least 2 orders to merge.':'ملانے کے لیے کم از کم 2 آرڈر چنیں۔',
+    'Only orders of the same party can be merged.':'صرف ایک ہی پارٹی کے آرڈر ملائے جا سکتے ہیں۔',
+    'A New order has not taken its stock yet. Accept it first, then merge.':'ایک نئے آرڈر نے ابھی اسٹاک نہیں لیا۔ پہلے اسے Accept کریں، پھر ملائیں۔',
+    'That order was deleted on another device.':'وہ آرڈر دوسرے ڈیوائس پر ہٹا دیا گیا۔',
+    'That order changed on another device. Please look again.':'وہ آرڈر دوسرے ڈیوائس پر بدل گیا۔ دوبارہ دیکھیں۔',
+    'Merging needs the internet. Nothing was changed.':'ملانے کے لیے انٹرنیٹ چاہیے۔ کچھ نہیں بدلا۔',
+    'Merged into':'اس میں ملایا',
+    'cartons moved':'کارٹن منتقل',
+    'OK — these will not be flagged again.':'ٹھیک ہے — انہیں دوبارہ نہیں دکھایا جائے گا۔',
+    'No other open order for this party.':'اس پارٹی کا اور کوئی کھلا آرڈر نہیں ہے۔',
+    'Keeps this number':'یہی نمبر رہے گا',
+    'No items':'کوئی سامان نہیں',
+    'Delete this one':'اسے ہٹائیں',
+    'Merge or delete orders':'آرڈر ملائیں یا ہٹائیں',
+    'Tick the orders to join into one. The oldest keeps its number and date.':'جن آرڈرز کو ایک کرنا ہے ان پر ٹک کریں۔ سب سے پرانے کا نمبر اور تاریخ رہے گی۔',
+    'Not a duplicate':'ڈپلیکیٹ نہیں ہے',
+    'Merge':'ملائیں',
+    'Accept New order first':'پہلے نیا آرڈر Accept کریں',
+    'Accepting…':'Accept ہو رہا ہے…',
+    'After merge':'ملانے کے بعد',
+    'will be removed (joined into the kept order). Stock does not change.':'ہٹ جائیں گے (رکھے گئے آرڈر میں جڑ جائیں گے)۔ اسٹاک نہیں بدلے گا۔',
+    'Scanned cartons move to the kept order; it goes back to In packing so cartons are counted again.':'اسکین کیے کارٹن رکھے گئے آرڈر میں آ جائیں گے؛ آرڈر واپس پیکنگ میں جائے گا تاکہ کارٹن پھر سے گنے جائیں۔',
+    'Some items are still in Processing, so the merged order is in Processing.':'کچھ سامان ابھی پروسیسنگ میں ہے، اس لیے ملا ہوا آرڈر پروسیسنگ میں رہے گا۔',
+    'Merging…':'ملا رہے ہیں…',
+    'Merged':'ملایا گیا',
     // ROUND 98 -- daily work, party profile
     'item':'شے',
     'Delete order':'آرڈر ہٹائیں', 'More':'مزید', 'Less':'کم',
@@ -7830,6 +7960,11 @@ async function initPushNotifications(){
         appId: ONESIGNAL_APP_ID,
         serviceWorkerPath: swDir.replace(/^\//,'') + 'OneSignalSDKWorker.js',
         serviceWorkerParam: { scope: swDir },
+        // ROUND 104 -- tapping a push while the app is already open brings
+        // that window to the front as it is, instead of loading the page
+        // again (which threw the person back to the top of the first tab).
+        notificationClickHandlerMatch: 'origin',
+        notificationClickHandlerAction: 'focus',
       });
       pushSdkReady = true; // one-time SDK init done -- from here on, a later login on this same page reuses the SDK and only needs its own ensureOneSignalLogin tag (see the pushInitStarted branch above)
       // Tags this browser/device with the logged-in staff username, so a
@@ -10049,6 +10184,7 @@ function noteInitialPaintProgress(){
   if(_initialPaintReady) return;
   if(INITIAL_PAINT_KEYS.every(k=>fsLoaded[k])) openInitialPaint('all core collections loaded');
 }
+let _renderHeldSince = 0, _renderHoldTimer = null; // ROUND 104
 function scheduleRender(){
   // Hold listener-driven renders back until the first full paint is released.
   // Only these are gated: the branded loading screen, the login screen, the
@@ -10065,6 +10201,18 @@ function scheduleRender(){
     return;
   }
   if(_renderCoalesceTimer){ _renderCoalescePending = true; return; }
+  // ROUND 104 -- data that arrives while a finger is on the screen or a flick
+  // is still gliding waits for it to settle (at most ~1.2s), so a new order
+  // or expense never stops a scroll dead or yanks the list mid-swipe. Taps
+  // and buttons call render() directly and are never delayed by this.
+  if(typeof userIsMovingScreen === 'function' && userIsMovingScreen()){
+    if(!_renderHeldSince) _renderHeldSince = Date.now();
+    if(Date.now() - _renderHeldSince < 1200){
+      if(!_renderHoldTimer) _renderHoldTimer = setTimeout(()=>{ _renderHoldTimer = null; scheduleRender(); }, 140);
+      return;
+    }
+  }
+  _renderHeldSince = 0;
   render(); // leading edge -- the first update of a burst is never delayed
   const win = Date.now() < _listenerPrimingUntil ? RENDER_COALESCE_BURST_MS : RENDER_COALESCE_MS;
   _renderCoalesceTimer = setTimeout(()=>{
@@ -10693,7 +10841,7 @@ function fsBootstrapAuth(){
             S.currentUser = u;
             attachRoleGatedListeners(); // ROOT-CAUSE FIX (Round 22) -- see this function's own comment; the role-gated listeners could not bind above because S.currentUser was still null then
             applyUserPreferences(u); // per-user language/font-size -- see its own header comment
-            S.view = ROLES[u.role] ? ROLES[u.role].tabs[0] : S.view;
+            S.view = recallView(u, ROLES[u.role] ? ROLES[u.role].tabs[0] : S.view); // ROUND 104 -- a reload (update, notification tap) lands back on the same tab
             primeDevicePermissions();
             initPushNotifications();
             checkForMissedNotifsOnLogin();
@@ -11509,7 +11657,7 @@ function restoreSession(){
     if(u){
       S.currentUser = u;
       applyUserPreferences(u); // per-user language/font-size -- see its own header comment
-      S.view = ROLES[u.role] ? ROLES[u.role].tabs[0] : S.view; // Round 23: guarded -- a custom-role user whose customRoles snapshot has not landed yet used to throw a TypeError here and white-screen the login
+      S.view = recallView(u, ROLES[u.role] ? ROLES[u.role].tabs[0] : S.view); // ROUND 104 -- a reload (update, notification tap) lands back on the same tab // Round 23: guarded -- a custom-role user whose customRoles snapshot has not landed yet used to throw a TypeError here and white-screen the login
       // The real server session token (if any) survives an app restart too
       // -- if it's stale/expired, requireSession_ will reject the first
       // write that needs it and the app prompts a quick re-login then (see
@@ -13244,17 +13392,224 @@ function suppressRepeatEntranceAnim(root){
 // browser without the API behaves exactly as it does today; and it is skipped
 // entirely under prefers-reduced-motion, because a screen-sized cross-fade is
 // precisely the kind of movement that setting is asking us not to do.
+/* ===================== ROUND 104 -- smoothness ==========================
+   "jb expenses ya order wli notification ati h to page refresh hota h top pr
+   wps ajata hai". render() rebuilds the whole screen whenever data arrives.
+   It already put .content's scroll back, but not much else:
+     - every OTHER scroll box went back to 0 (laptop sidebar, the order detail
+       pane, wide tables, the bottom bar);
+     - when the new order / expense lands ABOVE what you are reading, the list
+       slid down under you;
+     - the condensed top bar was rebuilt full-height and then shrank again --
+       a visible bounce on every arrival;
+     - a list that was briefly shorter (data still loading after the phone
+       wakes from a notification) clamped the scroll, and that clamped value
+       was then remembered, so you ended up at the top;
+     - a field you were typing in lost focus;
+     - a rebuild in the middle of a finger flick stopped the flick dead.
+   captureViewState / restoreViewState fix the first five; the render queue
+   (scheduleRender) waits for the finger to lift for the last. */
+const KEEP_SCROLL_SEL = '.content, .op-detail, .table-scroll, .navbar, .pulse, .chat-scroll';
+let _scrollWant = { view:null, top:0 };   // where the person last put .content themselves
+let _progScrollUntil = 0;                  // scroll events before this are ours, not the person's
+function noteProgrammaticScroll(){ _progScrollUntil = Date.now() + 160; }
+function scrollKeyOf(el){ return (el.classList && el.classList[0]) || el.tagName; }
+function captureViewState(root, sameView){
+  const st = { sameView, condensed:false, boxes:[], anchor:null, focus:null, wantTop:0 };
+  if(!root) return st;
+  try{
+    if(!sameView) return st;
+    st.condensed = !!root.querySelector('.topbar.tb-condensed');
+    const seen = {};
+    root.querySelectorAll(KEEP_SCROLL_SEL).forEach(el=>{
+      const k = scrollKeyOf(el); const i = seen[k] = (seen[k] === undefined ? 0 : seen[k] + 1);
+      if(el.classList.contains('content')) return; // .content has its own, smarter path below
+      if(el.scrollTop || el.scrollLeft) st.boxes.push({ k, i, top: el.scrollTop, left: el.scrollLeft });
+    });
+    const c = root.querySelector('.content');
+    if(c){
+      if(_scrollWant.view === S.view && _scrollWant.top > c.scrollTop && (_scrollWant.pending || c.scrollTop + c.clientHeight >= c.scrollHeight - 2)) st.wantTop = _scrollWant.top; // clamped by a shorter list -- keep asking for where they really were
+      if(c.scrollTop > 0 && !st.wantTop){ // a clamped list goes back to the number, not to whatever was on screen while it was short
+        const cand = c.querySelectorAll('.order-tile[data-order-id], [data-party], [data-anchor], [data-dw-id], tr[data-id]');
+        for(let n = 0; n < cand.length && n < 400; n++){
+          const el = cand[n];
+          if(el.closest('.op-detail')) continue;
+          const off = anchorOffset(el, c);
+          if(el.offsetHeight <= 0 || off + el.offsetHeight <= 6) continue;
+          st.anchor = { sel: anchorSelectorOf(el), off };
+          break;
+        }
+        if(_scrollWant.view === S.view) _scrollWant.anchor = st.anchor; // remembered, in case the list comes back after being short for a moment
+      } else if(st.wantTop && _scrollWant.anchor){
+        st.anchor = _scrollWant.anchor;
+      }
+    }
+    const a = document.activeElement;
+    if(a && a.id && root.contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)){
+      st.focus = { id:a.id };
+      try{ st.focus.s = a.selectionStart; st.focus.e = a.selectionEnd; }catch(e){}
+    }
+  }catch(e){}
+  return st;
+}
+// Where el sits inside the visible part of scroller c, from layout offsets --
+// NOT getBoundingClientRect, which includes the entrance animation's transform
+// and would make the correction chase a tile that is still sliding in.
+function docTopOf(el){ let y = 0; for(let n = el; n; n = n.offsetParent) y += n.offsetTop || 0; return y; }
+function anchorOffset(el, c){ return docTopOf(el) - docTopOf(c) - (c.clientTop || 0) - c.scrollTop; }
+function anchorSelectorOf(el){
+  const ds = el.dataset || {};
+  const q = v=>String(v).replace(/(["\\])/g, '\\$1');
+  if(ds.orderId) return `[data-order-id="${q(ds.orderId)}"]`;
+  if(ds.party) return `[data-party="${q(ds.party)}"]`;
+  if(ds.anchor) return `[data-anchor="${q(ds.anchor)}"]`;
+  if(ds.dwId) return `[data-dw-id="${q(ds.dwId)}"]`;
+  if(ds.id) return `${el.tagName.toLowerCase()}[data-id="${q(ds.id)}"]`;
+  if(el.id) return `#${CSS.escape(el.id)}`;
+  return null;
+}
+// Right after innerHTML, BEFORE the binders run: the top bar starts in the
+// state it was in (no grow-and-shrink), and .content is already at its place
+// so bindTopbarCondense reads the right position.
+function restoreViewStateEarly(root, st, top){
+  try{
+    if(!st || !st.sameView) return;
+    const bar = root.querySelector('.topbar');
+    if(bar && st.condensed){
+      bar.classList.add('tb-instant', 'tb-condensed');
+      requestAnimationFrame(()=>requestAnimationFrame(()=>bar.classList.remove('tb-instant')));
+    }
+    const c = root.querySelector('.content');
+    if(c && (top || st.anchor)){
+      c.classList.add('cv-measure');
+      requestAnimationFrame(()=>requestAnimationFrame(()=>requestAnimationFrame(()=>c.classList.remove('cv-measure'))));
+    }
+    if(c && top){ c.style.scrollBehavior = 'auto'; c.scrollTop = top; noteProgrammaticScroll(); }
+  }catch(e){}
+}
+function restoreViewState(root, st, top){
+  try{
+    const c = root.querySelector('.content');
+    if(!st || !st.sameView){
+      if(_scrollWant.pending && _scrollWant.view === S.view && c){
+        c.style.scrollBehavior = 'auto'; c.scrollTop = _scrollWant.top; noteProgrammaticScroll();
+        if(Math.abs(c.scrollTop - _scrollWant.top) < 2) _scrollWant.pending = false;
+      } else {
+        _scrollWant = { view:S.view, top: c ? c.scrollTop : 0 };
+      }
+      rememberView();
+      return;
+    }
+    const seen = {};
+    const byKey = {};
+    root.querySelectorAll(KEEP_SCROLL_SEL).forEach(el=>{ const k = scrollKeyOf(el); const i = seen[k] = (seen[k] === undefined ? 0 : seen[k] + 1); byKey[k + '#' + i] = el; });
+    st.boxes.forEach(b=>{
+      const el = byKey[b.k + '#' + b.i]; if(!el) return;
+      const sb = el.style.scrollBehavior; el.style.scrollBehavior = 'auto';
+      el.scrollTop = b.top; el.scrollLeft = b.left;
+      el.style.scrollBehavior = sb;
+    });
+    if(c){
+      // keep the item that was at the top of the screen exactly where it was
+      if(st.anchor && st.anchor.sel){
+        const fix = ()=>{
+          let el = null;
+          try{ el = [...c.querySelectorAll(st.anchor.sel)].find(x=>!x.closest('.op-detail')) || null; }catch(e){}
+          if(!el || !c.isConnected) return false;
+          const d = anchorOffset(el, c) - st.anchor.off;
+          if(Math.abs(d) > 1){ c.style.scrollBehavior = 'auto'; c.scrollTop = c.scrollTop + d; noteProgrammaticScroll(); }
+          return true;
+        };
+        fix();
+        // a tile or two can still settle a frame later (fitting, labels) -- hold the
+        // place through that too, unless the person has started scrolling since
+        const at = Date.now();
+        const again = ()=>{ if(_lastUserScrollAt > at || _touchActive) return; if(fix() && c.scrollTop + c.clientHeight < c.scrollHeight - 2) _scrollWant = { view:S.view, top:c.scrollTop }; };
+        requestAnimationFrame(()=>requestAnimationFrame(again));
+        setTimeout(again, 180);
+      }
+      noteProgrammaticScroll();
+      const clamped = c.scrollTop + c.clientHeight >= c.scrollHeight - 2 && c.scrollTop < top;
+      const prevW = _scrollWant.view === S.view ? _scrollWant : null;
+      _scrollWant = { view:S.view, top: clamped ? Math.max(top, prevW ? prevW.top : 0) : c.scrollTop };
+      if(clamped && prevW){ if(prevW.pending) _scrollWant.pending = true; if(prevW.anchor) _scrollWant.anchor = prevW.anchor; }
+    }
+    if(st.focus){
+      const f = document.getElementById(st.focus.id);
+      if(f && root.contains(f) && document.activeElement !== f){
+        try{ f.focus({ preventScroll:true }); }catch(e){ try{ f.focus(); }catch(_){} }
+        try{ if(st.focus.s != null) f.setSelectionRange(st.focus.s, st.focus.e); }catch(e){}
+      }
+    }
+  }catch(e){}
+}
+// The person moving the screen themselves -- tracked app-wide (scroll does not
+// bubble, so capture), passive so it can never slow a scroll down.
+let _touchActive = false, _lastUserScrollAt = 0;
+(function trackUserScroll(){
+  if(typeof document === 'undefined') return;
+  document.addEventListener('scroll', e=>{
+    if(Date.now() < _progScrollUntil) return;
+    _lastUserScrollAt = Date.now();
+    const t = e.target;
+    if(t && t.classList && t.classList.contains('content') && S && S.view) _scrollWant = { view:S.view, top:t.scrollTop };
+  }, { capture:true, passive:true });
+  document.addEventListener('touchstart', ()=>{ _touchActive = true; }, { capture:true, passive:true });
+  const up = ()=>{ _touchActive = false; _lastUserScrollAt = Date.now(); };
+  document.addEventListener('touchend', up, { capture:true, passive:true });
+  document.addEventListener('touchcancel', up, { capture:true, passive:true });
+})();
+function userIsMovingScreen(){ return _touchActive || (Date.now() - _lastUserScrollAt < 220); }
+// ROUND 104 -- if the page reloads (a new build, a tap on a push that opens
+// the app again, the browser reclaiming memory) the person lands back on the
+// tab and the place they were, not on the first tab at the top. Kept in
+// sessionStorage: it lives only as long as this app window, so opening the
+// app fresh tomorrow still starts on Home as before.
+const VIEW_MEMO_KEY = 'oms:lastView';
+function rememberView(){
+  try{
+    if(!S.currentUser || !S.view) return;
+    const c = document.querySelector('#root .content');
+    sessionStorage.setItem(VIEW_MEMO_KEY, JSON.stringify({ u:S.currentUser.username, v:S.view, top: c ? Math.round(c.scrollTop) : 0, at:Date.now() }));
+  }catch(e){}
+}
+function recallView(u, fallback){
+  try{
+    const m = JSON.parse(sessionStorage.getItem(VIEW_MEMO_KEY) || 'null');
+    if(m && u && m.u === u.username && Date.now() - m.at < 30*60*1000 && ROLES[u.role] && ROLES[u.role].tabs.includes(m.v)){
+      _scrollWant = { view:m.v, top: Math.max(0, Number(m.top) || 0), pending:true };
+      return m.v;
+    }
+  }catch(e){}
+  return fallback;
+}
+if(typeof window !== 'undefined'){
+  window.addEventListener('pagehide', rememberView);
+  document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState === 'hidden') rememberView(); });
+}
+let _vtRendering = false; // ROUND 104 -- true while a view transition is drawing the new screen
+let _vtPending = false, _vtPendingTimer = null; // ROUND 104 -- a transition is waiting to take its picture of the old screen
 function canUseViewTransitions(){
   try{
     if(typeof document === 'undefined' || typeof document.startViewTransition !== 'function') return false;
     if(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return false;
+    if(typeof motionLevel === 'function' && motionLevel() === 'off') return false;
     return true;
   }catch(e){ return false; }
 }
 function renderWithTransition(){
   if(!canUseViewTransitions()) return render();
   try{
-    document.startViewTransition(()=>{ render(); });
+    // ROUND 104 -- between this call and the callback the browser is taking
+    // the picture of the OLD screen. A data refresh landing in that gap used
+    // to draw the NEW screen (mid fade-in, nearly transparent) first, so the
+    // "old" picture was a dark one: the occasional blackout. Renders in that
+    // gap now wait; the callback's render draws the latest state anyway.
+    _vtPending = true;
+    clearTimeout(_vtPendingTimer);
+    _vtPendingTimer = setTimeout(()=>{ if(_vtPending){ _vtPending = false; render(); } }, 900); // never strand the screen
+    const vt = document.startViewTransition(()=>{ _vtPending = false; clearTimeout(_vtPendingTimer); _vtRendering = true; try{ render(); } finally { _vtRendering = false; } });
+    if(vt && vt.updateCallbackDone) vt.updateCallbackDone.catch(()=>{}).then(()=>{ if(_vtPending){ _vtPending = false; render(); } });
   }catch(err){
     console.error('startViewTransition failed, rendering directly', err);
     render();
@@ -13308,10 +13663,11 @@ function render(){
   // the scrollable .content area's position so clicking anything doesn't
   // yank the page back to the top. Only do this when staying on the same
   // screen; switching tabs should still start fresh at the top.
+  if(_vtPending && !_vtRendering) return; // ROUND 104 -- see renderWithTransition; its own render comes right after
   const sameView = lastRenderedView === S.view;
   navJustSwitched = !sameView; // read by the nav-item template to pop only the tab that's genuinely becoming active
   const prevContent = root.querySelector('.content');
-  const savedScrollTop = sameView && prevContent ? prevContent.scrollTop : 0;
+  let savedScrollTop = sameView && prevContent ? prevContent.scrollTop : 0;
   const newHtml = renderShell();
   // Most background sync updates don't actually change anything THIS user
   // can currently see (someone else marked attendance while you're viewing
@@ -13320,8 +13676,14 @@ function render(){
   // "jump to top and back" on every sync tick: a full shell rebuild for a
   // screen that hadn't actually changed at all.
   if(sameView && newHtml === lastRenderedHtml) return;
+  // ROUND 104 -- smoothness: what the person is looking at survives the rebuild
+  // (every scroll box, the item they were reading, the condensed top bar, the
+  // field they were typing in). See captureViewState.
+  const keep = captureViewState(root, sameView);
+  if(keep.wantTop > savedScrollTop) savedScrollTop = keep.wantTop;
   lastRenderedHtml = newHtml;
   root.innerHTML = newHtml;
+  restoreViewStateEarly(root, keep, savedScrollTop);
   bindShell();
   enhanceFormControls(root);
   const newContent = root.querySelector('.content');
@@ -13339,7 +13701,7 @@ function render(){
     // Pin it off whenever this is a same-screen refresh (sameView), so it
     // only plays on an actual tab switch (navJustSwitched), matching what
     // a user actually expects to see animate.
-    if(sameView) newContent.style.animation = 'none';
+    if(sameView || _vtRendering) newContent.style.animation = 'none'; // ROUND 104 -- a view transition already fades the new screen in
   }
   // Round 15: number count-up + status flash -- see the two functions'
   // own header comment. Only runs on an actual rebuild (this line is after
@@ -13359,6 +13721,7 @@ function render(){
   translateTextNodesIn(root);
   fitTablesIn(root);
   positionNavIndicator(); // ROUND 95
+  restoreViewState(root, keep, savedScrollTop); // ROUND 104 -- last, once translations and table fitting have settled the layout
   lastRenderedView = S.view;
   syncBackStack(); // keep the phone back-button history stack in sync with whichever side sheet (notif/more/profile/alerts) is now showing -- see syncBackStack's header comment
 }
@@ -14487,7 +14850,7 @@ function bindShell(){
   // ROUND 28: assigned tasks are listed in the notification panel now -- take
   // the person straight to the Tasks tab and close the sheet behind them.
   document.querySelectorAll('[data-notif-open-tasks]').forEach(b=>b.addEventListener('click', ()=>{
-    S.notifOpen=false; S.view='tasks'; render();
+    S.notifOpen=false; S.view='tasks'; renderWithTransition(); // ROUND 104 -- fades like a tab change
   }));
   document.querySelectorAll('[data-ack-task]').forEach(b=>b.addEventListener('click', ()=>{
     const [id, kind] = b.dataset.ackTask.split('|');
@@ -19113,6 +19476,8 @@ function orderTimelineHtml(o){
       { i:3, ico:'🚚', label:t('Ready to Dispatch'), at:o.packedAt, by:o.packedBy },
       { i:4, ico:'🏁', label:t('Dispatched'), at:o.dispatchedAt, by:o.dispatchedBy, extra: disp.join(' · ') },
     ].forEach(st=>ev.push(Object.assign(st, { state: idx > st.i ? 'done' : (idx === st.i ? 'now' : 'todo') })));
+    // ROUND 103 -- orders joined into this one
+    if(o.mergedAt && Array.isArray(o.mergedFrom) && o.mergedFrom.length) ev.push({ ico:'⧉', label:t('Merged'), at:o.mergedAt, by:o.mergedBy, extra: o.mergedFrom.map(m=>'#' + (m.orderNumber || '') + (m.createdAt ? ' (' + fmtDMY(m.createdAt) + ')' : '')).join(', '), state:'done' });
     if(o.lrUploadedAt && idx >= 3) ev.push({ ico:'📄', label: o.photoType === 'stock' ? t('Stock photo added') : t('LR uploaded'), at:o.lrUploadedAt, by:o.lrUploadedBy, state:'done' });
   }
   return `<div class="otl" role="list" aria-label="${esc(t('Order journey'))}">
@@ -19260,6 +19625,7 @@ function renderOrderTile(o, showUndoDispatch, fifoShortages){
   const tileCls = (o.status==='ready' ? ' tile-ready' : o.status==='processing' ? ' tile-processing' : o.status==='packed' ? ' tile-packed' : '') + ' st-' + String(o.status || 'pending').replace(/[^a-z]/g, ''); // ROUND 95 -- st-* draws the stage strip
   return `<div class="order-tile${tileCls}" data-order-id="${esc(String(o.id))}">
     <div class="ot-top"><span class="ot-name">${esc(orderDisplayLabel(o))}${o.source==='website'?' <span class="mono" style="font-weight:400;">🌐 Website</span>':''}</span><span class="badge badge-${o.status}">${esc(stageLabel(o.status))}</span></div>
+    ${orderDupTagHtml(o) /* ROUND 103 -- same party has another open order */}
     ${orderPipelineHtml(o)}
     ${/* ROUND 100 -- "Orders wle ko compact banana hai": place, transport and the
          order date share ONE line (they were two lines and a label). */''}
@@ -19452,6 +19818,11 @@ function bindOrderTileActions(root){
       more.textContent = open ? ('✕ ' + t('Less')) : ('⋯ ' + t('More') + ' ' + hidden);
     });
   });
+  // ROUND 103 -- duplicate tag / banner open the merge window
+  scope.querySelectorAll('[data-merge-party]').forEach(btn=>{
+    if(btn.dataset.otBound === '1') return; btn.dataset.otBound = '1';
+    btn.addEventListener('click', ()=>openMergeModal(btn.dataset.mergeParty));
+  });
   // ROUND 101 -- the greyed Delete on a booked / dispatched order explains itself
   scope.querySelectorAll('[data-del-why]').forEach(btn=>{
     if(btn.dataset.otBound === '1') return; btn.dataset.otBound = '1';
@@ -19631,6 +20002,7 @@ function renderOrders(){
       ${orderFilterChipHtml('✅', t('Processed'), processedCount, 'processed')}
       ${S.currentUser.role==='admin' ? orderFilterChipHtml('🌐', t('Order Form Logs'), S.siteVisitLogs.length, null, 'siteVisitLogsBtn') : ''}
     </div>
+    ${duplicateBannerHtml() /* ROUND 103 */}
     ${/* PERF, ROUND 56: this called renderOrdersSegregated(0) -- every order,
          no cap. On a 400-staff dataset (2,400 orders over the listener's 60
          days) that produced an 8.8 MB HTML string and a 1.6-second render for
@@ -19850,8 +20222,16 @@ Regards
     const o = S.orders.find(x=>x.id===b.dataset.editOrder); if(o) openOrderModal(o);
   }));
   document.querySelectorAll('[data-del-order]').forEach(b=>b.addEventListener('click', ()=>{
+    deleteOrderFlow(b.dataset.delOrder, closeAfter ? closeModal : null); // ROUND 103 -- same flow, now shared with the merge window
+  }));
+}
+// ROUND 103 -- the Delete order flow, lifted out of bindOrderRowActions word
+// for word so the merge / duplicate window ("ya koi ik delete krna hai") runs
+// exactly the same guards, stock credit and transaction. onDone replaces the
+// old `if(closeAfter) closeModal()`.
+function deleteOrderFlow(orderId, onDone){
     showConfirm('Delete this order?', ()=>{
-      const o = S.orders.find(x=>x.id===b.dataset.delOrder);
+      const o = S.orders.find(x=>x.id===orderId);
       // RACE GUARD (Round 17): the Delete button is hidden once an order
       // is Processed & Dispatched (see the tile template + firestore.rules'
       // matching server-side `allow delete` check), but the button's own
@@ -19890,7 +20270,7 @@ Regards
         syncStockTasksFromAlerts();
       }
       const removed = o;
-      S.orders = S.orders.filter(x=>x.id!==b.dataset.delOrder);
+      S.orders = S.orders.filter(x=>x.id!==orderId);
       // ROUND 36 -- housekeeping, deliberately outside the transaction and
       // best-effort: the note is not part of the order's money or stock, and
       // a note document left behind would only ever be an invisible orphan.
@@ -19898,9 +20278,302 @@ Regards
       if(orderNoteFor(removed.id)) fsDeleteOrderNote(removed.id, true);
       commitOrderDelete(removed, delDeltas, { deltas: delDeltas, stockDeducted: prevStockDeducted, logRows: delLogRows, gen: delGen });
       releaseCartonsOfOrder(removed.id); // ROUND 90 -- or those labels could never be used again
-      if(closeAfter) closeModal(); render();
+      if(onDone) onDone(); render();
     });
+}
+
+/* ===================== MERGE ORDERS / DUPLICATES (ROUND 103) =====================
+   "Orders ko Merge krne ka Option do agar koi party ka Order 2 ya usse zda bar
+   ajaye (ya duplicate orders pakadne ka bhi option do Merge krna h ya koi ik
+   delete krna hai)". Owner's choices: merge up to Ready to Dispatch; a party
+   with 2+ open orders is flagged; the OLDER order keeps its number.
+
+   Stock: nothing moves. Either every chosen order has already taken its stock
+   (stockDeducted) or none has -- a mix must accept the New one first, so the
+   reservation is never counted twice or lost. Source lines that were
+   cancelled are dropped (their stock was already given back).
+   Cartons scanned on the joined orders move to the kept order, and an order
+   that was In packing / Ready to Dispatch goes back to In packing so the
+   cartons get counted again. One Firestore transaction: re-reads every order,
+   refuses if any was booked / dispatched / changed its stock state elsewhere.
+   Admin only -- the existing rules already let admin write orders and
+   cartons, so firestore.rules is unchanged. */
+const MERGEABLE_STATUSES = ['pending', 'processing', 'ready', 'packed'];
+function orderPartyKey(o){
+  if(!o) return '';
+  if(o.customerId != null && o.customerId !== '') return 'c:' + o.customerId;
+  const nm = String(o.customerName || '').trim().toLowerCase();
+  const c = nm && (S.customers || []).find(x=>x && String(x.name || '').trim().toLowerCase() === nm);
+  return c && c.id != null ? 'c:' + c.id : 'n:' + nm;
+}
+function orderIsOpenForMerge(o){ return !!o && MERGEABLE_STATUSES.includes(o.status); }
+function orderMergeBlock(o){
+  if(!o) return 'gone';
+  if(!MERGEABLE_STATUSES.includes(o.status)) return o.status === 'processed' ? 'dispatched' : 'closed';
+  if(o.booked) return 'booked';
+  if(orderCommitInFlight(o.id)) return 'busy';
+  return null;
+}
+function orderActiveLineSig(o){
+  const m = {};
+  ((o && o.items) || []).forEach(i=>{ if(i && !i.cancelled) m[i.key] = (m[i.key] || 0) + (Number(i.qty) || 0); });
+  return Object.keys(m).sort().map(k=>k + '=' + m[k]).join('|');
+}
+let _dupCache = null;
+// Map partyKey -> { key, orders (oldest first), flagged, same:Set(ids with an identical twin) }
+function duplicateOrderGroups(){
+  const now = Date.now();
+  if(_dupCache && _dupCache.src === S.orders && _dupCache.len === S.orders.length && now - _dupCache.at < 400) return _dupCache.map;
+  const map = new Map();
+  S.orders.forEach(o=>{
+    if(!orderIsOpenForMerge(o)) return;
+    const k = orderPartyKey(o); if(!k || k === 'n:') return;
+    if(!map.has(k)) map.set(k, { key:k, orders:[], flagged:false, same:new Set() });
+    map.get(k).orders.push(o);
+  });
+  map.forEach((g, k)=>{
+    if(g.orders.length < 2){ map.delete(k); return; }
+    g.orders.sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
+    g.flagged = g.orders.some(o=>!o.dupOk);
+    const bySig = new Map();
+    g.orders.forEach(o=>{ const s = orderActiveLineSig(o); if(!s) return; if(!bySig.has(s)) bySig.set(s, []); bySig.get(s).push(o.id); });
+    bySig.forEach(ids=>{ if(ids.length > 1) ids.forEach(id=>g.same.add(id)); });
+  });
+  _dupCache = { src:S.orders, len:S.orders.length, at:now, map };
+  return map;
+}
+function orderDupInfo(o){
+  if(!o || !S.currentUser || S.currentUser.role !== 'admin' || !orderIsOpenForMerge(o)) return null;
+  const g = duplicateOrderGroups().get(orderPartyKey(o));
+  if(!g || !g.flagged) return null;
+  return { key:g.key, count:g.orders.length, same:g.same.has(o.id) };
+}
+function orderDupTagHtml(o){
+  const d = orderDupInfo(o); if(!d) return '';
+  return `<button type="button" class="ot-dup" data-merge-party="${esc(d.key)}" title="${esc(t('Review: merge or delete'))}">⧉ ${esc(t('Possible duplicate'))} · ${d.count} ${esc(t('open orders'))}${d.same ? ` <span class="ot-dup-same">${esc(t('Same items'))}</span>` : ''}</button>`;
+}
+function duplicateBannerHtml(){
+  if(!S.currentUser || S.currentUser.role !== 'admin') return '';
+  const groups = [...duplicateOrderGroups().values()].filter(g=>g.flagged)
+    .sort((a,b)=>(b.same.size ? 1 : 0) - (a.same.size ? 1 : 0) || b.orders[b.orders.length-1].createdAt - a.orders[a.orders.length-1].createdAt);
+  if(!groups.length) return '';
+  const SHOW = 3;
+  return `<div class="dup-banner" role="status">
+    <div class="dup-h">⚠️ ${esc(t('Possible duplicate orders'))} <span class="dup-n">${groups.length}</span></div>
+    ${groups.slice(0, SHOW).map(g=>`<div class="dup-row"><span class="dup-party">${esc(g.orders[0].customerName || '')}</span><span class="dup-cnt">${g.orders.length} ${esc(t('open orders'))}</span>${g.same.size ? `<span class="ot-dup-same">${esc(t('Same items'))}</span>` : ''}<button type="button" class="btn btn-sm btn-outline dup-go" data-merge-party="${esc(g.key)}">⧉ ${esc(t('Review'))}</button></div>`).join('')}
+    ${groups.length > SHOW ? `<div class="note">+${groups.length - SHOW} ${esc(t('more'))}</div>` : ''}
+  </div>`;
+}
+function mergeBlockText(b){
+  return b === 'booked' ? t('Booked in Daily Work — undo the booking first')
+    : b === 'busy' ? t('Saving… try again in a moment')
+    : b === 'dispatched' ? t('Already dispatched')
+    : t('Cannot be merged');
+}
+// What the merged order would look like. `list` oldest first; list[0] is kept.
+function buildMergedOrder(list){
+  const target = list[0];
+  const out = JSON.parse(JSON.stringify(target));
+  out.items = (out.items || []).map(i=>Object.assign({}, i));
+  list.slice(1).forEach(src=>{
+    (src.items || []).forEach(l=>{
+      if(!l || l.cancelled) return;
+      const hit = out.items.find(i=>!i.cancelled && i.key === l.key);
+      if(hit) hit.qty = (Number(hit.qty) || 0) + (Number(l.qty) || 0);
+      else { const c = Object.assign({}, l); delete c.autoCancelledByReady; out.items.push(c); }
+    });
+  });
+  const sts = list.map(o=>o.status);
+  let status;
+  if(sts.every(s=>s === 'pending')) status = 'pending';
+  else if(sts.includes('processing')) status = 'processing';
+  else status = 'ready'; // In packing / Ready to Dispatch -> back to In packing, cartons are counted again
+  out.status = status;
+  if(status !== 'packed'){ delete out.packedAt; delete out.packedBy; }
+  if(status === 'processing' || status === 'pending'){ delete out.readyAt; delete out.readyBy; }
+  if(status === 'ready' && !out.readyAt){ out.readyAt = Date.now(); out.readyBy = S.currentUser ? (S.currentUser.name || S.currentUser.username) : ''; }
+  delete out.packChecked; delete out.bookChecked; delete out.dupOk;
+  const from = Array.isArray(target.mergedFrom) ? target.mergedFrom.slice() : [];
+  list.slice(1).forEach(src=>{
+    if(Array.isArray(src.mergedFrom)) src.mergedFrom.forEach(m=>from.push(m));
+    from.push({ id:String(src.id), orderNumber: src.orderNumber || '', createdAt: src.createdAt || null, createdBy: src.createdBy || '' });
+  });
+  out.mergedFrom = from;
+  out.mergedAt = Date.now();
+  out.mergedBy = S.currentUser ? (S.currentUser.name || S.currentUser.username) : '';
+  out.updatedByUsername = S.currentUser ? S.currentUser.username : null;
+  return out;
+}
+function mergeCheck(list){
+  if(list.length < 2) return { ok:false, why:t('Pick at least 2 orders to merge.') };
+  const key = orderPartyKey(list[0]);
+  if(list.some(o=>orderPartyKey(o) !== key)) return { ok:false, why:t('Only orders of the same party can be merged.') };
+  const blocked = list.find(o=>orderMergeBlock(o));
+  if(blocked) return { ok:false, why:`#${blocked.orderNumber || ''} — ${mergeBlockText(orderMergeBlock(blocked))}` };
+  const took = list.filter(o=>o.stockDeducted).length;
+  if(took && took < list.length) return { ok:false, needAccept: list.filter(o=>!o.stockDeducted && o.status === 'pending').map(o=>o.id),
+    why:t('A New order has not taken its stock yet. Accept it first, then merge.') };
+  return { ok:true };
+}
+let _mergeBusy = false;
+async function mergeOrders(ids){
+  if(!S.currentUser || S.currentUser.role !== 'admin' || _mergeBusy) return { ok:false };
+  const list = ids.map(id=>S.orders.find(o=>o.id === id)).filter(Boolean)
+    .sort((a,b)=>(a.createdAt||0)-(b.createdAt||0) || String(a.orderNumber||'').localeCompare(String(b.orderNumber||'')));
+  const chk = mergeCheck(list);
+  if(!chk.ok){ showAlert(chk.why); return { ok:false }; }
+  _mergeBusy = true;
+  const target = list[0], sources = list.slice(1);
+  const notes = list.map(o=>({ o, text: orderNoteText(o.id) })).filter(x=>x.text);
+  list.forEach(o=>beginOrderCommit(o.id));
+  let res;
+  try{
+    // the cartons to move are found first; each is re-read inside the transaction
+    const cartonIds = [];
+    for(const src of sources){
+      try{ const q = await fsDb.collection('cartons').where('orderId', '==', src.id).get(); q.docs.forEach(d=>cartonIds.push({ code:d.id, from:src.id })); }catch(e){}
+    }
+    res = await fsDb.runTransaction(async tx=>{
+      const refs = list.map(o=>fsDb.collection('orders').doc(String(o.id)));
+      const snaps = [];
+      for(const r of refs) snaps.push(await tx.get(r));
+      const cRefs = cartonIds.map(c=>fsDb.collection('cartons').doc(c.code));
+      const cSnaps = [];
+      for(const r of cRefs) cSnaps.push(await tx.get(r));
+      const server = snaps.map((sn, i)=>sn.exists ? Object.assign({}, sn.data(), { id: list[i].id }) : null);
+      for(let i = 0; i < server.length; i++){
+        const sv = server[i];
+        if(!sv) return { refused:'gone', num:list[i].orderNumber };
+        if(sv.status === 'processed') return { refused:'dispatched', num:list[i].orderNumber };
+        if(sv.booked) return { refused:'booked', num:list[i].orderNumber };
+        if(!MERGEABLE_STATUSES.includes(sv.status)) return { refused:'closed', num:list[i].orderNumber };
+        if(!!sv.stockDeducted !== !!list[i].stockDeducted) return { refused:'stock', num:list[i].orderNumber };
+      }
+      const merged = buildMergedOrder(server);
+      tx.set(refs[0], merged);
+      for(let i = 1; i < refs.length; i++) tx.delete(refs[i]);
+      let moved = 0;
+      cSnaps.forEach((sn, i)=>{
+        if(!sn.exists) return;
+        const c = sn.data() || {};
+        if(c.orderId !== cartonIds[i].from) return;
+        tx.update(cRefs[i], { orderId: String(target.id), orderNumber: merged.orderNumber || '' });
+        moved++;
+      });
+      return { ok:true, merged, moved };
+    });
+  }catch(e){
+    res = { ok:false, error:(e && e.message) || 'failed', offline: fsIsOfflineLikeError(e), code:(e && e.code) || null };
+  }
+  list.forEach(o=>endOrderCommit(o.id, false));
+  _mergeBusy = false;
+  if(!res || !res.ok){
+    if(res && res.refused) showAlert(`#${res.num || ''} — ${res.refused === 'booked' ? t('Booked in Daily Work — undo the booking first') : res.refused === 'dispatched' ? t('Already dispatched') : res.refused === 'gone' ? t('That order was deleted on another device.') : t('That order changed on another device. Please look again.')}`);
+    else if(res && res.offline) showAlert(t('Merging needs the internet. Nothing was changed.'));
+    else fsReportWriteError({ code:(res && res.code) || null, message:(res && res.error) || '' }, 'orders (merge)');
+    scheduleRender();
+    return res || { ok:false };
+  }
+  // local copy, so the screen does not wait for the listener
+  const dropIds = new Set(sources.map(o=>String(o.id)));
+  S.orders = S.orders.filter(o=>!dropIds.has(String(o.id))).map(o=>String(o.id) === String(target.id) ? res.merged : o);
+  // notes: one note on the kept order, the others removed
+  if(notes.length){
+    const txt = notes.map(n=>String(n.o.id) === String(target.id) ? n.text : `#${n.o.orderNumber || ''}: ${n.text}`).join('\n');
+    if(txt !== orderNoteText(target.id)) fsSaveOrderNote(target.id, txt).catch(()=>{});
+    notes.forEach(n=>{ if(String(n.o.id) !== String(target.id)) fsDeleteOrderNote(n.o.id, true); });
+  }
+  if(typeof autoAdvanceOrders === 'function') autoAdvanceOrders();
+  syncStockTasksFromAlerts();
+  render();
+  showToast(`⧉ ${t('Merged into')} #${res.merged.orderNumber || ''}${res.moved ? ` · ${res.moved} ${t('cartons moved')}` : ''}`);
+  return res;
+}
+function markNotDuplicate(key){
+  const g = duplicateOrderGroups().get(key); if(!g) return;
+  g.orders.forEach(o=>{ if(o.dupOk) return; o.dupOk = true; saveOrderStageFields(o, { dupOk:true }).catch(()=>{}); });
+  _dupCache = null;
+  closeModal(); render();
+  showToast(t('OK — these will not be flagged again.'));
+}
+function openMergeModal(key){
+  if(!S.currentUser || S.currentUser.role !== 'admin') return;
+  const g = duplicateOrderGroups().get(key);
+  const orders = g ? g.orders.slice() : [];
+  if(orders.length < 2){ closeModal(); render(); showToast(t('No other open order for this party.')); return; }
+  const party = orders[0].customerName || '';
+  const picked = new Set(orders.filter(o=>!orderMergeBlock(o)).map(o=>o.id));
+  const lineSum = o=>(o.items || []).filter(i=>!i.cancelled).map(i=>{ const it = findItem(i.key); return `${esc(t(i.name))} ${esc(translateSizeUnit(i.size))} <b>${fmtQtyPreferCase(i.qty, it ? it.caseSize : null)}</b>`; }).join(' · ');
+  const rowHtml = o=>{
+    const b = orderMergeBlock(o);
+    return `<div class="mg-row${b ? ' is-blocked' : ''}" data-mg-row="${esc(String(o.id))}">
+      <label class="mg-pick"><input type="checkbox" data-mg-pick="${esc(String(o.id))}"${b ? ' disabled' : (picked.has(o.id) ? ' checked' : '')}/>
+        <span class="mg-num">#${esc(o.orderNumber || '')}</span><span class="badge badge-${esc(o.status)}">${esc(stageLabel(o.status))}</span>
+        <span class="mg-date">📅 ${esc(fmtDMY(o.createdAt))}</span>${g && g.same.has(o.id) ? `<span class="ot-dup-same">${esc(t('Same items'))}</span>` : ''}
+        <span class="mg-keep" hidden>★ ${esc(t('Keeps this number'))}</span></label>
+      <div class="mg-lines">${lineSum(o) || `<span class="note">${esc(t('No items'))}</span>`}</div>
+      ${b ? `<div class="mg-why">🔒 ${esc(mergeBlockText(b))}</div>` : ''}
+      ${o.createdBy ? `<div class="note">👤 ${esc(o.createdBy)}</div>` : ''}
+      ${canDeleteOrder(o) ? `<button type="button" class="btn btn-sm btn-outline btn-del-order mg-del" data-mg-del="${esc(String(o.id))}">🗑 ${esc(t('Delete this one'))}</button>` : ''}
+    </div>`;
+  };
+  showModal(`<h3>⧉ ${esc(t('Merge or delete orders'))}</h3>
+    <p class="desc" style="margin-top:-6px;"><b>${esc(party)}</b> — ${orders.length} ${esc(t('open orders'))}. ${esc(t('Tick the orders to join into one. The oldest keeps its number and date.'))}</p>
+    <div class="mg-list">${orders.map(rowHtml).join('')}</div>
+    <div class="mg-preview" id="mgPreview"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-outline" id="cancelModal">${esc(t('Close'))}</button>
+      ${g && g.flagged ? `<button type="button" class="btn btn-outline" id="mgNotDup">${esc(t('Not a duplicate'))}</button>` : ''}
+      <button type="button" class="btn btn-primary" id="mgGo">⧉ ${esc(t('Merge'))}</button>
+    </div>`, 'mg-modal');
+  const modal = document.querySelector('#modalOverlay .modal');
+  if(!modal) return;
+  const chosen = ()=>[...modal.querySelectorAll('[data-mg-pick]:checked')].map(c=>orders.find(o=>String(o.id) === c.dataset.mgPick)).filter(Boolean)
+    .sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
+  const draw = ()=>{
+    const list = chosen();
+    modal.querySelectorAll('.mg-keep').forEach(k=>k.hidden = true);
+    modal.querySelectorAll('.mg-row').forEach(r=>r.classList.remove('is-target', 'is-in'));
+    list.forEach((o, i)=>{ const r = modal.querySelector(`[data-mg-row="${CSS.escape(String(o.id))}"]`); if(r){ r.classList.add(i ? 'is-in' : 'is-target'); if(!i) r.querySelector('.mg-keep').hidden = false; } });
+    const go = modal.querySelector('#mgGo');
+    const pv = modal.querySelector('#mgPreview');
+    const chk = mergeCheck(list);
+    go.disabled = !chk.ok;
+    go.textContent = '⧉ ' + t('Merge') + (list.length >= 2 ? ` ${list.length} ${t('orders')}` : '');
+    if(!chk.ok){
+      pv.innerHTML = `<div class="mg-warn">${esc(chk.why)}</div>${chk.needAccept && chk.needAccept.length ? `<button type="button" class="btn btn-sm btn-success" id="mgAccept">✅ ${esc(t('Accept New order first'))}</button>` : ''}`;
+      const acc = pv.querySelector('#mgAccept');
+      if(acc) acc.addEventListener('click', ()=>{
+        chk.needAccept.forEach(id=>setOrderStatus(id, 'processing'));
+        render();
+        acc.disabled = true; acc.textContent = t('Accepting…');
+        setTimeout(()=>openMergeModal(key), 1200);
+      });
+      return;
+    }
+    const m = buildMergedOrder(list);
+    const moveBack = list.some(o=>o.status === 'ready' || o.status === 'packed') && m.status !== list[0].status;
+    pv.innerHTML = `<div class="mg-pv-h">${esc(t('After merge'))}: <b>#${esc(m.orderNumber || '')}</b> · <span class="badge badge-${esc(m.status)}">${esc(stageLabel(m.status))}</span></div>
+      <div class="mg-pv-lines">${(m.items || []).filter(i=>!i.cancelled).map(i=>{ const it = findItem(i.key); return `<div class="mg-pv-line"><span>${esc(t(i.name))} ${esc(translateSizeUnit(i.size))}</span><b>${fmtQtyPreferCase(i.qty, it ? it.caseSize : null)}</b></div>`; }).join('')}</div>
+      <div class="note">${list.slice(1).map(o=>'#' + esc(o.orderNumber || '')).join(', ')} ${esc(t('will be removed (joined into the kept order). Stock does not change.'))}</div>
+      ${list.some(o=>o.status === 'ready' || o.status === 'packed') ? `<div class="note">📦 ${esc(t('Scanned cartons move to the kept order; it goes back to In packing so cartons are counted again.'))}</div>` : ''}
+      ${moveBack && m.status === 'processing' ? `<div class="note">🔧 ${esc(t('Some items are still in Processing, so the merged order is in Processing.'))}</div>` : ''}`;
+  };
+  modal.querySelectorAll('[data-mg-pick]').forEach(c=>c.addEventListener('change', draw));
+  modal.querySelectorAll('[data-mg-del]').forEach(b=>b.addEventListener('click', ()=>{
+    deleteOrderFlow(b.dataset.mgDel, ()=>{ _dupCache = null; setTimeout(()=>openMergeModal(key), 0); });
   }));
+  const nd = modal.querySelector('#mgNotDup'); if(nd) nd.addEventListener('click', ()=>markNotDuplicate(key));
+  modal.querySelector('#mgGo').addEventListener('click', async ()=>{
+    const list = chosen(); const chk = mergeCheck(list); if(!chk.ok){ draw(); return; }
+    showConfirm(`${t('Merge')} ${list.length} ${t('orders')} → #${list[0].orderNumber || ''}?`, async ()=>{
+      const go = modal.querySelector('#mgGo'); if(go){ go.disabled = true; go.textContent = t('Merging…'); }
+      const r = await mergeOrders(list.map(o=>o.id));
+      _dupCache = null;
+      if(r && r.ok) closeModal(); else draw();
+    }, { confirmLabel: t('Merge'), danger:false });
+  });
+  draw();
 }
 
 let orderDraft = [];
@@ -26690,7 +27363,7 @@ function bindEmploymentEndedCard(){
 }
 function bindAttendanceLockCard(){
   const b = document.getElementById('gotoCheckinBtn');
-  if(b) b.addEventListener('click', ()=>{ S.view = 'checkin'; render(); });
+  if(b) b.addEventListener('click', ()=>{ S.view = 'checkin'; renderWithTransition(); }); // ROUND 104
 }
 // ROUND 66 -- the team card. Shown on the Attendance (mark) screen to anyone
 // who holds "Mark other staff's attendance" AND is themselves present today.
@@ -29134,7 +29807,7 @@ function handleAppBackNavigation(){
     // has one -- so back finally runs the same on-close work those buttons
     // do (e.g. the Messages modal marking what was on screen as read).
     dismissOpenModal(); // close the modal next if one's open — matches "back closes the topmost thing", not the whole app
-    if(wasViaQuickAction && S.view!=='home') setTimeout(()=>{ S.view='home'; render(); }, 190);
+    if(wasViaQuickAction && S.view!=='home') setTimeout(()=>{ S.view='home'; renderWithTransition(); }, 190); // ROUND 104
   } else if(S.notifOpen || S.moreOpen || S.profileOpen || S.alertPanelOpen){
     S.notifOpen=false; S.moreOpen=false; S.profileOpen=false; S.alertPanelOpen=null;
     render();
@@ -29145,7 +29818,7 @@ function handleAppBackNavigation(){
     // intercepts, so the app only genuinely closes on a back press taken
     // while already on Home with nothing else open (the case below).
     S.view = 'home';
-    render();
+    renderWithTransition(); // ROUND 104 -- back to Home fades like a tab change
   }
   // If none of the above applied (we're on Home with nothing else of ours
   // open), there was nothing left of ours to intercept here — a genuine
